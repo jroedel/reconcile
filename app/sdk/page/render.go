@@ -13,10 +13,13 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	texttemplate "text/template"
+	"text/template/parse"
 	"time"
 
 	"github.com/jroedel/reconcile/app/sdk/mid"
 	"github.com/jroedel/reconcile/business/domain/translation/translationbus"
+	"github.com/jroedel/reconcile/business/domain/user/userbus"
 	"github.com/jroedel/reconcile/business/types"
 	"github.com/jroedel/reconcile/foundation/web"
 )
@@ -63,7 +66,12 @@ type Renderer struct {
 	tr    Translator
 	pages map[string]*template.Template
 
-	// strings is every {{t}} and {{tc}} in every page, read once at startup.
+	// mails is every message the app sends, by name: text/template, because
+	// a plain-text message escaped for HTML would arrive full of &amp;.
+	mails map[string]*texttemplate.Template
+
+	// strings is every {{t}} and {{tc}} in every page and message, read once
+	// at startup.
 	strings []translationbus.Source
 
 	// The stylesheet is served under a path holding a hash of its content, so
@@ -96,6 +104,11 @@ type Shell struct {
 	Lang  types.Lang
 	Langs []LangLink
 
+	// User is who is signed in, for the header; SignedIn is false on every
+	// page of somebody who is not, and User is then the zero User.
+	User     userbus.User
+	SignedIn bool
+
 	// scripts is where each shared script is served: see Script.
 	scripts map[string]string
 
@@ -123,11 +136,11 @@ func (s Shell) Script(name string) (string, error) {
 }
 
 // NewRenderer parses the layout and every page template in the given
-// filesystems, each holding templates/*.html, and reads out every string the
-// pages translate.
+// filesystems, each holding templates/*.html and perhaps mail/*.txt, and
+// reads out every string the pages and messages translate.
 //
-// A page name defined twice is a startup error rather than a silent win for
-// whichever was parsed last.
+// A page or message name defined twice is a startup error rather than a
+// silent win for whichever was parsed last.
 func NewRenderer(log *slog.Logger, tr Translator, own ...fs.FS) (*Renderer, error) {
 	if log == nil || tr == nil {
 		return nil, errors.New("a renderer needs a logger and a translator")
@@ -193,7 +206,26 @@ func NewRenderer(log *slog.Logger, tr Translator, own ...fs.FS) (*Renderer, erro
 		return nil, errors.New("there are no page templates to read")
 	}
 
-	found, err := extract(pages)
+	mails, err := parseMails(own)
+	if err != nil {
+		return nil, err
+	}
+
+	trees := map[string][]*parse.Tree{}
+
+	for name, set := range pages {
+		for _, tmpl := range set.Templates() {
+			trees[name+".html"] = append(trees[name+".html"], tmpl.Tree)
+		}
+	}
+
+	for name, set := range mails {
+		for _, tmpl := range set.Templates() {
+			trees[name+".txt"] = append(trees[name+".txt"], tmpl.Tree)
+		}
+	}
+
+	found, err := extract(trees)
 	if err != nil {
 		return nil, err
 	}
@@ -210,6 +242,7 @@ func NewRenderer(log *slog.Logger, tr Translator, own ...fs.FS) (*Renderer, erro
 		log:         log,
 		tr:          tr,
 		pages:       pages,
+		mails:       mails,
 		strings:     found,
 		css:         css,
 		cssPath:     "/static/app." + digest + ".css",
@@ -280,12 +313,16 @@ func (rn *Renderer) Render(w http.ResponseWriter, r *http.Request, status int, n
 		links = append(links, LangLink{Lang: l, Name: l.Name(), URL: mid.SwitchURL(r, l), Current: l == lang})
 	}
 
+	user, signedIn := mid.UserFrom(r.Context())
+
 	var buf bytes.Buffer
 
 	if err := set.ExecuteTemplate(&buf, "base", Shell{
 		Stylesheet: rn.cssPath,
 		Lang:       lang,
 		Langs:      links,
+		User:       user,
+		SignedIn:   signedIn,
 		scripts:    rn.scriptPaths,
 		Data:       data,
 	}); err != nil {

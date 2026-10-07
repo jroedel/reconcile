@@ -33,7 +33,12 @@ type config struct {
 		// come from. From here and never from the request, because behind
 		// the host's proxy the Host header is the loopback. Empty means
 		// sign-in is off.
-		BaseURL       string   `toml:"base_url"`
+		BaseURL string `toml:"base_url"`
+
+		// TrustProxy believes X-Forwarded-For: true behind the host's
+		// Apache, which writes it, and false anywhere nothing does, where
+		// it is whatever a client sent (web.ClientIP).
+		TrustProxy    bool     `toml:"trust_proxy"`
 		ShutdownGrace duration `toml:"shutdown_grace"`
 	} `toml:"server"`
 	DB struct {
@@ -188,12 +193,23 @@ func (c config) summary() string {
 
 	fmt.Fprintf(&b, "listening on   %s\n", c.Server.Addr)
 	fmt.Fprintf(&b, "public address %s\n", orElse(c.Server.BaseURL, "NOT SET - sign-in is off"))
+	client := "from the connection"
+	if c.Server.TrustProxy {
+		client = "from X-Forwarded-For (behind a proxy)"
+	}
+
+	fmt.Fprintf(&b, "client address %s\n", client)
 	fmt.Fprintf(&b, "database       %s\n", c.DB.Path)
 	fmt.Fprintf(&b, "log level      %s\n", orElse(c.Log.Level, "info"))
 	fmt.Fprintf(&b, "log file       %s\n", orElse(c.Log.File, "(stderr)"))
 	fmt.Fprintf(&b, "shutdown grace %s\n", c.Server.ShutdownGrace.Duration)
 
 	mail := "NOT CONFIGURED - nobody can be sent a sign-in code"
+	if strings.HasPrefix(c.Server.BaseURL, "http://") {
+		// Only ever loopback: loadConfig refuses http anywhere else.
+		mail = "none - codes are written to the log, for this machine only"
+	}
+
 	if c.Mail.Host != "" {
 		mail = fmt.Sprintf("%s:%d, from %s", c.Mail.Host, c.Mail.Port, c.Mail.From)
 	}

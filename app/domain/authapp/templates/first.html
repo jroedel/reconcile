@@ -1,0 +1,26 @@
+{{define "title"}}{{t "First sign-in"}}{{end}}
+{{define "content"}}{{with .Data}}
+<h1>{{t "First sign-in"}}</h1>
+
+{{if .Spent}}
+<p>{{t "This site has already been set up, and the setup secret has been used. Sign in with your email address instead."}}</p>
+<p><a class="button" href="/sign-in">{{t "Sign in"}}</a></p>
+{{else}}
+{{template "problem" .Problem}}
+
+<p>{{t "This is for the person setting up the site, before its email works. The secret is in the server's configuration. It works once, and makes whoever uses it the site's administrator."}}</p>
+
+<form method="post" action="/sign-in/first">
+  <div class="field">
+    <label for="email">{{t "Your email address"}}</label>
+    <input id="email" name="email" type="email" required autofocus
+           autocomplete="email" spellcheck="false" value="{{.Email}}">
+  </div>
+  <div class="field">
+    <label for="secret">{{t "Setup secret"}}</label>
+    <input id="secret" name="secret" type="password" required autocomplete="off" spellcheck="false">
+  </div>
+  <button type="submit">{{t "Sign in"}}</button>
+</form>
+{{end}}
+{{end}}{{end}}

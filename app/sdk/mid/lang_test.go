@@ -1,11 +1,13 @@
 package mid_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/jroedel/reconcile/app/sdk/mid"
+	"github.com/jroedel/reconcile/business/domain/user/userbus"
 	"github.com/jroedel/reconcile/business/types"
 )
 
@@ -89,5 +91,40 @@ func TestSwitchURLKeepsTheRestOfTheQuery(t *testing.T) {
 
 	if got := mid.SwitchURL(r, types.Spanish); got != "/accounts?lang=es&x=1" {
 		t.Errorf("SwitchURL = %q", got)
+	}
+}
+
+// A signed-in user's own choice beats the phone, and this browser's choice
+// beats both.
+func TestTheUsersOwnLanguageFollowsThem(t *testing.T) {
+	pt := authFunc(func(context.Context, string) (userbus.User, error) {
+		return userbus.User{ID: types.NewID(), Enabled: true, Lang: types.Portuguese}, nil
+	})
+
+	for name, tc := range map[string]struct {
+		cookie string
+		want   types.Lang
+	}{
+		"no cookie":          {"", types.Portuguese},
+		"this browser chose": {"en", types.English},
+	} {
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r.Header.Set("Accept-Language", "es")
+		r.AddCookie(&http.Cookie{Name: mid.SessionCookie, Value: "a.b"})
+
+		if tc.cookie != "" {
+			r.AddCookie(&http.Cookie{Name: "lang", Value: tc.cookie})
+		}
+
+		var saw types.Lang
+
+		h := mid.Authenticate(quiet, pt)(mid.Lang()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			saw = mid.LangFrom(r.Context())
+		})))
+		h.ServeHTTP(httptest.NewRecorder(), r)
+
+		if saw != tc.want {
+			t.Errorf("%s: %s, want %s", name, saw, tc.want)
+		}
 	}
 }

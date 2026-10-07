@@ -1,0 +1,9 @@
+{{define "subject"}}{{t "Your Reconcile sign-in code"}}{{end}}
+{{define "body"}}{{t "Your code to sign in to Reconcile is:"}}
+
+    {{.Code}}
+
+{{t "Type it on the page that asked for it. It works once, and stops working in fifteen minutes."}}
+
+{{t "Somebody asked to sign in as {email} at {site}. If it was not you, nothing has happened and you can ignore this message." "email" .Email "site" .Site}}
+{{end}}

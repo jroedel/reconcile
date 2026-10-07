@@ -1,0 +1,7 @@
+{{define "subject"}}{{t "Your Reconcile address was changed"}}{{end}}
+{{define "body"}}{{t "The account that signed in at {site} as {old} now signs in as {new}." "site" .Site "old" .Old "new" .New}}
+
+{{t "If you made this change, there is nothing to do."}}
+
+{{t "If you did not, somebody may have used a device you were signed in on. Contact whoever runs the site straight away."}}
+{{end}}

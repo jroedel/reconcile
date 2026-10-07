@@ -15,6 +15,11 @@ addr = "127.0.0.1:8461"
 # page here. Empty turns sign-in off. http is accepted only for this machine.
 base_url = "http://127.0.0.1:8461"
 
+# Whether X-Forwarded-For is the visitor's address. true only behind a proxy
+# that writes it (Apache, on the server); with nothing in front it is whatever
+# a client sent, and the sign-in throttle would count what they chose.
+trust_proxy = false
+
 # How long in-flight requests get to finish on SIGTERM.
 shutdown_grace = "15s"
 

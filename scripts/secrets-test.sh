@@ -103,6 +103,10 @@ check "local uses DEV_ADDR and loses its quotes" \
 	grep -q '^addr = "127.0.0.1:18461"$' "$TMP/local.toml"
 check "production's public address is https on APP_HOST" \
 	grep -qx 'base_url = "https://reconcile.example.invalid"' "$TMP/prod.toml"
+check "production believes the proxy's X-Forwarded-For" \
+	grep -qx 'trust_proxy = true' "$TMP/prod.toml"
+check "local has nothing in front, so believes no header" \
+	grep -qx 'trust_proxy = false' "$TMP/local.toml"
 check "with no runtime values, there is no [auth] and no [mail]" \
 	bash -c '! grep -qE "^\[(auth|mail)\]" "$0"' "$TMP/prod.toml"
 

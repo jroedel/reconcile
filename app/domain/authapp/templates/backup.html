@@ -1,0 +1,25 @@
+{{define "title"}}{{t "Sign in with a backup code"}}{{end}}
+{{define "content"}}{{with .Data}}
+<h1>{{t "Sign in with a backup code"}}</h1>
+
+{{template "problem" .Problem}}
+
+<p>{{t "Backup codes are for when the email does not come. You make them on your account page, and each one works once."}}</p>
+
+<form method="post" action="/sign-in/backup">
+  <input type="hidden" name="next" value="{{.Next}}">
+  <div class="field">
+    <label for="email">{{t "Email address"}}</label>
+    <input id="email" name="email" type="email" required autofocus
+           autocomplete="email" spellcheck="false" value="{{.Email}}">
+  </div>
+  <div class="field">
+    <label for="code">{{t "Backup code"}}</label>
+    <input id="code" name="code" type="text" required
+           autocomplete="off" autocapitalize="characters" spellcheck="false" class="code">
+  </div>
+  <button type="submit">{{t "Sign in"}}</button>
+</form>
+
+<p class="aside"><a href="/sign-in">{{t "Have a code sent by email instead"}}</a></p>
+{{end}}{{end}}

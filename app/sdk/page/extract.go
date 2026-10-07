@@ -2,7 +2,6 @@ package page
 
 import (
 	"fmt"
-	"html/template"
 	"maps"
 	"slices"
 	"text/template/parse"
@@ -10,27 +9,28 @@ import (
 	"github.com/jroedel/reconcile/business/domain/translation/translationbus"
 )
 
-// extract reads every {{t}} and {{tc}} out of the parsed pages: the strings
-// the app speaks, for translationbus.Register.
+// extract reads every {{t}} and {{tc}} out of the parsed templates, pages and
+// mail alike: the strings the app speaks, for translationbus.Register. sets
+// is each page's or message's parse trees, by its name.
 //
-// From the parse trees rather than by running the pages, so that a string on
-// a page nobody has opened since the deploy, or behind an {{if}} that is
+// From the parse trees rather than by running the templates, so that a string
+// on a page nobody has opened since the deploy, or behind an {{if}} that is
 // rarely true, is still waiting to be translated. And it is where the rule
 // that keeps that true is enforced: the English, the context and every
 // placeholder's name must be a literal string. {{t .Message}} cannot be
 // registered, so it is a startup error rather than a string that is never
 // translated.
-func extract(pages map[string]*template.Template) ([]translationbus.Source, error) {
+func extract(sets map[string][]*parse.Tree) ([]translationbus.Source, error) {
 	found := map[translationbus.Source]bool{}
 
-	for _, name := range slices.Sorted(maps.Keys(pages)) {
-		for _, tmpl := range pages[name].Templates() {
-			if tmpl.Tree == nil || tmpl.Tree.Root == nil {
+	for _, name := range slices.Sorted(maps.Keys(sets)) {
+		for _, tree := range sets[name] {
+			if tree == nil || tree.Root == nil {
 				continue
 			}
 
-			if err := walk(tmpl.Tree.Root, found); err != nil {
-				return nil, fmt.Errorf("%s, in %s: %w", name, tmpl.Name(), err)
+			if err := walk(tree.Root, found); err != nil {
+				return nil, fmt.Errorf("%s, in %s: %w", name, tree.Name, err)
 			}
 		}
 	}

@@ -6,16 +6,22 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"log/slog"
 	"maps"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/jroedel/reconcile/app/sdk/muxer"
 	"github.com/jroedel/reconcile/app/sdk/page"
 	"github.com/jroedel/reconcile/business/domain/translation/stores/translationdb"
 	"github.com/jroedel/reconcile/business/domain/translation/translationbus"
+	"github.com/jroedel/reconcile/business/domain/user/stores/userdb"
+	"github.com/jroedel/reconcile/business/domain/user/userbus"
 	"github.com/jroedel/reconcile/foundation/logger"
+	"github.com/jroedel/reconcile/foundation/mail"
 	"github.com/jroedel/reconcile/foundation/sqldb"
 	"github.com/jroedel/reconcile/foundation/web"
 )
@@ -108,7 +114,26 @@ func run() error {
 		return err
 	}
 
-	handler, err := muxer.New(muxer.Config{Log: log, DB: db, Expected: expected, Render: render})
+	sender, err := mailer(log, cfg)
+	if err != nil {
+		return err
+	}
+
+	users := userbus.NewBusiness(log, userdb.NewStore(db))
+
+	go prune(ctx, log, users)
+
+	handler, err := muxer.New(muxer.Config{
+		Log:        log,
+		DB:         db,
+		Expected:   expected,
+		Render:     render,
+		Users:      users,
+		BaseURL:    cfg.Server.BaseURL,
+		Mail:       sender,
+		Bootstrap:  cfg.Auth.BootstrapSecret,
+		TrustProxy: cfg.Server.TrustProxy,
+	})
 	if err != nil {
 		return err
 	}
@@ -131,6 +156,7 @@ func prepare(ctx context.Context, db *sql.DB) error {
 	}{
 		{"the infrastructure tables", sqldb.Init},
 		{"the interface's translations", translationdb.Init},
+		{"the users", userdb.Init},
 	} {
 		if err := step.init(ctx, db); err != nil {
 			return fmt.Errorf("preparing %s: %w", step.what, err)
@@ -151,9 +177,69 @@ func expectedSchema() sqldb.Expected {
 
 	for _, store := range []sqldb.Expected{
 		translationdb.Expected,
+		userdb.Expected,
 	} {
 		maps.Copy(expected, store)
 	}
 
 	return expected
+}
+
+// mailer is how messages leave: through the configured relay, or -- on a
+// developer's own machine with none -- into the log, so that `make run` can
+// sign in. Nil anywhere else, which authapp logs at every code it cannot
+// send: a public site must never quietly write sign-in codes to a file.
+func mailer(log *slog.Logger, cfg config) (mail.Sender, error) {
+	if cfg.Mail.Host != "" {
+		return mail.NewSMTP(mail.Config{
+			Host:     cfg.Mail.Host,
+			Port:     cfg.Mail.Port,
+			User:     cfg.Mail.User,
+			Password: cfg.Mail.Password,
+			From:     cfg.Mail.From,
+			FromName: cfg.Mail.FromName,
+
+			// The host's own Exim offers STARTTLS with a certificate for
+			// its public name, which fails against "localhost"; over the
+			// loopback nothing leaves the machine. mail.NewSMTP refuses
+			// this for any relay that is not on this machine.
+			NoTLS: isLoopback(cfg.Mail.Host),
+		})
+	}
+
+	if base, err := url.Parse(cfg.Server.BaseURL); err == nil && base.Scheme == "http" && isLoopback(base.Hostname()) {
+		log.Warn("no mail relay is configured: sign-in codes are written to this log, which is only for a developer's own machine")
+
+		return logSender{log: log}, nil
+	}
+
+	return nil, nil
+}
+
+// logSender writes each message to the log instead of sending it.
+type logSender struct{ log *slog.Logger }
+
+func (s logSender) Send(_ context.Context, m mail.Message) error {
+	s.log.Info("a message that would have been sent", "to", m.To, "subject", m.Subject, "text", m.Text)
+
+	return nil
+}
+
+// prune clears spent and expired codes and sessions every hour, until the
+// server stops. Housekeeping only: every check reads the expiry anyway.
+func prune(ctx context.Context, log *slog.Logger, users *userbus.Business) {
+	tick := time.NewTicker(time.Hour)
+	defer tick.Stop()
+
+	for {
+		if err := users.Prune(ctx, time.Now()); err != nil && ctx.Err() == nil {
+			log.Error("expired credentials could not be pruned", "error", err)
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+	}
 }

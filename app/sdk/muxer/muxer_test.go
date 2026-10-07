@@ -1,6 +1,8 @@
 package muxer
 
 import (
+	"context"
+	"database/sql"
 	"io"
 	"log/slog"
 	"net/http"
@@ -12,10 +14,26 @@ import (
 	"github.com/jroedel/reconcile/app/sdk/page"
 	"github.com/jroedel/reconcile/business/domain/translation/stores/translationdb"
 	"github.com/jroedel/reconcile/business/domain/translation/translationbus"
+	"github.com/jroedel/reconcile/business/domain/user/stores/userdb"
+	"github.com/jroedel/reconcile/business/domain/user/userbus"
+	"github.com/jroedel/reconcile/foundation/mail"
 	"github.com/jroedel/reconcile/foundation/sqldb"
 )
 
+// base is the public origin the tests' site believes it has.
+const base = "https://reconcile.example.invalid"
+
 func newHandlerWanting(t *testing.T, want sqldb.Expected) http.Handler {
+	t.Helper()
+
+	h, _ := newSite(t, want, nil)
+
+	return h
+}
+
+// newSite is the whole handler as main builds it, with sign-in on, mail
+// recorded rather than sent, and the bootstrap secret set when given.
+func newSite(t *testing.T, want sqldb.Expected, configure func(*Config)) (http.Handler, *mail.Recorder) {
 	t.Helper()
 
 	db, err := sqldb.Open(filepath.Join(t.TempDir(), "test.db"))
@@ -28,8 +46,10 @@ func newHandlerWanting(t *testing.T, want sqldb.Expected) http.Handler {
 		t.Fatal(err)
 	}
 
-	if err := translationdb.Init(t.Context(), db); err != nil {
-		t.Fatal(err)
+	for _, init := range []func(context.Context, *sql.DB) error{translationdb.Init, userdb.Init} {
+		if err := init(t.Context(), db); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -46,12 +66,24 @@ func newHandlerWanting(t *testing.T, want sqldb.Expected) http.Handler {
 		t.Fatal(err)
 	}
 
-	h, err := New(Config{Log: log, DB: db, Expected: want, Render: render})
+	sent := &mail.Recorder{}
+	cfg := Config{
+		Log: log, DB: db, Expected: want, Render: render,
+		Users:   userbus.NewBusiness(log, userdb.NewStore(db)),
+		BaseURL: base,
+		Mail:    sent,
+	}
+
+	if configure != nil {
+		configure(&cfg)
+	}
+
+	h, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	return h
+	return h, sent
 }
 
 func newHandler(t *testing.T) http.Handler {

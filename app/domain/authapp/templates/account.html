@@ -1,0 +1,83 @@
+{{define "title"}}{{t "Your account"}}{{end}}
+{{define "content"}}{{with .Data}}
+<h1>{{t "Your account"}}</h1>
+
+{{if .Welcome}}<p class="notice ok">{{t "Welcome. Add your name, so the people you work with know who you are, and make a set of backup codes for the day the email does not come."}}</p>{{end}}
+{{if eq .Done "profile"}}<p class="notice ok" role="status">{{t "Saved."}}</p>{{end}}
+{{if eq .Done "email"}}<p class="notice ok" role="status">{{t "Your address is changed. Sign in with the new one from now on."}}</p>{{end}}
+{{template "problem" .Problem}}
+
+<section class="card">
+<h2>{{t "You"}}</h2>
+<form method="post" action="/account/profile">
+  <div class="field">
+    <label for="name">{{t "Your name"}}</label>
+    <input id="name" name="name" type="text" maxlength="100" autocomplete="name" value="{{.Name}}">
+  </div>
+  <div class="field">
+    <label for="lang">{{t "Language"}}</label>
+    {{$current := .Lang}}
+    <select id="lang" name="lang">
+      <option value="">{{t "The same as this device"}}</option>
+      {{range .Langs}}<option value="{{.}}" lang="{{.}}"{{if eq . $current}} selected{{end}}>{{.Name}}</option>
+      {{end}}
+    </select>
+  </div>
+  <button type="submit">{{t "Save"}}</button>
+</form>
+</section>
+
+<section class="card" id="email">
+<h2>{{t "Email address"}}</h2>
+<p>{{t "You sign in as {email}." "email" .Email}}</p>
+{{if .Pending}}
+<p>{{t "We sent a code to {email}. Type it here to move your account to that address." "email" .Pending}}</p>
+<form method="post" action="/account/email/confirm">
+  <div class="field">
+    <label for="email-code">{{t "Code from the email"}}</label>
+    <input id="email-code" name="code" type="text" required
+           autocomplete="one-time-code" inputmode="numeric" pattern="[0-9 \-]*"
+           maxlength="9" spellcheck="false" class="code">
+  </div>
+  <button type="submit">{{t "Change my address"}}</button>
+</form>
+<form method="post" action="/account/email/cancel" class="inline">
+  <button type="submit" class="quiet">{{t "Keep my current address"}}</button>
+</form>
+{{else}}
+<form method="post" action="/account/email">
+  <div class="field">
+    <label for="new-email">{{t "New email address"}}</label>
+    <input id="new-email" name="email" type="email" required autocomplete="email" spellcheck="false" value="{{.NewEmail}}">
+    <p class="hint">{{t "We send a code to the new address, so you can show it is yours. Nothing changes until you type it."}}</p>
+  </div>
+  <button type="submit" class="quiet">{{t "Send a code to the new address"}}</button>
+</form>
+{{end}}
+</section>
+
+<section class="card" id="backup">
+<h2>{{t "Backup codes"}}</h2>
+{{if .Codes}}
+<p class="notice">{{t "Write these down or print this page now: they will not be shown again. Each one signs you in once, with your email address, when the email does not come."}}</p>
+<ol class="codes">{{range .Codes}}<li><code>{{.}}</code></li>{{end}}</ol>
+{{else}}
+<p>{{if .Left}}{{t "You have {count} unused backup codes." "count" .Left}}{{else}}{{t "You have no backup codes. Make some, so that you can still sign in when the email does not come."}}{{end}}</p>
+<form method="post" action="/account/backup-codes">
+  <button type="submit" class="quiet">{{t "Make new backup codes"}}</button>
+  <p class="hint">{{t "New codes replace any you already have."}}</p>
+</form>
+{{end}}
+</section>
+
+<section class="card">
+<h2>{{t "Signing out"}}</h2>
+<form method="post" action="/sign-out" class="inline">
+  <button type="submit" class="quiet">{{t "Sign out"}}</button>
+</form>
+<form method="post" action="/account/sign-out-everywhere" class="inline">
+  <button type="submit" class="quiet">{{t "Sign out on every device"}}</button>
+</form>
+<p class="hint">{{t "Lost a phone? Signing out on every device ends every session but none of your codes."}}</p>
+</section>
+{{end}}{{end}}

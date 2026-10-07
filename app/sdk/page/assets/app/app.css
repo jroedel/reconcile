@@ -99,6 +99,7 @@ p { margin: 0 0 1rem; }
 	text-decoration: none;
 }
 
+.who { display: flex; align-items: center; gap: 0.75rem; margin-left: auto; font-size: 0.95rem; }
 .langs { display: flex; gap: 0.75rem; font-size: 0.9rem; }
 .lang { color: var(--muted); }
 .lang.is-on { color: var(--ink); font-weight: 600; }
@@ -148,6 +149,37 @@ input[type="search"], select, textarea {
 	color: var(--accent);
 	border: 1px solid var(--line);
 }
+
+/* A button that reads as a link, for a POST that sits in a line of links:
+ * signing out is a write, so it cannot be an <a>. */
+button.link {
+	min-height: 0;
+	padding: 0;
+	background: none;
+	color: var(--accent);
+	font-weight: inherit;
+	text-decoration: underline;
+}
+
+form.inline { display: inline-block; margin: 0 0.5rem 0.5rem 0; }
+
+/* A code is read off one screen and typed into another: big, spaced, and
+ * in figures that do not confuse 0 with O. */
+input.code {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	font-size: 1.4rem;
+	letter-spacing: 0.15em;
+}
+
+.codes {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	font-size: 1.1rem;
+	line-height: 1.9;
+	padding-left: 2rem;
+}
+
+.aside { margin-top: 2rem; color: var(--muted); }
+.aside p { margin-bottom: 0.5rem; }
 
 .field { margin-bottom: var(--gap); }
 .hint { color: var(--muted); font-size: 0.9rem; margin-top: 0.25rem; }

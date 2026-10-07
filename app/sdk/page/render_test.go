@@ -236,3 +236,55 @@ func TestStylesheetIsCachedForEverUnderItsHash(t *testing.T) {
 		t.Error("the page does not link the stylesheet it serves")
 	}
 }
+
+var withMail = fstest.MapFS{
+	"templates/receipts.html":     pages["templates/receipts.html"],
+	"templates/partials/row.html": pages["templates/partials/row.html"],
+	"mail/code.txt": file(`{{define "subject"}}{{t "Your code"}}
+{{end}}{{define "body"}}{{t "Your code is {code}." "code" .}}
+<b>{{t "Plain text"}}</b>{{end}}`),
+}
+
+// A message is in the language asked for, its subject is one line, and it is
+// not escaped for HTML: it is plain text.
+func TestMailInALanguage(t *testing.T) {
+	rn := renderer(t, withMail)
+
+	es := spanish{{EN: "Your code"}: "Tu código", {EN: "Your code is {code}."}: "Tu código es {code}."}
+	rn2, err := page.NewRenderer(slog.New(slog.NewTextHandler(io.Discard, nil)), es, withMail)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	subject, body, err := rn2.Mail(types.Spanish, "code", "123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if subject != "Tu código" || !strings.Contains(body, "Tu código es 123456.") || !strings.Contains(body, "<b>Plain text</b>") {
+		t.Errorf("subject %q, body %q", subject, body)
+	}
+
+	if _, _, err := rn.Mail(types.English, "nowhere", nil); err == nil {
+		t.Error("an unknown message was sent")
+	}
+
+	got := map[translationbus.Source]bool{}
+	for _, s := range rn.Strings() {
+		got[s] = true
+	}
+
+	if !got[translationbus.Source{EN: "Your code is {code}."}] {
+		t.Error("a message's strings were not registered for translation")
+	}
+}
+
+func TestAMessageNeedsASubjectAndABody(t *testing.T) {
+	_, err := page.NewRenderer(slog.New(slog.NewTextHandler(io.Discard, nil)), tr, fstest.MapFS{
+		"templates/p.html": file(`{{define "content"}}x{{end}}`),
+		"mail/m.txt":       file(`{{define "body"}}x{{end}}`),
+	})
+	if err == nil {
+		t.Fatal("a message with no subject was accepted")
+	}
+}
