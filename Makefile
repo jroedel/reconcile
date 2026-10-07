@@ -138,6 +138,10 @@ deploy-status: ## Ready to deploy? secrets.env, GitHub, the server, DNS, TLS, th
 deploy-keygen: ## Mint this project's deploy ssh key, and print how to install it
 	@scripts/secrets ssh-keygen
 
+.PHONY: bootstrap-secret
+bootstrap-secret: ## Print a fresh BOOTSTRAP_SIGNIN_SECRET to paste into secrets.env
+	@scripts/secrets bootstrap-secret
+
 .PHONY: deploy-known-hosts
 deploy-known-hosts: ## Pin the server's host key (paste the line into secrets.env)
 	@scripts/secrets known-hosts
