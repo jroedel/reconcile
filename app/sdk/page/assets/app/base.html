@@ -1,0 +1,30 @@
+{{define "base"}}<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{{block "title" .}}Reconcile{{end}}</title>
+<link rel="stylesheet" href="{{.Stylesheet}}">
+</head>
+<body>
+<header class="masthead">
+<a class="wordmark" href="/">Reconcile</a>
+<nav class="who" aria-label="{{t "Your account"}}">
+{{if .SignedIn}}<a href="/account">{{.User.Named}}</a>
+<form method="post" action="/sign-out" class="inline"><button type="submit" class="link">{{t "Sign out"}}</button></form>
+{{else}}<a href="/sign-in">{{t "Sign in"}}</a>{{end}}
+</nav>
+<nav class="langs" aria-label="{{t "Language"}}">
+{{range .Langs}}{{if .Current}}<span class="lang is-on" aria-current="true" lang="{{.Lang}}">{{.Name}}</span>{{else}}<a class="lang" href="{{.URL}}" hreflang="{{.Lang}}" lang="{{.Lang}}">{{.Name}}</a>{{end}}
+{{end}}</nav>
+</header>
+<main>
+{{block "content" .}}{{end}}
+</main>
+<footer class="foot">
+{{block "foot" .}}<p>{{t "Reconcile is free software."}} <a href="https://github.com/jroedel/reconcile">{{t "Source code"}}</a></p>{{end}}
+</footer>
+</body>
+</html>
+{{end}}

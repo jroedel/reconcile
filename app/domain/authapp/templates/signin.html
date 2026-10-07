@@ -1,0 +1,23 @@
+{{define "title"}}{{t "Sign in"}}{{end}}
+{{define "content"}}{{with .Data}}
+<h1>{{t "Sign in"}}</h1>
+
+{{template "problem" .Problem}}
+
+<p>{{t "Type your email address and we will send you a code of six numbers. If you have not been here before, signing in makes your account."}}</p>
+
+<form method="post" action="/sign-in">
+  <input type="hidden" name="next" value="{{.Next}}">
+  <div class="field">
+    <label for="email">{{t "Email address"}}</label>
+    <input id="email" name="email" type="email" required autofocus
+           autocomplete="email" spellcheck="false" value="{{.Email}}">
+  </div>
+  <button type="submit">{{t "Send me a code"}}</button>
+</form>
+
+<div class="aside">
+  <p>{{t "Mail not arriving?"}} <a href="/sign-in/backup{{with .Next}}?next={{.}}{{end}}">{{t "Use a backup code instead"}}</a></p>
+  {{if .Bootstrap}}<p>{{t "Setting this site up for the first time?"}} <a href="/sign-in/first">{{t "Use the setup secret"}}</a></p>{{end}}
+</div>
+{{end}}{{end}}

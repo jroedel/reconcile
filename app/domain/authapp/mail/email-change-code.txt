@@ -1,0 +1,9 @@
+{{define "subject"}}{{t "Confirm your new address for Reconcile"}}{{end}}
+{{define "body"}}{{t "Your code to move your Reconcile account to {email} is:" "email" .Email}}
+
+    {{.Code}}
+
+{{t "Type it on your account page. It works once, and stops working in fifteen minutes."}}
+
+{{t "Somebody signed in at {site} asked to move their account to this address. If it was not you, nothing has happened and you can ignore this message." "site" .Site}}
+{{end}}

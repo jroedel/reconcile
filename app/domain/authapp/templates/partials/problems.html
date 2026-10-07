@@ -1,0 +1,20 @@
+{{/*
+  problem says what went wrong, from the code a handler names. One place for
+  every sentence, so that the same trouble reads the same on every page and is
+  translated once.
+*/}}
+{{define "problem"}}{{if .}}<p class="notice" role="alert">
+{{- if eq . "unreadable"}}{{t "We could not read that. Please try again."}}
+{{- else if eq . "bad-email"}}{{t "That does not look like an email address. Check for a typo."}}
+{{- else if eq . "stale"}}{{t "This page has waited too long, or the code was asked for on another device. Ask for a new code and type it here."}}
+{{- else if eq . "code-shape"}}{{t "The code is six numbers. Check the email and type all six."}}
+{{- else if eq . "code-wrong"}}{{t "That code did not work. Check it against the newest email, or ask for a new one."}}
+{{- else if eq . "backup-wrong"}}{{t "That address and backup code did not work together. Check both and try again."}}
+{{- else if eq . "first-wrong"}}{{t "That did not work. The secret may be wrong, or it may already have been used."}}
+{{- else if eq . "profile-invalid"}}{{t "A name can be at most {max} characters." "max" 100}}
+{{- else if eq . "same-address"}}{{t "That is already your address."}}
+{{- else if eq . "address-taken"}}{{t "Another account already signs in with that address."}}
+{{- else if eq . "email-stale"}}{{t "This code was asked for on another device, or more than fifteen minutes ago. Ask for a new one below."}}
+{{- else if eq . "email-code-wrong"}}{{t "That code did not work. Check it against the newest email, or start again."}}
+{{- else}}{{t "Something went wrong at our end. Please try again in a few minutes."}}
+{{- end}}</p>{{end}}{{end}}

@@ -128,8 +128,9 @@ deploy/                             how it reaches the server. Run by CI, not by
 scripts/                            how this is built and checked
 ```
 
-Only `cmd/`, `app/sdk/`, `business/types/` and `foundation/` exist so far; the rest is where the
-plan's domains go when they arrive.
+So far there are three domains: `translation` (the interface's strings),
+`user` (who signs in and how) and the pages over them, `homeapp` and
+`authapp`. The rest is where the plan's domains go when they arrive.
 
 The rule that makes the layering worth having: **an App package never imports
 another App package, and nothing in `foundation/` knows a domain word.** When
@@ -203,6 +204,25 @@ up `reconcile.db` and snapshots `files/` on every deploy.
 - **Timestamps are Unix milliseconds in INTEGER columns**, never text.
 - **A single-use claim is one statement**, `UPDATE … WHERE x IS NULL` or
   `INSERT … ON CONFLICT DO NOTHING`, never a read followed by a write.
+
+## Words on a page
+
+Every word a person reads goes through `t`, in the template:
+`{{t "Upload receipts"}}`, `{{t "{count} waiting" "count" .N}}`, and
+`{{tc "month-end" "Close"}}` when one English word needs two translations.
+The English is the key, so it must be a literal: the renderer reads every
+`t` out of the parse trees at startup and refuses to start on one it cannot
+read (`app/sdk/page/extract.go`). Each string is registered in `ui_strings`
+with a pending Spanish and Portuguese translation, which Claude fills
+through an API that arrives later (`docs/plan.md`, step 9). A sentence is
+translated whole; never build one by joining fragments, and never put markup
+inside one — two strings and the link between them.
+
+Handlers pass data, not sentences. A rule's error reaches a person through a
+template that says it, not as the error's own text: authapp's handlers set
+`view.Problem = "bad-email"` and `templates/partials/problems.html` says it.
+Mail works the same way: `mail/<name>.txt` in an app defines "subject" and
+"body" with `t`, and `page.Renderer.Mail` writes it in the reader's language.
 
 ## House style, in one paragraph
 

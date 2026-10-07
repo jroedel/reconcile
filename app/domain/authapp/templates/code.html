@@ -1,0 +1,26 @@
+{{define "title"}}{{t "Type your code"}}{{end}}
+{{define "content"}}{{with .Data}}
+<h1>{{t "Type your code"}}</h1>
+
+{{template "problem" .Problem}}
+
+<p>{{if .Email}}{{t "A code of six numbers is on its way to {email}." "email" .Email}}{{else}}{{t "A code of six numbers is on its way to your email."}}{{end}}
+{{t "Type it here, on this page, even if you read the email on another device."}}</p>
+
+<form method="post" action="/sign-in/code">
+  <input type="hidden" name="next" value="{{.Next}}">
+  <div class="field">
+    <label for="code">{{t "Code from the email"}}</label>
+    <input id="code" name="code" type="text" required autofocus
+           autocomplete="one-time-code" inputmode="numeric" pattern="[0-9 \-]*"
+           maxlength="9" spellcheck="false" class="code">
+  </div>
+  <button type="submit">{{t "Sign in"}}</button>
+</form>
+
+<div class="aside">
+  <p>{{t "Nothing yet? Look in your spam or junk folder, and mark the message as not spam so the next one reaches your inbox."}}</p>
+  <p>{{t "The code stops working after fifteen minutes. If you asked more than once, use the newest email."}}</p>
+  <p><a href="/sign-in{{with .Email}}?email={{.}}{{end}}">{{t "Ask for a new code"}}</a> · <a href="/sign-in/backup">{{t "Use a backup code instead"}}</a></p>
+</div>
+{{end}}{{end}}

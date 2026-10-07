@@ -1,0 +1,6 @@
+{{define "title"}}{{t "Something went wrong"}}{{end}}
+{{define "content"}}
+<h1>{{t "Something went wrong"}}</h1>
+{{template "problem" .Data}}
+<p><a href="/sign-in">{{t "Back to signing in"}}</a></p>
+{{end}}

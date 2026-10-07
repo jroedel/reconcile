@@ -1,0 +1,10 @@
+{{define "content"}}
+<h1>{{t "Keep your organization's money straight between statements"}}</h1>
+<p>{{t "Upload your bank and card statements, check them against their own balances, and attach the receipts as you go."}}</p>
+<p>{{t "Follow a project, like a pilgrimage or a building fund, across every account it draws from, and see whether it is coming out even."}}</p>
+<p>{{t "At the end of the month, reconcile each account and hand your accountant everything in one download."}}</p>
+{{if .SignedIn}}<p>{{t "Accounts and organizations arrive next. For now, your account page is where you set your name, your language and your backup codes."}}</p>
+<p><a class="button" href="/account">{{t "Your account"}}</a></p>
+{{else}}<p><a class="button" href="/sign-in">{{t "Sign in or make an account"}}</a></p>
+<p class="hint">{{t "There is no password: we email you a code each time you sign in."}}</p>{{end}}
+{{end}}

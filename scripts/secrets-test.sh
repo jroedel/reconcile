@@ -101,16 +101,43 @@ check "production listens on the loopback, on APP_PORT" \
 	grep -q '^addr = "127.0.0.1:8461"$' "$TMP/prod.toml"
 check "local uses DEV_ADDR and loses its quotes" \
 	grep -q '^addr = "127.0.0.1:18461"$' "$TMP/local.toml"
-check "with no runtime values, there is nothing but [server] and [log]" \
-	bash -c '! grep -E "^\[" "$0" | grep -vqxE "\[(server|log)\]"' "$TMP/prod.toml"
+check "production's public address is https on APP_HOST" \
+	grep -qx 'base_url = "https://reconcile.example.invalid"' "$TMP/prod.toml"
+check "production believes the proxy's X-Forwarded-For" \
+	grep -qx 'trust_proxy = true' "$TMP/prod.toml"
+check "local has nothing in front, so believes no header" \
+	grep -qx 'trust_proxy = false' "$TMP/local.toml"
+check "with no runtime values, there is no [auth] and no [mail]" \
+	bash -c '! grep -qE "^\[(auth|mail)\]" "$0"' "$TMP/prod.toml"
 
-# The two characters that end a TOML string early, in a value that reaches the
-# config. There is no runtime secret yet to carry them; the first one will be
-# a password, which is exactly the kind of value that holds both.
-{ cat "$SECRETS_ENV"; printf "DEV_ADDR='a\"b\\\\c'\n"; } > "$TMP/escape.env"
-SECRETS_ENV="$TMP/escape.env" "$SECRETS" render local > "$TMP/escape.toml"
-check "a quote and a backslash in a value are escaped" \
-	grep -qxF 'addr = "a\"b\\c"' "$TMP/escape.toml"
+# Everything sign-in needs, through a relay elsewhere, with a password holding
+# the two characters that end a TOML string early.
+{
+	cat "$SECRETS_ENV"
+	printf 'BOOTSTRAP_SIGNIN_SECRET=abcdefghijklmnopqrstuvwxyz0123456789ABCD\n'
+	printf 'SMTP_HOST=smtp.example.invalid\n'
+	printf 'SMTP_USER=reconcile@example.invalid\n'
+	printf "SMTP_PASSWORD='pa\"ss\\\\word'\n"
+	printf 'MAIL_FROM=reconcile@example.invalid\n'
+} > "$TMP/runtime.env"
+SECRETS_ENV="$TMP/runtime.env" "$SECRETS" render production > "$TMP/runtime.toml"
+
+check "the bootstrap secret reaches [auth]" \
+	grep -qx 'bootstrap_secret = "abcdefghijklmnopqrstuvwxyz0123456789ABCD"' "$TMP/runtime.toml"
+check "a quote and a backslash in the password are escaped" \
+	grep -qxF 'password = "pa\"ss\\word"' "$TMP/runtime.toml"
+check "the port is a bare number, and defaults to 587" \
+	grep -qx 'port = 587' "$TMP/runtime.toml"
+
+# The host's own Exim, which is what the example file suggests: no account.
+{
+	cat "$SECRETS_ENV"
+	printf 'SMTP_HOST=localhost\nSMTP_PORT=25\nMAIL_FROM=codes@example.invalid\n'
+} > "$TMP/local-mail.env"
+SECRETS_ENV="$TMP/local-mail.env" "$SECRETS" render production > "$TMP/local-mail.toml"
+
+check "the host's own mail server needs no account" \
+	bash -c 'grep -qx "host = \"localhost\"" "$0" && grep -qx "port = 25" "$0" && grep -qx "user = \"\"" "$0"' "$TMP/local-mail.toml"
 
 echo
 echo "the rendered config is one the binary accepts"
@@ -119,13 +146,26 @@ if go -C "$REPO_DIR" build -o "$TMP/reconcile" ./cmd/reconcile 2>/dev/null; then
 
 	check "production config passes the binary's own -check" accepts "$TMP/prod.toml"
 	check "and so does local" accepts "$TMP/local.toml"
-	check "and so does one with escapes in it, read back as written" \
-		bash -c '"$0" -config "$1" -check | grep -qF "listening on   a\"b\\c"' "$TMP/reconcile" "$TMP/escape.toml"
+	check "and so does one with sign-in configured" accepts "$TMP/runtime.toml"
+	check "and one sending through the host's own mail server" accepts "$TMP/local-mail.toml"
+	check "whose -check says mail is set up" \
+		bash -c '"$0" -config "$1" -check | grep -q "outgoing mail  smtp.example.invalid:587"' "$TMP/reconcile" "$TMP/runtime.toml"
+	check "and never prints the password" \
+		bash -c '! "$0" -config "$1" -check | grep -q "pa.ss"' "$TMP/reconcile" "$TMP/runtime.toml"
 	check "and -check names the address the deploy greps for" \
 		bash -c '"$0" -config "$1" -check | grep -qx "listening on *127.0.0.1:8461"' "$TMP/reconcile" "$TMP/prod.toml"
 else
 	echo "  skip the binary would not build here"
 fi
+
+echo
+echo "sign-in settings the binary would refuse are caught before they are sent"
+{ cat "$SECRETS_ENV"; printf 'BOOTSTRAP_SIGNIN_SECRET=tooshort\n'; } > "$TMP/short.env"
+SECRETS_ENV="$TMP/short.env" "$SECRETS" check > "$TMP/out" 2>&1 || true
+check "a short bootstrap secret" said "needs at least 32"
+{ cat "$SECRETS_ENV"; printf 'SMTP_HOST=smtp.example.invalid\nMAIL_FROM=a@example.invalid\nSMTP_USER=a\n'; } > "$TMP/half.env"
+SECRETS_ENV="$TMP/half.env" "$SECRETS" check > "$TMP/out" 2>&1 || true
+check "a relay user with no password" said "both or neither"
 
 echo
 echo "secrets stay where they belong"

@@ -1,6 +1,6 @@
-# Copy this to config.toml and edit it. config.toml is gitignored because the
-# day this app has a secret, that is where it goes; this file is tracked
-# because it is the documentation. A key this binary does not know stops it at
+# Copy this to config.toml and edit it. config.toml is gitignored because it
+# holds the mail relay's password and the bootstrap secret; this file is
+# tracked because it is the documentation. A key this binary does not know stops it at
 # startup.
 #
 # On the server this file is written by make deploy-send-secrets, from
@@ -10,6 +10,15 @@
 # The loopback address Apache proxies to. Never a public interface: TLS and the
 # public hostname are the front end's job.
 addr = "127.0.0.1:8461"
+
+# The public address, scheme and host only. Every form must be posted from a
+# page here. Empty turns sign-in off. http is accepted only for this machine.
+base_url = "http://127.0.0.1:8461"
+
+# Whether X-Forwarded-For is the visitor's address. true only behind a proxy
+# that writes it (Apache, on the server); with nothing in front it is whatever
+# a client sent, and the sign-in throttle would count what they chose.
+trust_proxy = false
 
 # How long in-flight requests get to finish on SIGTERM.
 shutdown_grace = "15s"
@@ -25,3 +34,21 @@ level = "info"
 
 # Empty means stderr, which is what the supervisor redirects into a log file.
 file = ""
+
+[auth]
+# Makes the first person to present it at /sign-in/first the site
+# administrator, once, ever. At least 32 characters (make bootstrap-secret).
+# Empty means the page is not served.
+bootstrap_secret = ""
+
+# [mail] is where sign-in codes go out. Leave the section out and the app still
+# runs, but nobody can be sent a code. On the shared host, its own mail server
+# on localhost:25 needs no user or password; a relay elsewhere needs both.
+#
+# [mail]
+# host = "localhost"
+# port = 25
+# user = ""
+# password = ""
+# from = "codes@example.org"
+# from_name = "Reconcile"
