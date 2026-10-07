@@ -28,6 +28,12 @@ shutdown_grace = "15s"
 # the name deploy.sh backs up; leave it out for the same default.
 path = "reconcile.db"
 
+[files]
+# Uploaded statements and receipts, one file per content. Like the database,
+# beside the binary and never web-servable; deploy.sh snapshots this name
+# with every backup, so leave it out for the same default.
+dir = "files"
+
 [log]
 # debug, info, warn or error.
 level = "info"

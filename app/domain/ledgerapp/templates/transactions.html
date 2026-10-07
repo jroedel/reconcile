@@ -1,0 +1,57 @@
+{{define "title"}}{{.Data.Account.Name}}{{end}}
+{{define "content"}}{{$v := .Data}}{{$cur := $v.Account.Currency}}
+<p class="crumbs"><a href="{{$v.Path}}">{{$v.Account.Name}}</a></p>
+<h1>{{t "Transactions"}}</h1>
+{{template "done" $v.Done}}
+{{template "problem" $v.Problem}}
+
+{{if $v.CanBookkeep}}
+<section class="card">
+<h2>{{t "Add a statement"}}</h2>
+<form method="post" action="{{$v.Path}}/statements" enctype="multipart/form-data">
+  <div class="field">
+    <label for="file">{{t "Statement file"}}</label>
+    <input id="file" name="file" type="file" required accept=".csv,.ofx,.qfx,.txt,text/csv">
+    <p class="hint">{{t "Download it from your bank's website as CSV, OFX or QFX. You will see what was read before anything is imported."}}</p>
+  </div>
+  <button type="submit">{{t "Upload"}}</button>
+</form>
+</section>
+{{end}}
+
+{{if $v.Months}}
+<section class="card">
+<h2>{{t "By month"}}</h2>
+<ul class="months">
+{{range $v.Months}}<li><a href="?month={{.Month}}"{{if eq .Month $v.Month}} aria-current="page"{{end}}>{{.Month}}</a> <span class="hint">{{.Count}}</span></li>
+{{end}}</ul>
+
+{{range $v.Months}}{{if eq .Month $v.Month}}
+<p>{{t "Money in"}} <span class="money in">{{money .In $cur}}</span> · {{t "Money out"}} <span class="money out">{{money .Out $cur}}</span></p>
+{{end}}{{end}}
+
+{{if $v.Shown}}
+<div class="scroll">
+<table class="ledger">
+<thead><tr><th>{{t "Date"}}</th><th>{{t "Description"}}</th><th class="money">{{t "Amount"}}</th></tr></thead>
+<tbody>
+{{range $v.Shown}}<tr><td>{{.PostedOn}}</td><td>{{.Description}}</td><td class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $cur}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p class="hint">{{t "Nothing in this month."}}</p>{{end}}
+</section>
+{{else}}
+<p class="hint">{{t "No transactions yet. They arrive with the first statement."}}</p>
+{{end}}
+
+{{if $v.Statements}}
+<section class="card">
+<h2>{{t "Statements"}}</h2>
+<ul class="list">
+{{range $v.Statements}}<li><a href="/statements/{{.ID}}">{{t "{start} to {end}" "start" .Start "end" .End}}</a> {{template "method" (printf "%s" .Checked)}}
+<span class="hint">{{.FileName}} · {{t "{n} new" "n" .Added}}</span></li>
+{{end}}</ul>
+</section>
+{{end}}
+{{end}}

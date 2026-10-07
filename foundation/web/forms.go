@@ -108,8 +108,8 @@ const FormEncoded = "application/x-www-form-urlencoded"
 //
 // r.ParseForm accepts multipart as well, and multipart is the expensive parse:
 // a body read into memory in parts by a handler that has not decided it wants
-// the request. Until there is an upload, the only bodies this service parses
-// are the ones its own forms produce.
+// the request. Outside the few routes given MultipartOnly instead, the only
+// bodies this service parses are the ones its own forms produce.
 func FormEncodedOnly() Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -8,8 +8,9 @@
 {{template "problem" .Problem}}
 
 <section class="card">
-<h2>{{t "Statements"}}</h2>
-<p class="hint">{{t "Uploading statements arrives in the next version."}}</p>
+<h2>{{t "Money"}}</h2>
+<p><a class="button" href="{{.Path}}/transactions">{{t "Transactions and statements"}}</a></p>
+{{if .CanBookkeep}}<p class="hint">{{t "Add a statement from that page, as a CSV or OFX file from your bank's website."}}</p>{{end}}
 </section>
 
 {{template "people" .}}

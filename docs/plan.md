@@ -103,14 +103,14 @@ positive). Times are Unix milliseconds. Every table is `STRICT`.
 - `events(id, actor_id, scope_kind, scope_id, action, detail_json, at)`: an append-only audit trail of who changed what, which accountants will want.
 
 **Ledger**
-- `statements(id, account_id, file_id, format[csv|ofx|pdf], period_start, period_end, opening, closing, verification[verified|partial|unverified|failed], verification_note, imported_by, imported_at)`
+- `statements(id, account_id, file_id, format[csv|ofx], period_start, period_end, opening NULL, closing NULL, checked[balances|totals|none], added, already, imported_by, imported_at)`. There is no "failed": a statement that does not balance is never stored. `added` and `already` are what the import found, kept because the second is not recoverable afterwards.
 - `transactions(id, account_id, statement_id, posted_on, description, amount, balance_after NULL, external_id, hash, occurrence)`. Unique on `(account_id, external_id)` where external_id is set; non-unique on `hash`.
 - `splits(id, transaction_id, amount, category_id NULL, project_id NULL, memo)`. The business layer enforces that the parts sum to the transaction. A new transaction gets one split for the full amount.
 - `categories(id, org_id NULL, account_id NULL, name, archived_at)`. Exactly one owner, either an org or a personal account.
-- `csv_mappings(account_id, fingerprint, mapping_json)`. Once mapped, the same header imports with no questions.
+- `csv_mappings(account_id, fingerprint, mapping, updated_by, updated_at)`. Once mapped, the same header is read with the same columns; the preview is still shown, because it is where the balance check is seen.
 
 **Receipts and files**
-- `files(id, sha256 UNIQUE, size, content_type, original_name, uploaded_by, uploaded_at)`. Bytes go to `APP_DIR/files/<sha256>` (0700), are deduped by content, and are served only through the app after an access check.
+- `files(id, sha256, size, content_type, name, uploaded_by, uploaded_at)`: one row per upload, because who uploaded it is part of what it is. The bytes go to `APP_DIR/files/<sha256>` (0700, `[files] dir`), once per content, and are served only through the app, after the domain that links the file to a scope has said who may read it. A file may be read into a statement only by the person who uploaded it.
 - `receipts(id, account_id NULL, project_id NULL, uploaded_by, date NULL, amount NULL, merchant, note, created_at)`. A receipt holds **one or more files**.
 - `receipt_files(receipt_id, file_id, position)`
 - `transaction_receipts(transaction_id, receipt_id)`. Many-to-many, because one receipt can cover two charges and one charge can have several receipts.
@@ -135,7 +135,7 @@ positive). Times are Unix milliseconds. Every table is `STRICT`.
 2. Sniff the format (OFX header → `ofxsource`; otherwise CSV).
 3. For CSV, look up the header fingerprint in the account's `csv_mappings`. If it is not found, show a **mapping screen** prefilled by `csvsource.Detect` (date, description, amount or debit/credit, balance, date format, invert), with a preview of the first 10 parsed rows. Save the mapping on confirm.
 4. Verify:
-   - **With a balance column**, run eumaeus' `statement.Build` + `Verify`. Every row must follow from the one before, so a missing row is caught.
+   - **With a balance column**, every row's balance must follow from the one before, so a missing row is caught and named. The rows are tried oldest-first and newest-first, and the balance as money held and as money owed; a failure is reported in the reading the dates and the account's kind make likeliest. (eumaeus' idea; its `statement` package was built for PDF tables and was not copied.)
    - **With opening and closing balances** (OFX `LEDGERBAL`, or typed in by the user), check opening + Σ = closing.
    - **With neither**, the statement is `unverified`, and the UI says so plainly.
 5. Dedupe against existing transactions (FITID, then hash + occurrence), and show "N new, M already here". A failed verification imports nothing and explains which row broke.
@@ -189,7 +189,7 @@ The accountant role can download it.
    - Site admin user list.
    - The events table.
    - **Cross-tenant isolation tests**: user A can never read B's org, account, project, file or export, through any route.
-5. **Import.** Statements, the CSV mapping screen and saved mappings, OFX/QFX, verification, dedupe, the transaction list (filter by month, category, project, has-receipt), and the statement file stored.
+5. **Import.** Statements, the CSV mapping screen and saved mappings, OFX/QFX, verification, dedupe, the transaction list by month, and the statement file stored and downloadable. Removing a statement takes its transactions with it. The list's filters by category, project and receipt arrive with those things, in steps 6 and 7.
 6. **Categories, splits, projects.** Per-org and personal category lists, the split editor, project assignment, the project dashboard.
 7. **Receipts.** Multi-file upload (direct and inbox), receipt viewer, attach and detach, match suggestions after import.
 8. **Reconcile and export.** The coverage grid, the statement reconcile screen, locking and reopening (audited), and the export zip.

@@ -14,6 +14,11 @@ import (
 	"github.com/jroedel/reconcile/app/sdk/page"
 	"github.com/jroedel/reconcile/business/domain/event/eventbus"
 	"github.com/jroedel/reconcile/business/domain/event/stores/eventdb"
+	"github.com/jroedel/reconcile/business/domain/file/filebus"
+	"github.com/jroedel/reconcile/business/domain/file/stores/filedb"
+	"github.com/jroedel/reconcile/business/domain/file/stores/filefs"
+	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
+	"github.com/jroedel/reconcile/business/domain/ledger/stores/ledgerdb"
 	"github.com/jroedel/reconcile/business/domain/tenancy/stores/tenancydb"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/translation/stores/translationdb"
@@ -40,7 +45,9 @@ func newHandlerWanting(t *testing.T, want sqldb.Expected) http.Handler {
 func newSite(t *testing.T, want sqldb.Expected, configure func(*Config)) (http.Handler, *mail.Recorder) {
 	t.Helper()
 
-	db, err := sqldb.Open(filepath.Join(t.TempDir(), "test.db"))
+	dir := t.TempDir()
+
+	db, err := sqldb.Open(filepath.Join(dir, "test.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +57,9 @@ func newSite(t *testing.T, want sqldb.Expected, configure func(*Config)) (http.H
 		t.Fatal(err)
 	}
 
-	for _, init := range []func(context.Context, *sql.DB) error{translationdb.Init, userdb.Init, eventdb.Init, tenancydb.Init} {
+	for _, init := range []func(context.Context, *sql.DB) error{
+		translationdb.Init, userdb.Init, eventdb.Init, tenancydb.Init, filedb.Init, ledgerdb.Init,
+	} {
 		if err := init(t.Context(), db); err != nil {
 			t.Fatal(err)
 		}
@@ -72,11 +81,22 @@ func newSite(t *testing.T, want sqldb.Expected, configure func(*Config)) (http.H
 
 	sent := &mail.Recorder{}
 	users := userbus.NewBusiness(log, userdb.NewStore(db))
+	tenancy := tenancybus.NewBusiness(log, tenancydb.NewStore(db), users)
+
+	bytes, err := filefs.NewStore(filepath.Join(dir, "files"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	files := filebus.NewBusiness(log, filedb.NewStore(db), bytes)
+
 	cfg := Config{
 		Log: log, DB: db, Expected: want, Render: render,
 		Users:   users,
-		Tenancy: tenancybus.NewBusiness(log, tenancydb.NewStore(db), users),
+		Tenancy: tenancy,
 		History: eventbus.NewBusiness(eventdb.NewStore(db)),
+		Files:   files,
+		Ledger:  ledgerbus.NewBusiness(log, ledgerdb.NewStore(db), tenancy, files),
 		BaseURL: base,
 		Mail:    sent,
 	}
@@ -130,14 +150,14 @@ func TestEveryAnswerCarriesThePolicyTheDeployLooksFor(t *testing.T) {
 // because the deploy decides whether to keep a release on this answer.
 func TestHealthzIsUnhealthyOnASchemaItDoesNotKnow(t *testing.T) {
 	rec := httptest.NewRecorder()
-	h := newHandlerWanting(t, sqldb.Expected{"statements": {"id"}})
+	h := newHandlerWanting(t, sqldb.Expected{"a_later_release": {"id"}})
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", rec.Code)
 	}
 
-	if strings.Contains(rec.Body.String(), "statements") {
+	if strings.Contains(rec.Body.String(), "a_later_release") {
 		t.Fatalf("the public answer names the table: %q", rec.Body.String())
 	}
 }
@@ -191,7 +211,7 @@ func TestFrontPage(t *testing.T) {
 
 // "/" is the front page and nothing else is.
 func TestUnknownPathIsNotTheFrontPage(t *testing.T) {
-	if rec := get(t, newHandler(t), "/statements"); rec.Code != http.StatusNotFound {
+	if rec := get(t, newHandler(t), "/nothing-here"); rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}
 }

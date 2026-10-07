@@ -44,6 +44,11 @@ type config struct {
 	DB struct {
 		Path string `toml:"path"`
 	} `toml:"db"`
+
+	// Files is where uploaded statements and receipts are kept.
+	Files struct {
+		Dir string `toml:"dir"`
+	} `toml:"files"`
 	Log struct {
 		Level string `toml:"level"`
 		File  string `toml:"file"`
@@ -81,6 +86,10 @@ const defaultAddr = "127.0.0.1:8461"
 // defaultDB is the database's name when the config does not give one. The
 // deploy's backup looks for exactly this name in APP_DIR.
 const defaultDB = "reconcile.db"
+
+// defaultFiles is the uploads' directory when the config does not give one.
+// deploy.sh snapshots exactly this name in APP_DIR beside each backup.
+const defaultFiles = "files"
 
 // duration is a time.Duration that TOML can read as "15s".
 type duration struct{ time.Duration }
@@ -138,6 +147,11 @@ func loadConfig(path string) (config, error) {
 	// it -- and the binary already running refuses a key it does not know.
 	if cfg.DB.Path == "" {
 		cfg.DB.Path = defaultDB
+	}
+
+	// The same reasoning, for the same reason: deploy.sh looks for it there.
+	if cfg.Files.Dir == "" {
+		cfg.Files.Dir = defaultFiles
 	}
 
 	if cfg.Server.BaseURL != "" {
@@ -200,6 +214,7 @@ func (c config) summary() string {
 
 	fmt.Fprintf(&b, "client address %s\n", client)
 	fmt.Fprintf(&b, "database       %s\n", c.DB.Path)
+	fmt.Fprintf(&b, "uploads        %s\n", c.Files.Dir)
 	fmt.Fprintf(&b, "log level      %s\n", orElse(c.Log.Level, "info"))
 	fmt.Fprintf(&b, "log file       %s\n", orElse(c.Log.File, "(stderr)"))
 	fmt.Fprintf(&b, "shutdown grace %s\n", c.Server.ShutdownGrace.Duration)

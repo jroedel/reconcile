@@ -1,0 +1,26 @@
+{{define "title"}}{{.Data.Statement.FileName}}{{end}}
+{{define "content"}}{{$v := .Data}}{{$st := $v.Statement}}{{$cur := $v.Account.Currency}}
+<p class="crumbs"><a href="/accounts/{{$v.Account.ID}}/transactions">{{$v.Account.Name}}</a></p>
+<h1>{{t "Statement, {start} to {end}" "start" $st.Start "end" $st.End}}</h1>
+{{if eq $v.Done "imported"}}<p class="notice ok" role="status">{{t "Imported: {added} new transactions, and {already} that were here already." "added" $st.Added "already" $st.Already}}</p>{{end}}
+
+<section class="card">
+<p>{{template "method" (printf "%s" $st.Checked)}}</p>
+{{if eq (printf "%s" $st.Checked) "balances"}}<p>{{t "Every row's balance followed from the one before, so no row is missing from the file."}}</p>
+{{else if eq (printf "%s" $st.Checked) "totals"}}<p>{{t "The opening balance, {opening}, plus everything in the file came to the closing balance, {closing}." "opening" (money $st.Opening $cur) "closing" (money $st.Closing $cur)}}</p>
+{{else}}<p>{{t "There were no balances to check this statement against. Compare its total with the paper statement before you rely on it."}}</p>{{end}}
+<p>{{t "{added} transactions came in with it, and {already} it listed were here already." "added" $st.Added "already" $st.Already}}</p>
+<p class="hint">{{if $v.ImportedBy}}{{t "Imported by {who} on {date}." "who" $v.ImportedBy "date" ($st.ImportedAt.Format "2006-01-02")}}{{else}}{{t "Imported on {date}." "date" ($st.ImportedAt.Format "2006-01-02")}}{{end}}</p>
+<p><a class="button quiet" href="/statements/{{$st.ID}}/file">{{t "Download {name}" "name" $st.FileName}}</a></p>
+</section>
+
+{{if $v.CanBookkeep}}
+<section class="card">
+<h2>{{t "Remove"}}</h2>
+<p class="hint">{{t "Removing the statement takes out the transactions it brought in, so that the file can be imported again with other columns. The history keeps a line saying so."}}</p>
+<form method="post" action="/statements/{{$st.ID}}/remove">
+  <button type="submit" class="quiet">{{t "Remove this statement"}}</button>
+</form>
+</section>
+{{end}}
+{{end}}

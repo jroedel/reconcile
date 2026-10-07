@@ -15,11 +15,14 @@ import (
 	"github.com/jroedel/reconcile/app/domain/adminapp"
 	"github.com/jroedel/reconcile/app/domain/authapp"
 	"github.com/jroedel/reconcile/app/domain/homeapp"
+	"github.com/jroedel/reconcile/app/domain/ledgerapp"
 	"github.com/jroedel/reconcile/app/domain/tenancyapp"
 	"github.com/jroedel/reconcile/app/sdk/health"
 	"github.com/jroedel/reconcile/app/sdk/mid"
 	"github.com/jroedel/reconcile/app/sdk/page"
 	"github.com/jroedel/reconcile/business/domain/event/eventbus"
+	"github.com/jroedel/reconcile/business/domain/file/filebus"
+	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/user/userbus"
 	"github.com/jroedel/reconcile/foundation/mail"
@@ -31,7 +34,7 @@ import (
 // renderer rather than this package, because the strings it reads out of
 // these are registered for translation before anything is served.
 func Templates() []fs.FS {
-	return []fs.FS{homeapp.Templates, authapp.Templates, tenancyapp.Templates, adminapp.Templates}
+	return []fs.FS{homeapp.Templates, authapp.Templates, tenancyapp.Templates, ledgerapp.Templates, adminapp.Templates}
 }
 
 // Config is everything the routes need, gathered by main and passed in.
@@ -43,6 +46,8 @@ type Config struct {
 	Users    *userbus.Business
 	Tenancy  *tenancybus.Business
 	History  *eventbus.Business
+	Files    *filebus.Business
+	Ledger   *ledgerbus.Business
 
 	// BaseURL is the public origin. Empty means sign-in is off: its routes
 	// are not mounted, because a code sent from a site that cannot say where
@@ -65,8 +70,9 @@ const maxBody = 64 << 10
 
 // New builds the handler.
 func New(cfg Config) (http.Handler, error) {
-	if cfg.Log == nil || cfg.DB == nil || cfg.Render == nil || cfg.Users == nil || cfg.Tenancy == nil || cfg.History == nil {
-		return nil, errors.New("the muxer needs a logger, a database, a renderer, and the users, organizations and history")
+	if cfg.Log == nil || cfg.DB == nil || cfg.Render == nil || cfg.Users == nil || cfg.Tenancy == nil || cfg.History == nil ||
+		cfg.Files == nil || cfg.Ledger == nil {
+		return nil, errors.New("the muxer needs a logger, a database, a renderer, and the users, organizations, history, files and ledger")
 	}
 
 	mux := http.NewServeMux()
@@ -104,6 +110,15 @@ func New(cfg Config) (http.Handler, error) {
 			BaseURL: cfg.BaseURL,
 		}, guard)
 
+		ledgerapp.Routes(mux, ledgerapp.Config{
+			Log:     cfg.Log,
+			Ledger:  cfg.Ledger,
+			Tenancy: cfg.Tenancy,
+			Files:   cfg.Files,
+			Users:   cfg.Users,
+			Render:  cfg.Render,
+		}, guard)
+
 		adminapp.Routes(mux, adminapp.Config{
 			Log:    cfg.Log,
 			Users:  cfg.Users,
@@ -119,11 +134,12 @@ func New(cfg Config) (http.Handler, error) {
 	)
 
 	// How big and what shape a write may be is a fork rather than a line,
-	// so that when uploads arrive they get branches of their own and never
-	// pass through the small limit (web.MaxBody). For now there is one
-	// branch: 64 KB, form encoded.
+	// so that an upload gets a branch of its own and never passes through
+	// the small limit (web.MaxBody). Every form is 64 KB and form encoded;
+	// a statement is up to ledgerapp.MaxUpload and multipart.
 	shape := http.NewServeMux()
 	shape.Handle("/", web.Wrap(inner, web.MaxBody(maxBody), web.FormEncodedOnly()))
+	shape.Handle(ledgerapp.UploadPattern, web.Wrap(inner, web.MaxBody(ledgerapp.MaxUpload), web.MultipartOnly()))
 
 	// Outermost first: the id, then the request line, then the headers, so
 	// a panic is logged with the id and answered with the policy on it. A

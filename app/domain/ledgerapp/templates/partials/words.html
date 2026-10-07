@@ -1,0 +1,39 @@
+{{/*
+  The words this app's pages share: what went wrong with a file, what just
+  happened, what a row could not be read for, and what checking a statement
+  found.
+*/}}
+{{define "problem"}}{{if .}}<p class="notice" role="alert">
+{{- if eq . "no-file"}}{{t "Choose a file first: the statement you downloaded from your bank's website."}}
+{{- else if eq . "too-big"}}{{t "That file is too big for a statement. Download a shorter period from your bank, a few months at a time."}}
+{{- else if eq . "pdf"}}{{t "That is a PDF. Reading PDF statements comes in a later version; for now, download the same statement from your bank's website as CSV or OFX."}}
+{{- else if eq . "unreadable"}}{{t "That file is not a statement this can read. Statements come from your bank's website as CSV, OFX or QFX."}}
+{{- else if eq . "unmapped"}}{{t "Choose which column holds the date, and which holds the amount or the money in and out."}}
+{{- else if eq . "empty"}}{{t "No transactions could be read with these columns. Check them against the file's rows."}}
+{{- else if eq . "unbalanced"}}{{t "The statement does not balance, so nothing was imported. See what was found below."}}
+{{- else if eq . "same-file"}}{{t "This file was imported into this account already."}}
+{{- else if eq . "opening"}}{{t "The opening balance must be an amount, such as 1234.56, or left empty."}}
+{{- else if eq . "closing"}}{{t "The closing balance must be an amount, such as 1234.56, or left empty."}}
+{{- else}}{{t "Something went wrong at our end. Please try again in a few minutes."}}
+{{- end}}</p>{{end}}{{end}}
+
+{{define "done"}}{{if .}}<p class="notice ok" role="status">
+{{- if eq . "removed"}}{{t "The statement and the transactions it brought in were removed. The file can be imported again."}}
+{{- end}}</p>{{end}}{{end}}
+
+{{define "warning"}}
+{{- if eq .Problem "row"}}{{t "this row could not be read"}}
+{{- else if eq .Problem "no-date"}}{{t "it has no date"}}
+{{- else if eq .Problem "date"}}{{t "{value} is not a date in the format chosen" "value" .Value}}
+{{- else if eq .Problem "no-amount"}}{{t "it has no amount"}}
+{{- else if eq .Problem "amount"}}{{t "{value} is not an amount" "value" .Value}}
+{{- else if eq .Problem "balance"}}{{t "{value} is not a balance" "value" .Value}}
+{{- else if eq .Problem "no-fitid"}}{{t "the bank gave the transaction on {value} no identifier, so it is matched by its contents" "value" .Value}}
+{{- else if eq .Problem "several"}}{{t "the file holds more than one account, and all of them are read into this one"}}
+{{- else if eq .Problem "ledger-balance"}}{{t "the closing balance, {value}, could not be read" "value" .Value}}
+{{- else}}{{.Problem}}{{end}}{{end}}
+
+{{define "method"}}
+{{- if eq . "balances"}}<span class="badge">{{t "balanced row by row"}}</span>
+{{- else if eq . "totals"}}<span class="badge">{{t "balanced in total"}}</span>
+{{- else}}<span class="badge">{{t "not checked"}}</span>{{end}}{{end}}
