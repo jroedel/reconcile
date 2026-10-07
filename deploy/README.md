@@ -69,8 +69,8 @@ deploy workflow skips itself rather than failing. The `ship` job in
 4. stops if a newer commit has reached `main` meanwhile (its own deploy
    follows);
 5. reinstalls `.htaccess` and the cron watchdog;
-6. under the supervisor's lock: stops the app, backs up `reconcile.db` once
-   there is one (keeping `KEEP_BACKUPS`), and swaps the binary;
+6. under the supervisor's lock: stops the app, backs up `reconcile.db` and
+   snapshots `files/` (keeping `KEEP_BACKUPS` of each), and swaps the binary;
 7. starts it, and waits for `/healthz` on the loopback. If it does not start
    or does not answer, it **rolls back** to the last binary that did;
 8. checks from outside that `/healthz` is 200 and `/` is answered by the app.
@@ -85,7 +85,9 @@ On the server, in `APP_DIR`:
 |---|---|
 | `reconcile` | the binary. `.prev` is the one before, `.last-good` the latest that started and answered, `.failed` the latest that did not |
 | `config.toml` | from `make deploy-send-secrets`; never edited on the server |
-| `backups/` | per deploy, a copy of the database, the newest `KEEP_BACKUPS` kept. On the same disk, so a copy off the server is still a person's to take |
+| `reconcile.db` | the database, mode 0600 |
+| `files/` | uploaded statements and receipts, one file per content hash. Mode 0700, served only through the app |
+| `backups/` | per deploy, a copy of the database and a snapshot of `files/`, the newest `KEEP_BACKUPS` of each kept. The snapshots are hard links, so a file is stored once however many hold it. On the same disk, so a copy off the server is still a person's to take |
 | `run.sh`, `supervise.sh` | start the binary, and keep it running from cron |
 | `reconcile.log` | the server's log |
 | `deployed-commit.txt` | the commit that is live |
@@ -98,7 +100,7 @@ others' lines alone -- `scripts/deploy-test.sh` holds that.
 
 | Command | What |
 |---|---|
-| `make prod-status` | the process, the public checks, what is live, backups, the log |
+| `make prod-status` | the process, the public checks, what is live, backups, the size of `files/`, the log |
 | `make prod-logs N=200` | the tail of the log |
 | `make prod-backup` | a backup now (stops the app for a second or two) |
 | `make prod-restart` | restart |
