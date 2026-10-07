@@ -2,10 +2,23 @@
 
 `AGENTS.md` is a link to this file, so every agent reads the same rules.
 
-**What this app is for is not written yet.** It arrives with the plan; until
-then this file holds only the rules that are true of any app built and shipped
-this way. When the plan lands, its first paragraph goes here, and the document
-that decides arguments about behaviour is named here too.
+This app helps the people who handle a nonprofit's money day to day keep it
+straight between the accountant's statements. They upload bank and card
+statements, which are read and checked against their own balances; they
+attach receipts, split transactions across categories and **projects** (a
+pilgrimage, a building fund) that draw from several accounts, reconcile each
+month, and hand the accountant a package. Anyone may sign up; nobody, not
+even the site administrator, sees an account they were not given.
+
+**Read `docs/plan.md` before changing behaviour**, and `docs/design.md` before
+changing anything a person sees. The plan's build order says what comes next.
+The design's test decides most arguments: a volunteer at a shop counter can
+photograph three receipts into the right project in under a minute, and a
+month later the treasurer can tell which charge each belongs to.
+
+**Statements, receipts and account numbers never enter this repository.**
+Fixtures are invented and live in a `testdata/` directory; `scripts/data-guard`
+refuses the rest, as the pre-commit hook (`make hooks`) and in CI.
 
 It is written in Go, it is a **public** repository under the Apache-2.0
 license, and it ships by a push to `main` that CI deploys to the Hetzner

@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+#
+# Keeps people's money out of a public repository.
+#
+#     scripts/data-guard staged    # the pre-commit hook: make hooks installs it
+#     scripts/data-guard tracked   # CI: every file in the repository, by name
+#
+# Taken from eumaeus' pre-commit guard. .gitignore is advisory; this is the
+# check that refuses. `staged` inspects what is about to be committed, so a
+# `git add -f` past the ignore rules still has to get through here, and it
+# reads the added lines for the shapes of account numbers, card numbers and
+# credentials. `tracked` is the half that does not depend on anybody having
+# installed a hook: CI runs it on every pull request, and it looks at names
+# only, because the content patterns are tuned for a diff and would bury a
+# whole-tree scan in false positives.
+#
+# Fixtures belong in a testdata/ directory, and are invented. That exemption
+# is the reason the directory exists: without a sanctioned place for a sample
+# statement, somebody eventually commits a real one. An invented statement
+# uses names like CORNER GROCERY and account numbers that begin 9999, which no
+# issuer uses.
+#
+# To bypass deliberately: git commit --no-verify. If that becomes a habit, the
+# rule is wrong; fix the rule rather than training yourself to skip it.
+set -euo pipefail
+
+fail=0
+
+note() { printf '\033[31mblocked:\033[0m %s\n' "$1" >&2; fail=1; }
+warn() { printf '\033[33mwarning:\033[0m %s\n' "$1" >&2; }
+
+fixture() {
+	case "$1" in
+	testdata/*|*/testdata/*) return 0 ;;
+	esac
+	return 1
+}
+
+# check_name refuses a file by what its name says it is.
+check_name() {
+	local file="$1"
+
+	fixture "$file" && return 0
+
+	case "$file" in
+	*.csv|*.ofx|*.qfx|*.qif|*.qbo|*.xls|*.xlsx|*.pdf)
+		note "$file looks like a bank export or a statement. If it is invented, put it in a testdata/ directory." ;;
+	*.jpg|*.jpeg|*.png|*.heic|*.webp)
+		note "$file is an image, and the images this app sees are receipts. If it is invented, put it in a testdata/ directory." ;;
+	*.db|*.db-wal|*.db-shm|*.sqlite|*.sqlite3)
+		note "$file is a database." ;;
+	config.toml|*/config.toml|secrets.env|*/secrets.env|.env|.env.*|*.env)
+		note "$file is configuration that carries credentials and the server's address." ;;
+	*.key|*.pem|id_rsa|id_ecdsa|id_ed25519|*_ed25519|*/id_rsa|*/id_ed25519)
+		note "$file looks like key material." ;;
+	esac
+}
+
+# check_added reads the added lines of the staged diff.
+check_added() {
+	local files added
+	files=$(printf '%s\n' "$1" | while IFS= read -r f; do fixture "$f" || printf '%s\n' "$f"; done)
+	[ -n "$files" ] || return 0
+
+	# shellcheck disable=SC2086 # one path per word, on purpose
+	added=$(git diff --cached --unified=0 -- $files 2>/dev/null | grep -E '^\+' | grep -Ev '^\+\+\+' || true)
+	[ -n "$added" ] || return 0
+
+	# A run of 9-17 digits is the shape of an account or routing number.
+	# Bounded on both sides so it does not fire on hashes or on Go constants
+	# with underscores in them.
+	if printf '%s' "$added" | grep -Eq '(^|[^0-9A-Za-z_])[0-9]{9,17}([^0-9A-Za-z_]|$)'; then
+		warn "an added line contains a 9-17 digit run, which is the shape of an account or routing number."
+		warn "if it is real, remove it; if it is a test constant, put an underscore in it."
+	fi
+
+	if printf '%s' "$added" | grep -Eq '(^|[^0-9A-Za-z])[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}([^0-9A-Za-z]|$)'; then
+		note "an added line matches the shape of an IBAN."
+	fi
+
+	# An issuer prefix and at least three more groups of four. Two groups
+	# would call any 12-digit number starting with 4 a Visa, and a wrong label
+	# teaches people to ignore the hook.
+	if printf '%s' "$added" | grep -Eq '(^|[^0-9])(4[0-9]{3}|5[1-5][0-9]{2}|3[47][0-9]{2}|6011)([ -]?[0-9]{4}){3,4}([^0-9]|$)'; then
+		note "an added line matches the shape of a payment card number."
+	fi
+
+	if printf '%s' "$added" | grep -Eiq '(access[_-]?token|refresh[_-]?token|secret[_-]?key|client[_-]?secret|app[_-]?secret|api[_-]?key|password)["'"'"']?\s*[:=]\s*["'"'"'][A-Za-z0-9_\-]{16,}'; then
+		note "an added line looks like a hard-coded credential."
+	fi
+
+	if printf '%s' "$added" | grep -Eq -- '-----BEGIN (OPENSSH|RSA|DSA|EC|PGP) PRIVATE KEY-----'; then
+		note "an added line contains a private key."
+	fi
+
+	if printf '%s' "$added" | grep -Eq 'https?://[^/[:space:]"'"'"']+:[^/@[:space:]"'"'"']+@'; then
+		note "an added line contains a URL with a username and password in it."
+	fi
+}
+
+case "${1:-}" in
+staged)
+	files=$(git diff --cached --name-only --diff-filter=ACMR)
+	[ -n "$files" ] || exit 0
+	while IFS= read -r f; do check_name "$f"; done <<<"$files"
+	check_added "$files"
+	;;
+tracked)
+	while IFS= read -r f; do check_name "$f"; done < <(git ls-files)
+	;;
+*)
+	echo "usage: scripts/data-guard staged|tracked" >&2
+	exit 2
+	;;
+esac
+
+if [ "$fail" -ne 0 ]; then
+	if [ "$1" = staged ]; then
+		cat >&2 <<-'MSG'
+
+			Commit refused. Nothing is lost; your changes are still staged.
+
+			  see what is staged:  git diff --cached --stat
+			  unstage one file:    git restore --staged <file>
+		MSG
+	fi
+	exit 1
+fi

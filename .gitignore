@@ -27,9 +27,15 @@ config.toml
 !secrets.env.example
 
 # Data, not code. A real export is somebody's records, and a public repository
-# is no place for one. Test fixtures are invented; real files stay on the
-# machine that holds them.
+# is no place for one. Test fixtures are invented and live in a testdata/
+# directory, which is the one place a sample statement may be; real files stay
+# on the machine that holds them. scripts/data-guard enforces the same rule on
+# what is committed.
 *.csv
+*.ofx
+*.qfx
+*.pdf
+!**/testdata/**
 
 # Keys of any kind.
 *.key

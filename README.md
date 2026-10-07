@@ -1,6 +1,12 @@
 # reconcile
 
-What it is for arrives with the plan.
+A web app for the people who handle a nonprofit's money day to day. Upload
+bank and card statements, check them against their own balances, attach
+receipts, follow projects that draw from several accounts, reconcile each
+month, and hand the accountant a package.
+
+[`docs/plan.md`](docs/plan.md) is the plan and the build order;
+[`docs/design.md`](docs/design.md) is how it should feel to use.
 
 ## Running it
 
@@ -10,6 +16,7 @@ Go 1.26, no other toolchain.
 cp config.example.toml config.toml
 make run            # serves on 127.0.0.1:8461
 make test           # unit tests, lint, shell tests
+make hooks          # the pre-commit guard that keeps statements out of git
 make help           # every target
 ```
 
