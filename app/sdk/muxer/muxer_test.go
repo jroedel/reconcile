@@ -5,19 +5,38 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jroedel/reconcile/foundation/sqldb"
 )
 
-func newHandler(t *testing.T) http.Handler {
+func newHandlerWanting(t *testing.T, want sqldb.Expected) http.Handler {
 	t.Helper()
 
-	h, err := New(Config{Log: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	db, err := sqldb.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	if err := sqldb.Init(t.Context(), db); err != nil {
+		t.Fatal(err)
+	}
+
+	h, err := New(Config{Log: slog.New(slog.NewTextHandler(io.Discard, nil)), DB: db, Expected: want})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	return h
+}
+
+func newHandler(t *testing.T) http.Handler {
+	t.Helper()
+
+	return newHandlerWanting(t, sqldb.Infrastructure)
 }
 
 func TestHealthz(t *testing.T) {
@@ -47,8 +66,24 @@ func TestEveryAnswerCarriesThePolicyTheDeployLooksFor(t *testing.T) {
 	}
 }
 
-func TestNewNeedsALogger(t *testing.T) {
+// A binary rolled back onto a database it does not understand must say so,
+// because the deploy decides whether to keep a release on this answer.
+func TestHealthzIsUnhealthyOnASchemaItDoesNotKnow(t *testing.T) {
+	rec := httptest.NewRecorder()
+	h := newHandlerWanting(t, sqldb.Expected{"accounts": {"id"}})
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+
+	if strings.Contains(rec.Body.String(), "accounts") {
+		t.Fatalf("the public answer names the table: %q", rec.Body.String())
+	}
+}
+
+func TestNewNeedsALoggerAndADatabase(t *testing.T) {
 	if _, err := New(Config{}); err == nil {
-		t.Fatal("New with no logger succeeded")
+		t.Fatal("New with nothing succeeded")
 	}
 }

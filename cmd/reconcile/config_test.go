@@ -32,6 +32,11 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if cfg.Server.ShutdownGrace.Duration != 15*time.Second {
 		t.Errorf("shutdown_grace = %s, want 15s", cfg.Server.ShutdownGrace.Duration)
 	}
+
+	// deploy.sh backs up exactly this name in APP_DIR.
+	if cfg.DB.Path != "reconcile.db" {
+		t.Errorf("db path = %q, want reconcile.db", cfg.DB.Path)
+	}
 }
 
 // The example is the documentation, so it has to be a file the binary accepts.

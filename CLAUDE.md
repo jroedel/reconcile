@@ -109,13 +109,13 @@ app/domain/<x>app/                  HTTP handlers and view types. No business ru
 app/sdk/                            the plumbing under them: muxer, page, mid
 business/domain/<x>/<x>bus/         the rules. This is where behaviour is.
 business/domain/<x>/stores/<x>db/   storage, per domain
-business/types/                     small value types
-foundation/                         no domain knowledge: web, logger, later sqldb
+business/types/                     small value types: ID, Email, money.Amount
+foundation/                         no domain knowledge: web, sqldb, logger
 deploy/                             how it reaches the server. Run by CI, not by agents
 scripts/                            how this is built and checked
 ```
 
-Only `cmd/`, `app/sdk/` and `foundation/` exist so far; the rest is where the
+Only `cmd/`, `app/sdk/`, `business/types/` and `foundation/` exist so far; the rest is where the
 plan's domains go when they arrive.
 
 The rule that makes the layering worth having: **an App package never imports
@@ -160,18 +160,16 @@ is forgotten. Do not work around a denial — a denied command is the answer.
 ## When there is a database
 
 These are the storage conventions from mass-intentions and stewards, where
-each one was paid for. They apply the day the first store lands (plain SQLite
-through `modernc.org/sqlite`, pure Go so the release stays static, unless
-decided otherwise). `deploy.sh` already backs up `reconcile.db` on every
-deploy once it exists.
+each one was paid for. Plain SQLite through `modernc.org/sqlite`
+(`foundation/sqldb`), pure Go so the release stays static. `deploy.sh` backs
+up `reconcile.db` and snapshots `files/` on every deploy.
 
 - **No migration tool.** Each store owns `Init(ctx, db)` holding idempotent
   `CREATE TABLE IF NOT EXISTS … STRICT` DDL, and exports
   `Expected sqldb.Expected`. `main` calls every `Init` in foreign-key order and
   then `sqldb.CheckSchema` once. A later column arrives as an `ALTER … DEFAULT`
   beside the `CREATE`, so a fresh database gets it from one and an existing one
-  from the other. Take `foundation/sqldb` from stewards rather than writing it
-  again.
+  from the other.
 - **Nothing that mentions a later column may sit in the `CREATE` block.** An
   index on one goes in a second `Exec` *after* the `AddColumn` call. On a fresh
   database it builds and every test passes; on a database that predates the
@@ -184,10 +182,11 @@ deploy once it exists.
 - **A store with a later column owns a test that runs `Init` over the schema as
   it stood before** — the old DDL written out literally, not derived from the
   new one.
-- **`/healthz` re-checks the schema on every call**, rather than pinging. It is
-  a plain 200 today (`app/sdk/muxer`); it becomes the schema check with the
-  first store. The deploy rolls a release back on what it says, and a binary
-  rolled back onto a newer schema must report unhealthy.
+- **`/healthz` re-checks the schema on every call**, rather than pinging
+  (`app/sdk/health`). The deploy rolls a release back on what it says, and a
+  binary rolled back onto a newer schema must report unhealthy. A new store
+  adds its `Init` to `prepare` and its `Expected` to `expectedSchema`, both in
+  `cmd/reconcile/main.go`.
 - **Timestamps are Unix milliseconds in INTEGER columns**, never text.
 - **A single-use claim is one statement**, `UPDATE … WHERE x IS NULL` or
   `INSERT … ON CONFLICT DO NOTHING`, never a read followed by a write.

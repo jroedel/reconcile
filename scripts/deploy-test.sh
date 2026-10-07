@@ -296,6 +296,46 @@ check "four backups with KEEP_BACKUPS=2 leave two (saw $(kept))" test "$(kept)" 
 check "and the two kept are the newest" newest_kept
 check "the backups directory is private" test "$(stat -c %a "$APP_DIR/backups")" = 700
 
+# The files: snapshotted beside each backup, as links rather than copies.
+# Invented files, never a real statement or receipt.
+mkdir -p "$APP_DIR/files"
+printf 'an invented receipt\n' > "$APP_DIR/files/aaaa"
+printf 'an invented statement\n' > "$APP_DIR/files/bbbb"
+
+out="$(run_backup 2>&1)"
+snap="$(find "$APP_DIR/backups" -maxdepth 1 -name 'files-*' | sort -r | head -1)"
+
+snapshotted()   { test -n "$snap" && test -f "$snap/aaaa" && test -f "$snap/bbbb"; }
+same_inode()    { test "$(stat -c %i "$snap/aaaa")" = "$(stat -c %i "$APP_DIR/files/aaaa")"; }
+said_snapshot() { grep -q 'files snapshotted to backups/files-' <<<"$out"; }
+check "the files are snapshotted" snapshotted
+check "as hard links, not copies" same_inode
+check "and it says so" said_snapshot
+
+rm "$APP_DIR/files/aaaa"
+survives() { test "$(cat "$snap/aaaa")" = 'an invented receipt'; }
+check "a file removed afterwards survives in the snapshot" survives
+
+for _ in 1 2 3; do run_backup >/dev/null 2>&1; done
+snaps() { find "$APP_DIR/backups" -maxdepth 1 -name 'files-*' | wc -l | tr -d ' '; }
+check "snapshots are kept to KEEP_BACKUPS too (saw $(snaps))" test "$(snaps)" -eq 2
+
+# A host whose cp cannot link: the snapshot warns, the database is backed up
+# all the same, and the command the snippet is part of carries on.
+mkdir -p "$TMP/nocp"
+printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = -al ] && { echo "cp: cannot create hard link" >&2; exit 1; }; done\nexec /bin/cp "$@"\n' > "$TMP/nocp/cp"
+chmod +x "$TMP/nocp/cp"
+
+out="$( ( cd "$APP_DIR" && PATH="$TMP/nocp:$PATH" bash -c "$(backup_script)
+echo after-the-snippet" ) 2>&1 )"
+
+warned()       { grep -q 'WARNING: the files could not be snapshotted' <<<"$out"; }
+db_backed_up() { grep -q 'backed up to backups/reconcile-' <<<"$out"; }
+no_half_snap() { test "$(snaps)" -le 2; }
+check "a snapshot that fails warns" warned
+check "and the database is backed up all the same" db_backed_up
+check "and nothing half-made is left" no_half_snap
+check "and the command carries on" grep -q 'after-the-snippet' <<<"$out"
 unset -f date
 
 # ------------------------------------------------------------------ the lock

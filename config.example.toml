@@ -14,6 +14,11 @@ addr = "127.0.0.1:8461"
 # How long in-flight requests get to finish on SIGTERM.
 shutdown_grace = "15s"
 
+[db]
+# Beside the binary, above any web-servable directory. On the server this is
+# the name deploy.sh backs up; leave it out for the same default.
+path = "reconcile.db"
+
 [log]
 # debug, info, warn or error.
 level = "info"

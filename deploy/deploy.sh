@@ -312,16 +312,24 @@ install_cron() {
 
 # ------------------------------------------------------------------ backup and rollback
 
-# backup_script prints the shell that copies the database, for a caller to run
-# on the server while the app is stopped. There is no database yet, and until
-# there is it says so and does nothing; it is here so that the first store is
-# backed up from its first deploy rather than from the day somebody remembers.
+# backup_script prints the shell that copies the database, and snapshots the
+# uploaded files, for a caller to run on the server while the app is stopped.
 #
 # Stopped, because a live SQLite database in WAL mode keeps its latest writes
 # in the -wal file, and a copy of the .db alone opens perfectly and is missing
 # them. A clean shutdown checkpoints the WAL into the .db, so the copy taken
 # afterwards is whole; the -wal is copied too, in case the shutdown was not
 # clean. sqlite3's .backup is used when the host has it, and is safe either way.
+#
+# The files -- statements and receipts -- are snapshotted with hard links, not
+# copied, as stewards does its photos. The file store writes every file whole
+# to a temporary name and renames it into place, and never opens one to change
+# it, so a link to it in a snapshot is as good as a copy and costs a directory
+# entry rather than the file's size again. What a snapshot keeps is a file
+# that is later removed, for as many backups as the database is kept. It is on
+# the same disk, so it is no defence against losing the server; that copy is a
+# person's to take. A snapshot that fails warns and carries on: the database's
+# backup is the one a deploy must not go without.
 #
 # A snippet rather than a remote call of its own, so that it can run inside the
 # same locked command as the stop and the swap -- see cmd_deploy. No `exit` in
@@ -348,6 +356,18 @@ backup_script() {
 				rm -f "\$old" "\$old-wal"
 			done
 			echo "backed up to backups/$APP-$stamp.db, keeping $KEEP_BACKUPS"
+		fi
+		if [ -d files ]; then
+			mkdir -p backups && chmod 700 backups
+			if cp -al files backups/files-$stamp; then
+				echo "files snapshotted to backups/files-$stamp"
+			else
+				rm -rf backups/files-$stamp
+				echo "WARNING: the files could not be snapshotted; the database backup is unaffected" >&2
+			fi
+			ls -1d backups/files-* 2>/dev/null | sort -r | tail -n +$((KEEP_BACKUPS + 1)) | while read -r old; do
+				rm -rf "\$old"
+			done
 		fi
 	SH
 }
@@ -504,6 +524,10 @@ cmd_status() {
 	log "the database"
 	remote_in_app "ls -lh $APP.db 2>/dev/null || echo '(no database yet)'"
 	remote_in_app "ls -1 backups/*.db 2>/dev/null | sort -r | head -3 || true"
+
+	log "the files"
+	remote_in_app "du -sh files 2>/dev/null || echo '(no files yet)'"
+	remote_in_app "ls -1d backups/files-* 2>/dev/null | sort -r | head -3 || echo '(no snapshot yet)'"
 
 	log "nothing private is public"
 	assert_app_dir_is_private

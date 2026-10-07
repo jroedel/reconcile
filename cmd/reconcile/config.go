@@ -27,6 +27,9 @@ type config struct {
 		Addr          string   `toml:"addr"`
 		ShutdownGrace duration `toml:"shutdown_grace"`
 	} `toml:"server"`
+	DB struct {
+		Path string `toml:"path"`
+	} `toml:"db"`
 	Log struct {
 		Level string `toml:"level"`
 		File  string `toml:"file"`
@@ -38,6 +41,10 @@ type config struct {
 // deploy/htaccess.template and secrets.env.example say the same; change all
 // three or none.
 const defaultAddr = "127.0.0.1:8461"
+
+// defaultDB is the database's name when the config does not give one. The
+// deploy's backup looks for exactly this name in APP_DIR.
+const defaultDB = "reconcile.db"
 
 // duration is a time.Duration that TOML can read as "15s".
 type duration struct{ time.Duration }
@@ -88,6 +95,15 @@ func loadConfig(path string) (config, error) {
 		cfg.Server.ShutdownGrace.Duration = 15 * time.Second
 	}
 
+	// A default rather than a required key. On the server run.sh starts the
+	// binary from APP_DIR, so the default lands beside it, outside
+	// public_html, which is where deploy.sh backs it up from. Required, it
+	// would also have to arrive in config.toml before the binary that reads
+	// it -- and the binary already running refuses a key it does not know.
+	if cfg.DB.Path == "" {
+		cfg.DB.Path = defaultDB
+	}
+
 	return cfg, nil
 }
 
@@ -100,6 +116,7 @@ func (c config) summary() string {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "listening on   %s\n", c.Server.Addr)
+	fmt.Fprintf(&b, "database       %s\n", c.DB.Path)
 	fmt.Fprintf(&b, "log level      %s\n", orElse(c.Log.Level, "info"))
 	fmt.Fprintf(&b, "log file       %s\n", orElse(c.Log.File, "(stderr)"))
 	fmt.Fprintf(&b, "shutdown grace %s\n", c.Server.ShutdownGrace.Duration)

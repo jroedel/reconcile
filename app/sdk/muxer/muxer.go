@@ -6,35 +6,33 @@
 package muxer
 
 import (
+	"database/sql"
 	"errors"
 	"log/slog"
 	"net/http"
 
+	"github.com/jroedel/reconcile/app/sdk/health"
 	"github.com/jroedel/reconcile/app/sdk/page"
+	"github.com/jroedel/reconcile/foundation/sqldb"
 	"github.com/jroedel/reconcile/foundation/web"
 )
 
 // Config is everything the routes need, gathered by main and passed in.
 type Config struct {
-	Log *slog.Logger
+	Log      *slog.Logger
+	DB       *sql.DB
+	Expected sqldb.Expected
 }
 
 // New builds the handler.
 func New(cfg Config) (http.Handler, error) {
-	if cfg.Log == nil {
-		return nil, errors.New("the muxer needs a logger")
+	if cfg.Log == nil || cfg.DB == nil {
+		return nil, errors.New("the muxer needs a logger and a database")
 	}
 
 	mux := http.NewServeMux()
 
-	// A plain 200 until there is a database. When the first store lands,
-	// this becomes a schema check (see CLAUDE.md, "When there is a
-	// database"): the deploy rolls back on what /healthz says, and a binary
-	// rolled back onto a newer schema must report unhealthy.
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Write([]byte("ok\n"))
-	})
+	mux.Handle("GET /healthz", health.Handler(cfg.Log, cfg.DB, cfg.Expected))
 
 	// Outermost first: the id, then the request line, then the headers, so
 	// a panic is logged with the id and answered with the policy on it.
