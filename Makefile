@@ -63,7 +63,16 @@ fmt-check: ## Fail, naming the files, if anything is not gofmt-clean
 	if [ -n "$$out" ]; then echo "not gofmt-clean:"; echo "$$out"; exit 1; fi
 
 .PHONY: lint
-lint: vet fmt-check ## vet + gofmt check
+lint: vet fmt-check data-guard ## vet + gofmt check + no statements or receipts tracked
+
+.PHONY: data-guard
+data-guard: ## Fail if a tracked file looks like a statement, a receipt, a database or a credential
+	@scripts/data-guard tracked
+
+.PHONY: hooks
+hooks: ## Install the pre-commit guard that keeps statements and account numbers out of git
+	@ln -sf ../../scripts/data-guard-hook .git/hooks/pre-commit
+	@echo "installed .git/hooks/pre-commit"
 
 .PHONY: vuln-check
 vuln-check: ## Check dependencies against the Go vulnerability database (needs network)

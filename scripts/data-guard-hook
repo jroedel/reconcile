@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# What make hooks links as .git/hooks/pre-commit. A wrapper rather than a
+# link to data-guard itself, because a hook is run with no arguments.
+exec "$(git rev-parse --show-toplevel)/scripts/data-guard" staged
