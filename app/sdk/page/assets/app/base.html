@@ -11,7 +11,8 @@
 <header class="masthead">
 <a class="wordmark" href="/">Reconcile</a>
 <nav class="who" aria-label="{{t "Your account"}}">
-{{if .SignedIn}}<a href="/account">{{.User.Named}}</a>
+{{if .SignedIn}}{{if .User.SiteAdmin}}<a href="/admin">{{t "Administration"}}</a>
+{{end}}<a href="/account">{{.User.Named}}</a>
 <form method="post" action="/sign-out" class="inline"><button type="submit" class="link">{{t "Sign out"}}</button></form>
 {{else}}<a href="/sign-in">{{t "Sign in"}}</a>{{end}}
 </nav>

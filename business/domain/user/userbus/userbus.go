@@ -244,6 +244,22 @@ func (b *Business) ByID(ctx context.Context, id types.ID) (User, error) {
 	return b.store.UserByID(ctx, id)
 }
 
+// UserIDByEmail is who signs in with an address, if anybody does: what a
+// grant to that address needs to know, to go straight to them rather than
+// wait.
+func (b *Business) UserIDByEmail(ctx context.Context, email types.Email) (types.ID, bool, error) {
+	u, err := b.store.UserByEmail(ctx, email)
+
+	switch {
+	case errors.Is(err, ErrNotFound):
+		return types.ID{}, false, nil
+	case err != nil:
+		return types.ID{}, false, err
+	}
+
+	return u.ID, true, nil
+}
+
 // All returns every user, for the site administrator's list.
 func (b *Business) All(ctx context.Context) ([]User, error) {
 	return b.store.Users(ctx)

@@ -1,0 +1,53 @@
+{{/*
+  The words this app's pages share: what went wrong, what just happened, and
+  the names of roles and kinds of account. One place for each, so that each is
+  translated once.
+*/}}
+{{define "problem"}}{{if .}}<p class="notice" role="alert">
+{{- if eq . "name"}}{{t "Give it a name, of at most {max} characters." "max" 100}}
+{{- else if eq . "kind"}}{{t "Choose what kind of account it is."}}
+{{- else if eq . "last4"}}{{t "Type only the last four digits of the account number, or leave it empty."}}
+{{- else if eq . "currency"}}{{t "The currency is a three-letter code, such as USD, EUR or BRL."}}
+{{- else if eq . "opened"}}{{t "Choose the date the account was opened, or leave it empty."}}
+{{- else if eq . "starts"}}{{t "Choose the date the project starts, or leave it empty."}}
+{{- else if eq . "ends"}}{{t "The end date must be a date, on or after the start."}}
+{{- else if eq . "note"}}{{t "The note can be at most {max} characters." "max" 2000}}
+{{- else if eq . "email"}}{{t "That does not look like an email address. Check for a typo."}}
+{{- else if eq . "role"}}{{t "Choose a role from the list."}}
+{{- else if eq . "last-owner"}}{{t "Somebody else must be an owner first. Give another person the owner role, then try again."}}
+{{- else if eq . "already-granted"}}{{t "That person already has a role here. Change it in the list instead."}}
+{{- else}}{{t "Something went wrong at our end. Please try again in a few minutes."}}
+{{- end}}</p>{{end}}{{end}}
+
+{{define "done"}}{{if .}}<p class="notice ok" role="status">
+{{- if eq . "created"}}{{t "Made. You can change any of this later."}}
+{{- else if eq . "saved"}}{{t "Saved."}}
+{{- else if eq . "archived"}}{{t "Archived. It is off the lists, and nothing in it was deleted."}}
+{{- else if eq . "restored"}}{{t "Brought back."}}
+{{- else if eq . "granted"}}{{t "Done. We have emailed them to say so."}}
+{{- else if eq . "role-changed"}}{{t "Role changed."}}
+{{- else if eq . "removed"}}{{t "Removed."}}
+{{- end}}</p>{{end}}{{end}}
+
+{{define "role"}}
+{{- if eq . "owner"}}{{tc "role" "Owner"}}
+{{- else if eq . "bookkeeper"}}{{tc "role" "Bookkeeper"}}
+{{- else if eq . "contributor"}}{{tc "role" "Contributor"}}
+{{- else if eq . "accountant"}}{{tc "role" "Accountant"}}
+{{- else if eq . "viewer"}}{{tc "role" "Viewer"}}
+{{- else}}{{.}}{{end}}{{end}}
+
+{{define "role-help"}}
+{{- if eq . "owner"}}{{t "Everything, including who else may see it."}}
+{{- else if eq . "bookkeeper"}}{{t "Imports statements, splits and sorts transactions, reconciles each month."}}
+{{- else if eq . "contributor"}}{{t "Sees transactions, uploads receipts, adds notes."}}
+{{- else if eq . "accountant"}}{{t "Reads everything, downloads the package, adds notes."}}
+{{- else if eq . "viewer"}}{{t "Reads everything, changes nothing."}}
+{{- end}}{{end}}
+
+{{define "kind"}}
+{{- if eq . "checking"}}{{tc "account kind" "Checking"}}
+{{- else if eq . "savings"}}{{tc "account kind" "Savings"}}
+{{- else if eq . "card"}}{{tc "account kind" "Card"}}
+{{- else if eq . "cash"}}{{tc "account kind" "Cash"}}
+{{- else}}{{tc "account kind" "Other"}}{{end}}{{end}}

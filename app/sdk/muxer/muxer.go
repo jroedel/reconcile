@@ -12,11 +12,15 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/jroedel/reconcile/app/domain/adminapp"
 	"github.com/jroedel/reconcile/app/domain/authapp"
 	"github.com/jroedel/reconcile/app/domain/homeapp"
+	"github.com/jroedel/reconcile/app/domain/tenancyapp"
 	"github.com/jroedel/reconcile/app/sdk/health"
 	"github.com/jroedel/reconcile/app/sdk/mid"
 	"github.com/jroedel/reconcile/app/sdk/page"
+	"github.com/jroedel/reconcile/business/domain/event/eventbus"
+	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/user/userbus"
 	"github.com/jroedel/reconcile/foundation/mail"
 	"github.com/jroedel/reconcile/foundation/sqldb"
@@ -27,7 +31,7 @@ import (
 // renderer rather than this package, because the strings it reads out of
 // these are registered for translation before anything is served.
 func Templates() []fs.FS {
-	return []fs.FS{homeapp.Templates, authapp.Templates}
+	return []fs.FS{homeapp.Templates, authapp.Templates, tenancyapp.Templates, adminapp.Templates}
 }
 
 // Config is everything the routes need, gathered by main and passed in.
@@ -37,6 +41,8 @@ type Config struct {
 	Expected sqldb.Expected
 	Render   *page.Renderer
 	Users    *userbus.Business
+	Tenancy  *tenancybus.Business
+	History  *eventbus.Business
 
 	// BaseURL is the public origin. Empty means sign-in is off: its routes
 	// are not mounted, because a code sent from a site that cannot say where
@@ -59,8 +65,8 @@ const maxBody = 64 << 10
 
 // New builds the handler.
 func New(cfg Config) (http.Handler, error) {
-	if cfg.Log == nil || cfg.DB == nil || cfg.Render == nil || cfg.Users == nil {
-		return nil, errors.New("the muxer needs a logger, a database, a renderer and the users")
+	if cfg.Log == nil || cfg.DB == nil || cfg.Render == nil || cfg.Users == nil || cfg.Tenancy == nil || cfg.History == nil {
+		return nil, errors.New("the muxer needs a logger, a database, a renderer, and the users, organizations and history")
 	}
 
 	mux := http.NewServeMux()
@@ -70,9 +76,13 @@ func New(cfg Config) (http.Handler, error) {
 	mux.HandleFunc("GET "+cfg.Render.StylesheetPath(), cfg.Render.Stylesheet())
 	mux.HandleFunc("GET /static/js/{file}", cfg.Render.Scripts())
 
-	homeapp.Routes(mux, cfg.Render)
+	homeapp.Routes(mux, cfg.Log, cfg.Render, cfg.Tenancy)
 
+	// Everything behind sign-in needs sign-in to exist, so all of it is
+	// mounted only when there is a public address.
 	if cfg.BaseURL != "" {
+		guard := mid.Require(authapp.SignInPath)
+
 		authapp.Routes(mux, authapp.Config{
 			Log:        cfg.Log,
 			Users:      cfg.Users,
@@ -81,7 +91,25 @@ func New(cfg Config) (http.Handler, error) {
 			BaseURL:    cfg.BaseURL,
 			Bootstrap:  cfg.Bootstrap,
 			TrustProxy: cfg.TrustProxy,
-		}, mid.Require(authapp.SignInPath))
+			Grants:     cfg.Tenancy,
+		}, guard)
+
+		tenancyapp.Routes(mux, tenancyapp.Config{
+			Log:     cfg.Log,
+			Tenancy: cfg.Tenancy,
+			History: cfg.History,
+			Users:   cfg.Users,
+			Render:  cfg.Render,
+			Mail:    cfg.Mail,
+			BaseURL: cfg.BaseURL,
+		}, guard)
+
+		adminapp.Routes(mux, adminapp.Config{
+			Log:    cfg.Log,
+			Users:  cfg.Users,
+			Names:  cfg.Tenancy,
+			Render: cfg.Render,
+		}, guard)
 	}
 
 	// Who is signed in, then the language, which may be theirs (mid.Lang).

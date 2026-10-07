@@ -88,7 +88,7 @@ positive). Times are Unix milliseconds. Every table is `STRICT`.
 - `accounts(id, org_id NULL, name, kind[checking|savings|card|cash|other], last4, currency DEFAULT 'USD', opened_on, archived_at)`. With `org_id` NULL it is a personal account.
 - `projects(id, org_id NULL, name, starts_on, ends_on, note, archived_at)`
 - `grants(id, scope_kind[org|account|project], scope_id, user_id NULL, email NULL, role, granted_by, created_at)`. Exactly one of `user_id` or `email` is set. A grant to an email with no user waits. When that address signs up, or a user verifies a change to it, the grant is claimed in one statement: `UPDATE grants SET user_id=?, email=NULL WHERE email=?`.
-- **Roles** (cumulative, highest wins):
+- **Roles** (cumulative: holding two is holding everything either allows. Not a ladder -- an accountant exports and a contributor uploads receipts, and neither does the other's job, so each role is a set of permissions in `tenancybus/role.go`):
 
   | Role | Can |
   |---|---|
@@ -185,7 +185,7 @@ The accountant role can download it.
 3. **Identity.** Code sign-in, sessions, sign-out, bootstrap, profile (name, language, email change with verification), backup codes. In dev, codes go to the log through `mail.Recorder` when no relay is set and `base_url` is loopback.
 4. **Tenancy.**
    - Orgs, personal and org accounts, projects (shell only), and grants with email invitations.
-   - A single `accessbus.Role(ctx, user, scope)` answers every check; business methods take the actor and filter by it.
+   - A single `tenancybus.AccessTo(ctx, user, scope)` answers every check (organizations, accounts, projects and grants share one domain, so that making an organization and its owner is one transaction); business methods take the actor and filter by it.
    - Site admin user list.
    - The events table.
    - **Cross-tenant isolation tests**: user A can never read B's org, account, project, file or export, through any route.

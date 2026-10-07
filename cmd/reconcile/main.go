@@ -16,6 +16,10 @@ import (
 
 	"github.com/jroedel/reconcile/app/sdk/muxer"
 	"github.com/jroedel/reconcile/app/sdk/page"
+	"github.com/jroedel/reconcile/business/domain/event/eventbus"
+	"github.com/jroedel/reconcile/business/domain/event/stores/eventdb"
+	"github.com/jroedel/reconcile/business/domain/tenancy/stores/tenancydb"
+	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/translation/stores/translationdb"
 	"github.com/jroedel/reconcile/business/domain/translation/translationbus"
 	"github.com/jroedel/reconcile/business/domain/user/stores/userdb"
@@ -120,6 +124,8 @@ func run() error {
 	}
 
 	users := userbus.NewBusiness(log, userdb.NewStore(db))
+	tenancy := tenancybus.NewBusiness(log, tenancydb.NewStore(db), users)
+	history := eventbus.NewBusiness(eventdb.NewStore(db))
 
 	go prune(ctx, log, users)
 
@@ -129,6 +135,8 @@ func run() error {
 		Expected:   expected,
 		Render:     render,
 		Users:      users,
+		Tenancy:    tenancy,
+		History:    history,
 		BaseURL:    cfg.Server.BaseURL,
 		Mail:       sender,
 		Bootstrap:  cfg.Auth.BootstrapSecret,
@@ -157,6 +165,8 @@ func prepare(ctx context.Context, db *sql.DB) error {
 		{"the infrastructure tables", sqldb.Init},
 		{"the interface's translations", translationdb.Init},
 		{"the users", userdb.Init},
+		{"the history", eventdb.Init},
+		{"the organizations, accounts and projects", tenancydb.Init},
 	} {
 		if err := step.init(ctx, db); err != nil {
 			return fmt.Errorf("preparing %s: %w", step.what, err)
@@ -178,6 +188,8 @@ func expectedSchema() sqldb.Expected {
 	for _, store := range []sqldb.Expected{
 		translationdb.Expected,
 		userdb.Expected,
+		eventdb.Expected,
+		tenancydb.Expected,
 	} {
 		maps.Copy(expected, store)
 	}

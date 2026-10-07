@@ -1,10 +1,45 @@
 {{define "content"}}
+{{if .SignedIn}}{{with .Data.Overview}}
+<h1>{{t "Your organizations"}}</h1>
+
+{{if .Empty}}
+<p>{{t "Nothing here yet. Make an organization for your parish or group, or an account on its own. If somebody has shared theirs with you, it appears here once they give your email address a role."}}</p>
+{{end}}
+
+{{range .Orgs}}
+<section class="card">
+<h2><a href="/orgs/{{.Org.ID}}">{{.Org.Name}}</a></h2>
+{{if .Accounts}}<h3>{{t "Accounts"}}</h3><ul class="list">{{range .Accounts}}<li><a href="/accounts/{{.ID}}">{{.Name}}</a>{{if .Last4}} <span class="hint">···{{.Last4}}</span>{{end}}</li>{{end}}</ul>{{end}}
+{{if .Projects}}<h3>{{t "Projects"}}</h3><ul class="list">{{range .Projects}}<li><a href="/projects/{{.ID}}">{{.Name}}</a></li>{{end}}</ul>{{end}}
+{{if not (or .Accounts .Projects)}}<p class="hint">{{t "No accounts or projects yet."}}</p>{{end}}
+</section>
+{{end}}
+
+{{if .Accounts}}
+<section class="card">
+<h2>{{t "Accounts on their own"}}</h2>
+<ul class="list">{{range .Accounts}}<li><a href="/accounts/{{.ID}}">{{.Name}}</a>{{if .Last4}} <span class="hint">···{{.Last4}}</span>{{end}}</li>{{end}}</ul>
+</section>
+{{end}}
+
+{{if .Projects}}
+<section class="card">
+<h2>{{t "Projects on their own"}}</h2>
+<ul class="list">{{range .Projects}}<li><a href="/projects/{{.ID}}">{{.Name}}</a></li>{{end}}</ul>
+</section>
+{{end}}
+
+<p class="actions">
+<a class="button" href="/orgs/new">{{t "New organization"}}</a>
+<a class="button quiet" href="/accounts/new">{{t "New account on its own"}}</a>
+<a class="button quiet" href="/projects/new">{{t "New project on its own"}}</a>
+</p>
+{{end}}{{else}}
 <h1>{{t "Keep your organization's money straight between statements"}}</h1>
 <p>{{t "Upload your bank and card statements, check them against their own balances, and attach the receipts as you go."}}</p>
 <p>{{t "Follow a project, like a pilgrimage or a building fund, across every account it draws from, and see whether it is coming out even."}}</p>
 <p>{{t "At the end of the month, reconcile each account and hand your accountant everything in one download."}}</p>
-{{if .SignedIn}}<p>{{t "Accounts and organizations arrive next. For now, your account page is where you set your name, your language and your backup codes."}}</p>
-<p><a class="button" href="/account">{{t "Your account"}}</a></p>
-{{else}}<p><a class="button" href="/sign-in">{{t "Sign in or make an account"}}</a></p>
-<p class="hint">{{t "There is no password: we email you a code each time you sign in."}}</p>{{end}}
+<p><a class="button" href="/sign-in">{{t "Sign in or make an account"}}</a></p>
+<p class="hint">{{t "There is no password: we email you a code each time you sign in."}}</p>
+{{end}}
 {{end}}

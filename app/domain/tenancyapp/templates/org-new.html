@@ -1,0 +1,14 @@
+{{define "title"}}{{t "New organization"}}{{end}}
+{{define "content"}}{{with .Data}}
+<h1>{{t "New organization"}}</h1>
+<p>{{t "An organization holds the accounts and projects of a parish, a group or a movement, and the people who look after them. You will be its owner."}}</p>
+{{template "problem" .Problem}}
+<form method="post" action="/orgs">
+  <div class="field">
+    <label for="name">{{t "Name"}}</label>
+    <input id="name" name="name" type="text" required maxlength="100" autofocus value="{{.Name}}">
+  </div>
+  <button type="submit">{{t "Make the organization"}}</button>
+</form>
+<p class="aside">{{t "Only keeping track of your own money, or one account?"}} <a href="/accounts/new">{{t "Make an account on its own"}}</a></p>
+{{end}}{{end}}

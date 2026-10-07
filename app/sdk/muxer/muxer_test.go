@@ -12,6 +12,10 @@ import (
 	"testing"
 
 	"github.com/jroedel/reconcile/app/sdk/page"
+	"github.com/jroedel/reconcile/business/domain/event/eventbus"
+	"github.com/jroedel/reconcile/business/domain/event/stores/eventdb"
+	"github.com/jroedel/reconcile/business/domain/tenancy/stores/tenancydb"
+	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/translation/stores/translationdb"
 	"github.com/jroedel/reconcile/business/domain/translation/translationbus"
 	"github.com/jroedel/reconcile/business/domain/user/stores/userdb"
@@ -46,7 +50,7 @@ func newSite(t *testing.T, want sqldb.Expected, configure func(*Config)) (http.H
 		t.Fatal(err)
 	}
 
-	for _, init := range []func(context.Context, *sql.DB) error{translationdb.Init, userdb.Init} {
+	for _, init := range []func(context.Context, *sql.DB) error{translationdb.Init, userdb.Init, eventdb.Init, tenancydb.Init} {
 		if err := init(t.Context(), db); err != nil {
 			t.Fatal(err)
 		}
@@ -67,9 +71,12 @@ func newSite(t *testing.T, want sqldb.Expected, configure func(*Config)) (http.H
 	}
 
 	sent := &mail.Recorder{}
+	users := userbus.NewBusiness(log, userdb.NewStore(db))
 	cfg := Config{
 		Log: log, DB: db, Expected: want, Render: render,
-		Users:   userbus.NewBusiness(log, userdb.NewStore(db)),
+		Users:   users,
+		Tenancy: tenancybus.NewBusiness(log, tenancydb.NewStore(db), users),
+		History: eventbus.NewBusiness(eventdb.NewStore(db)),
 		BaseURL: base,
 		Mail:    sent,
 	}
@@ -123,14 +130,14 @@ func TestEveryAnswerCarriesThePolicyTheDeployLooksFor(t *testing.T) {
 // because the deploy decides whether to keep a release on this answer.
 func TestHealthzIsUnhealthyOnASchemaItDoesNotKnow(t *testing.T) {
 	rec := httptest.NewRecorder()
-	h := newHandlerWanting(t, sqldb.Expected{"accounts": {"id"}})
+	h := newHandlerWanting(t, sqldb.Expected{"statements": {"id"}})
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", rec.Code)
 	}
 
-	if strings.Contains(rec.Body.String(), "accounts") {
+	if strings.Contains(rec.Body.String(), "statements") {
 		t.Fatalf("the public answer names the table: %q", rec.Body.String())
 	}
 }
@@ -184,7 +191,7 @@ func TestFrontPage(t *testing.T) {
 
 // "/" is the front page and nothing else is.
 func TestUnknownPathIsNotTheFrontPage(t *testing.T) {
-	if rec := get(t, newHandler(t), "/accounts"); rec.Code != http.StatusNotFound {
+	if rec := get(t, newHandler(t), "/statements"); rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}
 }
