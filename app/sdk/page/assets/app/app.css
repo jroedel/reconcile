@@ -1,0 +1,188 @@
+/*
+ * One stylesheet for the whole app, served under a hash of itself so it can be
+ * cached for ever (render.go). Phone first: everything is laid out for a
+ * narrow screen held in one hand, and only widened for a desk (docs/design.md).
+ *
+ * System fonts, on purpose. A font fetched from somebody else's server tells
+ * them who opened which page; one served from here is weight on a phone with
+ * a weak signal, for a tool whose readers came to get a receipt in.
+ */
+
+:root {
+	--bg: #fbfaf8;
+	--surface: #ffffff;
+	--ink: #1d1d1b;
+	--muted: #5f5d58;
+	--line: #dedbd4;
+	--accent: #1f5f8b;
+	--accent-ink: #ffffff;
+	--money-in: #1e6b3a;
+	--money-out: #9b2c1f;
+	--warn-bg: #fff4d6;
+	--warn-line: #e0b84f;
+	--ok-bg: #e7f4ea;
+	--ok-line: #7cb98d;
+	--radius: 10px;
+	--gap: 1rem;
+	--measure: 42rem;
+	color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--bg: #151514;
+		--surface: #1e1e1c;
+		--ink: #ecebe7;
+		--muted: #a9a69f;
+		--line: #3a3936;
+		--accent: #6fb0dd;
+		--accent-ink: #0d1b24;
+		--money-in: #7fd39a;
+		--money-out: #f0907f;
+		--warn-bg: #3a3020;
+		--warn-line: #8a6d2a;
+		--ok-bg: #1f3325;
+		--ok-line: #3f7a52;
+	}
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+	-webkit-text-size-adjust: 100%;
+	text-size-adjust: 100%;
+}
+
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--ink);
+	font: 1rem/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+	min-height: 100vh;
+	display: flex;
+	flex-direction: column;
+}
+
+main {
+	flex: 1;
+	width: 100%;
+	max-width: var(--measure);
+	margin: 0 auto;
+	padding: var(--gap);
+}
+
+a { color: var(--accent); }
+
+h1, h2, h3 { line-height: 1.2; margin: 1.5rem 0 0.75rem; }
+h1 { font-size: 1.6rem; }
+h2 { font-size: 1.25rem; }
+p { margin: 0 0 1rem; }
+
+/* ---------------------------------------------------------------- chrome */
+
+.masthead {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 0.5rem var(--gap);
+	padding: 0.75rem var(--gap);
+	border-bottom: 1px solid var(--line);
+	background: var(--surface);
+}
+
+.wordmark {
+	font-weight: 700;
+	font-size: 1.15rem;
+	letter-spacing: 0.01em;
+	color: var(--ink);
+	text-decoration: none;
+}
+
+.langs { display: flex; gap: 0.75rem; font-size: 0.9rem; }
+.lang { color: var(--muted); }
+.lang.is-on { color: var(--ink); font-weight: 600; }
+
+.foot {
+	padding: var(--gap);
+	border-top: 1px solid var(--line);
+	color: var(--muted);
+	font-size: 0.85rem;
+	text-align: center;
+}
+.foot p { margin: 0; }
+
+/* ---------------------------------------------------------------- forms */
+
+label { display: block; font-weight: 600; margin-bottom: 0.25rem; }
+
+input, select, textarea, button { font: inherit; }
+
+input[type="text"], input[type="email"], input[type="number"], input[type="date"],
+input[type="search"], select, textarea {
+	display: block;
+	width: 100%;
+	padding: 0.7rem 0.8rem;
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	background: var(--surface);
+	color: var(--ink);
+}
+
+/* Big enough to hit with a thumb, at a counter, holding a receipt. */
+.button, button {
+	display: inline-block;
+	min-height: 2.9rem;
+	padding: 0.7rem 1.2rem;
+	border: 0;
+	border-radius: var(--radius);
+	background: var(--accent);
+	color: var(--accent-ink);
+	font-weight: 600;
+	text-decoration: none;
+	cursor: pointer;
+}
+
+.button.quiet, button.quiet {
+	background: transparent;
+	color: var(--accent);
+	border: 1px solid var(--line);
+}
+
+.field { margin-bottom: var(--gap); }
+.hint { color: var(--muted); font-size: 0.9rem; margin-top: 0.25rem; }
+
+/* ---------------------------------------------------------------- notices */
+
+.notice {
+	padding: 0.75rem var(--gap);
+	border: 1px solid var(--warn-line);
+	background: var(--warn-bg);
+	border-radius: var(--radius);
+	margin-bottom: var(--gap);
+}
+.notice.ok { border-color: var(--ok-line); background: var(--ok-bg); }
+
+/* ---------------------------------------------------------------- money */
+
+/*
+ * Money out is red and carries its minus sign, so it reads in black and
+ * white and to a screen reader as well (docs/design.md, "Money looks like
+ * money"). Tabular figures so the decimal points line up down a column.
+ */
+.money { font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+.money.in { color: var(--money-in); }
+.money.out { color: var(--money-out); }
+
+.card {
+	background: var(--surface);
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	padding: var(--gap);
+	margin-bottom: var(--gap);
+}
+
+@media (min-width: 48rem) {
+	main { padding: 2rem var(--gap); }
+	h1 { font-size: 2rem; }
+}

@@ -12,6 +12,9 @@ import (
 	"syscall"
 
 	"github.com/jroedel/reconcile/app/sdk/muxer"
+	"github.com/jroedel/reconcile/app/sdk/page"
+	"github.com/jroedel/reconcile/business/domain/translation/stores/translationdb"
+	"github.com/jroedel/reconcile/business/domain/translation/translationbus"
 	"github.com/jroedel/reconcile/foundation/logger"
 	"github.com/jroedel/reconcile/foundation/sqldb"
 	"github.com/jroedel/reconcile/foundation/web"
@@ -87,7 +90,25 @@ func run() error {
 		return fmt.Errorf("the database does not match this binary: %w", err)
 	}
 
-	handler, err := muxer.New(muxer.Config{Log: log, DB: db, Expected: expected})
+	// Every string the pages say is registered before anything is served,
+	// so that a string arriving in this release is waiting to be translated
+	// from the moment it can first be seen.
+	translations := translationbus.NewBusiness(translationdb.NewStore(db), nil)
+
+	render, err := page.NewRenderer(log, translations, muxer.Templates()...)
+	if err != nil {
+		return err
+	}
+
+	if err := translations.Register(ctx, render.Strings()); err != nil {
+		return err
+	}
+
+	if err := translations.Reload(ctx); err != nil {
+		return err
+	}
+
+	handler, err := muxer.New(muxer.Config{Log: log, DB: db, Expected: expected, Render: render})
 	if err != nil {
 		return err
 	}
@@ -109,6 +130,7 @@ func prepare(ctx context.Context, db *sql.DB) error {
 		init func(context.Context, *sql.DB) error
 	}{
 		{"the infrastructure tables", sqldb.Init},
+		{"the interface's translations", translationdb.Init},
 	} {
 		if err := step.init(ctx, db); err != nil {
 			return fmt.Errorf("preparing %s: %w", step.what, err)
@@ -127,7 +149,9 @@ func prepare(ctx context.Context, db *sql.DB) error {
 func expectedSchema() sqldb.Expected {
 	expected := maps.Clone(sqldb.Infrastructure)
 
-	for _, store := range []sqldb.Expected{} {
+	for _, store := range []sqldb.Expected{
+		translationdb.Expected,
+	} {
 		maps.Copy(expected, store)
 	}
 
