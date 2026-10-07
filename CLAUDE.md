@@ -128,9 +128,19 @@ deploy/                             how it reaches the server. Run by CI, not by
 scripts/                            how this is built and checked
 ```
 
-So far there are three domains: `translation` (the interface's strings),
-`user` (who signs in and how) and the pages over them, `homeapp` and
-`authapp`. The rest is where the plan's domains go when they arrive.
+So far the domains are `translation` (the interface's strings), `user` (who
+signs in and how), `tenancy` (organizations, accounts, projects, and who may
+do what on each) and `event` (the history, written by the domain that made
+the change, in its transaction). The pages over them are `homeapp`,
+`authapp`, `tenancyapp` and `adminapp`. The rest is where the plan's domains
+go when they arrive.
+
+**Access is asked of tenancybus, every time.** A business method that reads
+or changes something in an organization takes the actor and answers
+`ErrNotFound` for a scope they hold no role on -- the same answer as one that
+does not exist, so a page never confirms somebody else's organization is
+there. `app/sdk/muxer/tenancy_test.go` walks every route as a stranger; a new
+route goes in its lists.
 
 The rule that makes the layering worth having: **an App package never imports
 another App package, and nothing in `foundation/` knows a domain word.** When

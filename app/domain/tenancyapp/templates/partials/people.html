@@ -1,0 +1,85 @@
+{{/* people is who may see a scope, and for an owner, the forms that change it. */}}
+{{define "people"}}
+<section class="card" id="people">
+<h2>{{t "Who can see this"}}</h2>
+
+<ul class="people">
+{{range .People}}
+<li>
+  <div class="who-line">
+    <strong>{{if .Name}}{{.Name}}{{else}}{{.Email}}{{end}}</strong>{{if .You}} <span class="hint">({{t "you"}})</span>{{end}}
+    {{if and .Name (not .Pending)}}<span class="hint">{{.Email}}</span>{{end}}
+    {{if .Pending}}<span class="badge">{{t "invited, not signed in yet"}}</span>{{end}}
+  </div>
+  {{if $.CanManage}}
+  <form method="post" action="{{$.Path}}/people/{{.GrantID}}/role" class="inline">
+    {{$role := .Role}}
+    <label class="visually-hidden" for="role-{{.GrantID}}">{{t "Role"}}</label>
+    <select id="role-{{.GrantID}}" name="role">
+      {{range $.Roles}}<option value="{{.}}"{{if eq . $role}} selected{{end}}>{{template "role" .}}</option>{{end}}
+    </select>
+    <button type="submit" class="quiet">{{t "Change"}}</button>
+  </form>
+  <form method="post" action="{{$.Path}}/people/{{.GrantID}}/remove" class="inline">
+    <button type="submit" class="quiet">{{if .Pending}}{{t "Withdraw the invitation"}}{{else}}{{t "Remove"}}{{end}}</button>
+  </form>
+  {{else}}<span class="role">{{template "role" .Role}}</span>{{end}}
+</li>
+{{else}}
+<li class="hint">{{t "Nobody has a role on this alone."}}</li>
+{{end}}
+</ul>
+
+{{if .Inherited}}
+<h3>{{t "Through the organization"}}</h3>
+<ul class="people">
+{{range .Inherited}}<li><strong>{{if .Name}}{{.Name}}{{else}}{{.Email}}{{end}}</strong>{{if .You}} <span class="hint">({{t "you"}})</span>{{end}} <span class="role">{{template "role" .Role}}</span>{{if .Pending}} <span class="badge">{{t "invited, not signed in yet"}}</span>{{end}}</li>
+{{end}}
+</ul>
+{{end}}
+
+{{if .CanManage}}
+<form method="post" action="{{.Path}}/people" class="add-person">
+  <h3>{{t "Give somebody a role"}}</h3>
+  <div class="field">
+    <label for="person-email">{{t "Their email address"}}</label>
+    <input id="person-email" name="email" type="email" required autocomplete="off" spellcheck="false" value="{{.Email}}">
+  </div>
+  <fieldset class="field">
+    <legend>{{t "Role"}}</legend>
+    {{$chosen := .Role}}
+    {{range .Roles}}
+    <label class="choice"><input type="radio" name="role" value="{{.}}"{{if eq . $chosen}} checked{{end}}>
+      <span><strong>{{template "role" .}}</strong> <span class="hint">{{template "role-help" .}}</span></span></label>
+    {{end}}
+  </fieldset>
+  <button type="submit">{{t "Give the role and email them"}}</button>
+  <p class="hint">{{t "If they have not signed in here before, the role waits for them until they do, with that address."}}</p>
+</form>
+{{end}}
+</section>
+{{end}}
+
+{{/* history is what happened, newest first. */}}
+{{define "history"}}
+{{if .History}}
+<section class="card" id="history">
+<h2>{{t "History"}}</h2>
+<ol class="history">
+{{range .History}}
+<li><time>{{.At}}</time> <strong>{{if .Who}}{{.Who}}{{else}}{{t "Reconcile"}}{{end}}</strong>:
+{{- if eq .Action "created"}} {{t "made it, as {name}" "name" .Detail.name}}
+{{- else if eq .Action "renamed"}} {{t "renamed it from {from} to {name}" "from" .Detail.from "name" .Detail.name}}
+{{- else if eq .Action "edited"}} {{t "changed its details"}}
+{{- else if eq .Action "archived"}} {{t "archived it"}}
+{{- else if eq .Action "restored"}} {{t "brought it back"}}
+{{- else if eq .Action "grant.added"}} {{t "gave {who} a role" "who" .Detail.email}} — {{template "role" .Detail.role}}
+{{- else if eq .Action "grant.changed"}} {{t "changed the role of {who}" "who" .Detail.who}} — {{template "role" .Detail.from}} → {{template "role" .Detail.role}}
+{{- else if eq .Action "grant.removed"}} {{t "took away the role of {who}" "who" .Detail.who}} — {{template "role" .Detail.role}}
+{{- else if eq .Action "grant.claimed"}} {{t "signed in and took up the role given to {email}" "email" .Detail.email}} — {{template "role" .Detail.role}}
+{{- else}} {{t "made a change"}}{{end}}</li>
+{{end}}
+</ol>
+</section>
+{{end}}
+{{end}}

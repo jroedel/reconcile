@@ -1,0 +1,51 @@
+{{define "title"}}{{.Data.Org.Name}}{{end}}
+{{define "content"}}{{with .Data}}
+<p class="crumbs"><a href="/">{{t "Your organizations"}}</a></p>
+<h1>{{.Org.Name}}</h1>
+{{if .Org.Archived}}<p class="notice">{{t "This organization is archived."}}</p>{{end}}
+{{template "done" .Done}}
+{{template "problem" .Problem}}
+
+<section class="card">
+<h2>{{t "Accounts"}}</h2>
+{{if .Accounts}}<ul class="list">
+{{range .Accounts}}<li><a href="/accounts/{{.ID}}">{{.Name}}</a> <span class="hint">{{template "kind" (printf "%s" .Kind)}}{{if .Last4}} ···{{.Last4}}{{end}} · {{.Currency}}</span></li>
+{{end}}</ul>
+{{else}}<p class="hint">{{t "No accounts yet."}}</p>{{end}}
+{{if .CanManage}}<p><a class="button quiet" href="/accounts/new?org={{.Org.ID}}">{{t "Add an account"}}</a></p>{{end}}
+{{if .ArchivedAccounts}}<details><summary>{{t "Archived accounts"}}</summary><ul class="list">
+{{range .ArchivedAccounts}}<li><a href="/accounts/{{.ID}}">{{.Name}}</a></li>{{end}}</ul></details>{{end}}
+</section>
+
+<section class="card">
+<h2>{{t "Projects"}}</h2>
+{{if .Projects}}<ul class="list">
+{{range .Projects}}<li><a href="/projects/{{.ID}}">{{.Name}}</a>{{if .StartsOn.String}} <span class="hint">{{.StartsOn}}{{if .EndsOn.String}} – {{.EndsOn}}{{end}}</span>{{end}}</li>
+{{end}}</ul>
+{{else}}<p class="hint">{{t "No projects yet."}}</p>{{end}}
+{{if .CanBookkeep}}<p><a class="button quiet" href="/projects/new?org={{.Org.ID}}">{{t "Add a project"}}</a></p>{{end}}
+{{if .ArchivedProjects}}<details><summary>{{t "Archived projects"}}</summary><ul class="list">
+{{range .ArchivedProjects}}<li><a href="/projects/{{.ID}}">{{.Name}}</a></li>{{end}}</ul></details>{{end}}
+</section>
+
+{{template "people" .}}
+
+{{if .CanManage}}
+<section class="card">
+<h2>{{t "Settings"}}</h2>
+<form method="post" action="{{.Path}}/rename">
+  <div class="field">
+    <label for="name">{{t "Name"}}</label>
+    <input id="name" name="name" type="text" required maxlength="100" value="{{.Name}}">
+  </div>
+  <button type="submit" class="quiet">{{t "Rename"}}</button>
+</form>
+<form method="post" action="{{.Path}}/archive" class="inline">
+  {{if .Org.Archived}}<input type="hidden" name="archived" value="0"><button type="submit" class="quiet">{{t "Bring it back"}}</button>
+  {{else}}<input type="hidden" name="archived" value="1"><button type="submit" class="quiet">{{t "Archive the organization"}}</button>{{end}}
+</form>
+</section>
+{{end}}
+
+{{template "history" .}}
+{{end}}{{end}}

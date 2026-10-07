@@ -1,0 +1,49 @@
+{{/* accountfields is the fields of an account, for making one and for editing it. */}}
+{{define "accountfields"}}
+<div class="field">
+  <label for="name">{{t "Name"}}</label>
+  <input id="name" name="name" type="text" required maxlength="100" value="{{.Fields.Name}}">
+  <p class="hint">{{t "What you call it, such as Parish checking or Pilgrimage card."}}</p>
+</div>
+<div class="field">
+  <label for="kind">{{t "Kind"}}</label>
+  {{$kind := .Fields.Kind}}
+  <select id="kind" name="kind">
+    {{range .Kinds}}<option value="{{.}}"{{if eq (printf "%s" .) $kind}} selected{{end}}>{{template "kind" (printf "%s" .)}}</option>{{end}}
+  </select>
+</div>
+<div class="field">
+  <label for="last4">{{t "Last four digits of the number"}}</label>
+  <input id="last4" name="last4" type="text" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" value="{{.Fields.Last4}}">
+  <p class="hint">{{t "Optional. Only the last four, to tell two accounts at one bank apart. Never the whole number."}}</p>
+</div>
+<div class="field">
+  <label for="currency">{{t "Currency"}}</label>
+  <input id="currency" name="currency" type="text" maxlength="3" autocapitalize="characters" autocomplete="off" value="{{.Fields.Currency}}">
+</div>
+<div class="field">
+  <label for="opened">{{t "Opened on"}}</label>
+  <input id="opened" name="opened" type="date" value="{{.Fields.OpenedOn}}">
+</div>
+{{end}}
+
+{{/* projectfields is the fields of a project. */}}
+{{define "projectfields"}}
+<div class="field">
+  <label for="name">{{t "Name"}}</label>
+  <input id="name" name="name" type="text" required maxlength="100" value="{{.Fields.Name}}">
+  <p class="hint">{{t "Such as World Youth Day 2027, or Roof fund."}}</p>
+</div>
+<div class="field">
+  <label for="starts">{{t "Starts on"}}</label>
+  <input id="starts" name="starts" type="date" value="{{.Fields.StartsOn}}">
+</div>
+<div class="field">
+  <label for="ends">{{t "Ends on"}}</label>
+  <input id="ends" name="ends" type="date" value="{{.Fields.EndsOn}}">
+</div>
+<div class="field">
+  <label for="note">{{t "Note"}}</label>
+  <textarea id="note" name="note" rows="3" maxlength="2000">{{.Fields.Note}}</textarea>
+</div>
+{{end}}

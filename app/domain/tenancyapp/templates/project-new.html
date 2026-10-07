@@ -1,0 +1,12 @@
+{{define "title"}}{{t "New project"}}{{end}}
+{{define "content"}}{{with .Data}}
+<h1>{{t "New project"}}</h1>
+<p>{{t "A project gathers money in and money out from any of your accounts, so you can see whether it comes out even."}}</p>
+{{if .Org.Name}}<p>{{t "In {org}." "org" .Org.Name}}</p>{{end}}
+{{template "problem" .Problem}}
+<form method="post" action="/projects">
+  <input type="hidden" name="org" value="{{if .Org.Name}}{{.Org.ID}}{{end}}">
+  {{template "projectfields" .}}
+  <button type="submit">{{t "Make the project"}}</button>
+</form>
+{{end}}{{end}}

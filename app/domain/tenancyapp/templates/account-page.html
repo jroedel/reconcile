@@ -1,0 +1,32 @@
+{{define "title"}}{{.Data.Account.Name}}{{end}}
+{{define "content"}}{{with .Data}}
+<p class="crumbs">{{if .Org.Name}}<a href="/orgs/{{.Org.ID}}">{{.Org.Name}}</a>{{else}}<a href="/">{{t "Your organizations"}}</a>{{end}}</p>
+<h1>{{.Account.Name}}</h1>
+<p class="hint">{{template "kind" (printf "%s" .Account.Kind)}}{{if .Account.Last4}} ···{{.Account.Last4}}{{end}} · {{.Account.Currency}}{{if .Account.OpenedOn.String}} · {{t "opened {date}" "date" .Account.OpenedOn}}{{end}}</p>
+{{if .Account.Archived}}<p class="notice">{{t "This account is archived."}}</p>{{end}}
+{{template "done" .Done}}
+{{template "problem" .Problem}}
+
+<section class="card">
+<h2>{{t "Statements"}}</h2>
+<p class="hint">{{t "Uploading statements arrives in the next version."}}</p>
+</section>
+
+{{template "people" .}}
+
+{{if .CanManage}}
+<section class="card">
+<h2>{{t "Settings"}}</h2>
+<form method="post" action="{{.Path}}/edit">
+  {{template "accountfields" .}}
+  <button type="submit" class="quiet">{{t "Save"}}</button>
+</form>
+<form method="post" action="{{.Path}}/archive" class="inline">
+  {{if .Account.Archived}}<input type="hidden" name="archived" value="0"><button type="submit" class="quiet">{{t "Bring it back"}}</button>
+  {{else}}<input type="hidden" name="archived" value="1"><button type="submit" class="quiet">{{t "Archive the account"}}</button>{{end}}
+</form>
+</section>
+{{end}}
+
+{{template "history" .}}
+{{end}}{{end}}

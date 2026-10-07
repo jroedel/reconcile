@@ -89,8 +89,31 @@ type Config struct {
 	// code. The zero value is [DefaultRate].
 	Limit web.Rate
 
+	// Grants claims the roles waiting for an address when somebody signs in
+	// with it or moves to it. Nil claims nothing.
+	Grants Claimer
+
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
+}
+
+// Claimer is the part of tenancybus that turns an invitation into a role.
+type Claimer interface {
+	Claim(ctx context.Context, now time.Time, userID types.ID, email types.Email) (int, error)
+}
+
+// claim takes up whatever is waiting for the user's address. Every sign-in,
+// not only the first: an invitation can arrive at any time, and one statement
+// that finds nothing is cheap. A failure is logged and does not stop the
+// sign-in -- the roles are still waiting, and the next sign-in claims them.
+func (a app) claim(r *http.Request, u userbus.User) {
+	if a.cfg.Grants == nil {
+		return
+	}
+
+	if _, err := a.cfg.Grants.Claim(r.Context(), a.cfg.Now(), u.ID, u.Email); err != nil {
+		a.cfg.Log.Error("waiting roles could not be claimed", "request_id", web.RequestIDFrom(r.Context()), "user_id", u.ID.String(), "error", err)
+	}
 }
 
 // DefaultRate is what the sign-in routes are held to: five at once, then one
@@ -479,6 +502,7 @@ func (a app) finish(w http.ResponseWriter, r *http.Request, user userbus.User, s
 	}
 
 	mid.SetSession(w, session, a.cfg.Now().Add(userbus.SessionLife))
+	a.claim(r, user)
 
 	a.cfg.Log.Info("signed in", "request_id", web.RequestIDFrom(r.Context()), "user_id", user.ID.String())
 
@@ -785,6 +809,7 @@ func (a app) confirmEmailChange(w http.ResponseWriter, r *http.Request) {
 	}
 
 	clearPending(w, emailChangeCookie)
+	a.claim(r, moved)
 
 	// The old address is told. If somebody else made this change -- with a
 	// phone left unlocked -- this is how the owner finds out, at the one

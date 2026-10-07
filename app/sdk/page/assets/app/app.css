@@ -195,6 +195,61 @@ input.code {
 }
 .notice.ok { border-color: var(--ok-line); background: var(--ok-bg); }
 
+/* ---------------------------------------------------------------- lists */
+
+.crumbs { margin: 0 0 -0.5rem; font-size: 0.9rem; }
+
+.list, .people, .history { list-style: none; padding: 0; margin: 0 0 var(--gap); }
+.list li, .people li { padding: 0.6rem 0; border-bottom: 1px solid var(--line); }
+.list li:last-child, .people li:last-child { border-bottom: 0; }
+.people .who-line { margin-bottom: 0.4rem; }
+.people .hint { margin-left: 0.35rem; }
+
+.history li { padding: 0.35rem 0; font-size: 0.92rem; }
+.history time { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 0.35rem; }
+
+.badge {
+	display: inline-block;
+	padding: 0.05rem 0.5rem;
+	border: 1px solid var(--line);
+	border-radius: 999px;
+	color: var(--muted);
+	font-size: 0.8rem;
+	white-space: nowrap;
+}
+
+.role { color: var(--muted); }
+
+fieldset { border: 0; padding: 0; margin: 0 0 var(--gap); }
+legend { font-weight: 600; margin-bottom: 0.25rem; padding: 0; }
+
+/* A choice with its explanation beside it, big enough for a thumb. */
+.choice {
+	display: flex;
+	gap: 0.6rem;
+	align-items: flex-start;
+	font-weight: normal;
+	padding: 0.5rem 0;
+}
+.choice input { margin-top: 0.3rem; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+details { margin-top: var(--gap); }
+summary { cursor: pointer; color: var(--muted); }
+
+/* Read by a screen reader, not shown: a label the layout has no room for. */
+.visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+.people select { width: auto; display: inline-block; }
+
 /* ---------------------------------------------------------------- money */
 
 /*

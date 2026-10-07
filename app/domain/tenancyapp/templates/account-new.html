@@ -1,0 +1,12 @@
+{{define "title"}}{{t "New account"}}{{end}}
+{{define "content"}}{{with .Data}}
+<h1>{{t "New account"}}</h1>
+{{if .Org.Name}}<p>{{t "In {org}. Everybody with a role in the organization has the same role here." "org" .Org.Name}}</p>
+{{else}}<p>{{t "On its own, not in an organization. You will be its owner, and nobody else sees it until you give them a role."}}</p>{{end}}
+{{template "problem" .Problem}}
+<form method="post" action="/accounts">
+  <input type="hidden" name="org" value="{{if .Org.Name}}{{.Org.ID}}{{end}}">
+  {{template "accountfields" .}}
+  <button type="submit">{{t "Make the account"}}</button>
+</form>
+{{end}}{{end}}

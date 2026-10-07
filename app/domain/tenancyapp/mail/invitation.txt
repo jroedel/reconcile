@@ -1,0 +1,18 @@
+{{define "subject"}}{{t "{name} shared {what} with you on Reconcile" "name" .From "what" .What}}{{end}}
+{{define "body"}}{{t "{name} has given you a role on {what}:" "name" .From "what" .What}}
+
+    {{template "role" .Role}}
+
+{{if .Known}}{{t "Sign in with {address} to see it:" "address" .Address}}{{else}}{{t "You do not have an account yet. Make one by signing in with {address}; there is no password, we email you a code:" "address" .Address}}{{end}}
+
+    {{.SignIn}}
+
+{{t "If you were not expecting this, you can ignore this message. Nothing is shared with anybody else."}}
+{{end}}
+
+{{define "role"}}
+{{- if eq (printf "%s" .) "owner"}}{{tc "role" "Owner"}}
+{{- else if eq (printf "%s" .) "bookkeeper"}}{{tc "role" "Bookkeeper"}}
+{{- else if eq (printf "%s" .) "contributor"}}{{tc "role" "Contributor"}}
+{{- else if eq (printf "%s" .) "accountant"}}{{tc "role" "Accountant"}}
+{{- else}}{{tc "role" "Viewer"}}{{end}}{{end}}

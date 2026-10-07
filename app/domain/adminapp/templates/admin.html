@@ -1,0 +1,37 @@
+{{define "title"}}{{t "Site administration"}}{{end}}
+{{define "content"}}{{with .Data}}
+<h1>{{t "Site administration"}}</h1>
+<p>{{t "You can stop somebody signing in, and see what exists. You cannot see anybody's money unless they give you a role, like anybody else."}}</p>
+{{if eq .Problem "self"}}<p class="notice" role="alert">{{t "You cannot stop yourself signing in: nobody would be left to undo it."}}</p>{{end}}
+
+<section class="card">
+<h2>{{t "Users"}}</h2>
+<ul class="people">
+{{range .Users}}
+<li>
+  <div class="who-line"><strong>{{.Named}}</strong>{{if .Name}} <span class="hint">{{.Email}}</span>{{end}}
+  {{if .SiteAdmin}}<span class="badge">{{t "site administrator"}}</span>{{end}}
+  {{if not .Enabled}}<span class="badge">{{t "cannot sign in"}}</span>{{end}}</div>
+  {{if ne .ID $.Data.Me}}
+  <form method="post" action="/admin/users/{{.ID}}/enabled" class="inline">
+    {{if .Enabled}}<input type="hidden" name="enabled" value="0"><button type="submit" class="quiet">{{t "Stop them signing in"}}</button>
+    {{else}}<input type="hidden" name="enabled" value="1"><button type="submit" class="quiet">{{t "Let them sign in again"}}</button>{{end}}
+  </form>
+  {{end}}
+</li>
+{{end}}
+</ul>
+</section>
+
+<section class="card">
+<h2>{{t "Organizations"}}</h2>
+{{if .Orgs}}<ul class="list">{{range .Orgs}}<li>{{.Name}}{{if .Archived}} <span class="badge">{{t "archived"}}</span>{{end}}</li>{{end}}</ul>
+{{else}}<p class="hint">{{t "None yet."}}</p>{{end}}
+</section>
+
+<section class="card">
+<h2>{{t "Accounts"}}</h2>
+{{if .Accounts}}<ul class="list">{{range .Accounts}}<li>{{.Name}}{{if .Archived}} <span class="badge">{{t "archived"}}</span>{{end}}</li>{{end}}</ul>
+{{else}}<p class="hint">{{t "None yet."}}</p>{{end}}
+</section>
+{{end}}{{end}}

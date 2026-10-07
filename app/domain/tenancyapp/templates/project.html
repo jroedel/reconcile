@@ -1,0 +1,33 @@
+{{define "title"}}{{.Data.Project.Name}}{{end}}
+{{define "content"}}{{with .Data}}
+<p class="crumbs">{{if .Org.Name}}<a href="/orgs/{{.Org.ID}}">{{.Org.Name}}</a>{{else}}<a href="/">{{t "Your organizations"}}</a>{{end}}</p>
+<h1>{{.Project.Name}}</h1>
+{{if .Project.StartsOn.String}}<p class="hint">{{.Project.StartsOn}}{{if .Project.EndsOn.String}} – {{.Project.EndsOn}}{{end}}</p>{{end}}
+{{with .Project.Note}}<p>{{.}}</p>{{end}}
+{{if .Project.Archived}}<p class="notice">{{t "This project is archived."}}</p>{{end}}
+{{template "done" .Done}}
+{{template "problem" .Problem}}
+
+<section class="card">
+<h2>{{t "Money in and out"}}</h2>
+<p class="hint">{{t "Once statements are uploaded, the parts of transactions that belong to this project are gathered here."}}</p>
+</section>
+
+{{template "people" .}}
+
+{{if .CanManage}}
+<section class="card">
+<h2>{{t "Settings"}}</h2>
+<form method="post" action="{{.Path}}/edit">
+  {{template "projectfields" .}}
+  <button type="submit" class="quiet">{{t "Save"}}</button>
+</form>
+<form method="post" action="{{.Path}}/archive" class="inline">
+  {{if .Project.Archived}}<input type="hidden" name="archived" value="0"><button type="submit" class="quiet">{{t "Bring it back"}}</button>
+  {{else}}<input type="hidden" name="archived" value="1"><button type="submit" class="quiet">{{t "Archive the project"}}</button>{{end}}
+</form>
+</section>
+{{end}}
+
+{{template "history" .}}
+{{end}}{{end}}
