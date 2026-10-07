@@ -1,0 +1,49 @@
+# Proxy this hostname to the loopback port the Go server listens on.
+#
+# mod_rewrite's [P] flag rather than ProxyPass, because ProxyPass is not
+# permitted in .htaccess on shared hosting and this account has no access to
+# the server config.
+#
+# Installed into APP_DOCROOT (secrets.env) -- see deploy/README.md. deploy.sh
+# writes it from this template on every deploy, substituting __APP_PORT__
+# (8461, the default in cmd/reconcile/config.go).
+
+# mod_dir must not answer for the front page.
+#
+# Left on, Apache maps a request for "/" onto the docroot directory, mod_dir
+# substitutes the DirectoryIndex, and the internal redirect re-enters the rules
+# below -- so the Go server is asked for /index.html, which it has no route for,
+# and the front page is a 404 while every other path works. That is exactly what
+# happened to mass-intentions on 2026-09-22, with a healthy binary behind it
+# answering /healthz with 200.
+#
+# The docroot holds this file and nothing else, by decision and by a check in
+# deploy.sh, so there is no index for mod_dir to find that we would ever want it
+# to serve.
+DirectoryIndex disabled
+
+RewriteEngine On
+
+# ACME first, and it must stay first. Certificate renewal fetches a file under
+# this path, and a rewrite that swallowed it would let the certificate lapse
+# silently -- which is discovered by the site going down, months later, for a
+# reason nobody connects to this file.
+RewriteRule ^\.well-known/ - [L]
+
+RewriteCond %{HTTPS} !=on
+RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
+
+# Belt and braces for the same thing. If DirectoryIndex above cannot be
+# disabled -- AllowOverride on shared hosting is not ours to set -- then this
+# catches the internal redirect it makes and asks the Go server for the front
+# page rather than for a file that does not exist. Nothing in this application
+# serves a path called index.html, so nothing is shadowed by it.
+RewriteRule ^index\.html$ http://127.0.0.1:__APP_PORT__/ [P,QSA,L]
+
+RewriteRule ^(.*)$ http://127.0.0.1:__APP_PORT__/$1 [P,QSA,L]
+
+# No security headers here, deliberately. The Go server sets its own -- CSP,
+# HSTS, Referrer-Policy, X-Frame-Options -- and a second, different set from
+# Apache would either duplicate them or quietly contradict them. Two enforced
+# Content-Security-Policy headers are evaluated independently, so a stricter
+# one here would block the application while looking as though ours was ignored.

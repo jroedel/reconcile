@@ -1,0 +1,32 @@
+# reconcile
+
+What it is for arrives with the plan.
+
+## Running it
+
+Go 1.26, no other toolchain.
+
+```sh
+cp config.example.toml config.toml
+make run            # serves on 127.0.0.1:8461
+make test           # unit tests, lint, shell tests
+make help           # every target
+```
+
+## Deploying
+
+A merge to `main` deploys, through `.github/workflows/deploy.yml`. Setting up
+the server and the credentials is in [`deploy/README.md`](deploy/README.md);
+the hostname and the account are kept out of this public repository, in a
+`secrets.env` that never leaves a person's machine.
+
+## Contributing
+
+Changes arrive as pull requests, and a person reviews and merges each one.
+`CLAUDE.md` (also `AGENTS.md`) holds the rules for writing code here.
+
+## License
+
+Copyright 2026 Jeff Roedel.
+
+Licensed under the Apache License, Version 2.0; see [`LICENSE`](LICENSE).

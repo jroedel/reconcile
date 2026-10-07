@@ -1,0 +1,113 @@
+# A push to main that passes the checks goes to the server.
+#
+# `ship` runs deploy/deploy.sh deploy: build, upload, pre-flight the new binary
+# against the live config, reinstall the front end and the watchdog, stop, back
+# up, swap, start, health-check on the loopback, roll back on failure, then
+# check from outside. There is no separate install; the first run is one.
+#
+# Two jobs, and the second `needs` the first, so a red test is a deploy that
+# never starts. The checks repeat ci.yml's rather than trusting that the run
+# which produced this commit was the run that passed.
+#
+# What this workflow deliberately does not have: any runtime credential. Those
+# reach the server's config.toml from a person's machine with
+# `make deploy-send-secrets`, so a compromise of this workflow can ship code to
+# a no-root shared hosting account and nothing more.
+name: deploy
+
+on:
+  push:
+    branches: [main]
+
+  # A deploy that only a commit can trigger is one that cannot be re-run after
+  # a transient ssh failure without an empty commit.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time, and a newer push waits rather than racing an older one.
+# cancel-in-progress is off: cancelling halfway through a swap -- once there is
+# a binary to swap -- leaves the server between two versions.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    # With nowhere to deploy to, skip rather than go red. APP_HOST is the
+    # sentinel because it is a variable, so the condition can be read, and
+    # make deploy-send-secrets is what sets it.
+    if: vars.APP_HOST != ''
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: lint
+        run: make lint
+
+      - name: unit tests, with the race detector
+        run: make test-unit
+
+      - name: shell tests
+        run: make shell-test
+
+  ship:
+    needs: check
+    runs-on: ubuntu-latest
+    if: vars.APP_HOST != ''
+
+    # Named so that a required reviewer can be added in the repository
+    # settings without touching this file.
+    environment: production
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: deploy
+        env:
+          DEPLOY_SSH_KEY_B64: ${{ secrets.DEPLOY_SSH_KEY_B64 }}
+          DEPLOY_KNOWN_HOSTS_B64: ${{ secrets.DEPLOY_KNOWN_HOSTS_B64 }}
+          DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+
+          # Variables, not secrets. A hostname and a path are not
+          # confidential, and a masked log is harder to read when a deploy
+          # goes wrong.
+          APP_HOST: ${{ vars.APP_HOST }}
+          APP_PORT: ${{ vars.APP_PORT }}
+          APP_DIR: ${{ vars.APP_DIR }}
+          APP_DOCROOT: ${{ vars.APP_DOCROOT }}
+          KEEP_BACKUPS: ${{ vars.KEEP_BACKUPS }}
+
+          # A runner's checkout is a detached HEAD, and the trigger already is
+          # "a commit on main".
+          SKIP_GIT_CHECK: "1"
+        run: deploy/deploy.sh deploy
+
+      - name: status
+        if: always()
+        env:
+          DEPLOY_SSH_KEY_B64: ${{ secrets.DEPLOY_SSH_KEY_B64 }}
+          DEPLOY_KNOWN_HOSTS_B64: ${{ secrets.DEPLOY_KNOWN_HOSTS_B64 }}
+          DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+          APP_HOST: ${{ vars.APP_HOST }}
+          APP_PORT: ${{ vars.APP_PORT }}
+          APP_DIR: ${{ vars.APP_DIR }}
+          APP_DOCROOT: ${{ vars.APP_DOCROOT }}
+        run: deploy/deploy.sh status

@@ -1,0 +1,22 @@
+# Copy this to config.toml and edit it. config.toml is gitignored because the
+# day this app has a secret, that is where it goes; this file is tracked
+# because it is the documentation. A key this binary does not know stops it at
+# startup.
+#
+# On the server this file is written by make deploy-send-secrets, from
+# secrets.env, and never edited by hand.
+
+[server]
+# The loopback address Apache proxies to. Never a public interface: TLS and the
+# public hostname are the front end's job.
+addr = "127.0.0.1:8461"
+
+# How long in-flight requests get to finish on SIGTERM.
+shutdown_grace = "15s"
+
+[log]
+# debug, info, warn or error.
+level = "info"
+
+# Empty means stderr, which is what the supervisor redirects into a log file.
+file = ""

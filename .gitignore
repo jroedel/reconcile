@@ -1,0 +1,52 @@
+# Imported from /opt/projects/stewards, minus what only mattered there.
+
+# Compiled binaries, named after the module in the repository root.
+/reconcile
+/reconcile-linux-amd64
+*.exe
+*.test
+*.out
+*.prof
+coverage.*
+
+# Storage. A developer's local database is whatever they typed into a test
+# form, and that should not reach a public repository.
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Configuration that carries a secret. The example files are tracked and are
+# the documentation; the real ones never are.
+config.toml
+*.env
+*.env.bak
+.env*
+!config.example.toml
+!secrets.env.example
+
+# Data, not code. A real export is somebody's records, and a public repository
+# is no place for one. Test fixtures are invented; real files stay on the
+# machine that holds them.
+*.csv
+
+# Keys of any kind.
+*.key
+*.pem
+id_rsa
+id_ecdsa
+id_ed25519
+*_ed25519
+
+# Local tooling and editor state
+/tools/
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Claude Code working state. CLAUDE.md, settings.json and the skills are tracked
+# on purpose -- they are how the project is built. The rest is not.
+.claude/worktrees/
+.claude/settings.local.json
