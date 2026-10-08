@@ -86,8 +86,12 @@ ssh_setup() {
 		| base64 -d > "$SSH_TMP/known_hosts" 2>/dev/null \
 		|| die "DEPLOY_KNOWN_HOSTS_B64 is not valid base64. Run: make deploy-known-hosts"
 
+	# Only the deploy key, never the agent's: the same on a person's machine
+	# as in CI, where there is no agent (scripts/secrets, remote).
 	SSH_OPTS=(
 		-i "$SSH_TMP/key"
+		-o IdentitiesOnly=yes
+		-o IdentityAgent=none
 		-o "UserKnownHostsFile=$SSH_TMP/known_hosts"
 		-o StrictHostKeyChecking=yes
 		-o ConnectTimeout=15
