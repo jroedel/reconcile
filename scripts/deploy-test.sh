@@ -223,16 +223,31 @@ PIDFILE="$TMP/reconcile.pid"
 is_running() { running >/dev/null; }
 not_running() { ! is_running; }
 
+# named starts sleep under the argv[0] it is given, and returns once the
+# process carries it. Until bash reaches its exec, /proc/<pid>/cmdline still
+# says "bash -c ...": checked at once, the server was sometimes not
+# recognised (a deploy failed on it, 2026-10-08), and an impostor was "not
+# taken for the server" without its name ever being looked at.
+named() {
+	local name="$1" pid tries=0
+	bash -c 'exec -a "$0" sleep 30' "$name" &
+	pid="$!"
+	until [ "$(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null | head -1)" = "$name" ]; do
+		tries=$((tries + 1))
+		[ "$tries" -le 100 ] || { echo "  $name never started" >&2; break; }
+		sleep 0.05
+	done
+	printf '%s\n' "$pid" > "$PIDFILE"
+}
+
 # The server as run.sh leaves it: argv[0] is ./reconcile.
-bash -c 'exec -a ./reconcile sleep 30' &
-printf '%s\n' "$!" > "$PIDFILE"
+named ./reconcile
 check "the server is recognised by its argv[0]" is_running
 
 # Everything else in the directory has "reconcile" in its path, and none of it is
 # the server. A substring match, as in mass-intentions, takes each of these for it.
 for impostor in "$APP_DIR/supervise.sh" "/home/u/reconcile/run.sh" "vim reconcile.log"; do
-	bash -c "exec -a '$impostor' sleep 30" &
-	printf '%s\n' "$!" > "$PIDFILE"
+	named "$impostor"
 	check "\"$impostor\" is not taken for the server" not_running
 done
 
