@@ -328,5 +328,53 @@ check "which names what was sent and what GitHub has" said "sent 14, GitHub has 
 rm -f "$TMP/gh-stale"
 
 echo
+echo "the deploy key and no other"
+# The bug behind a green status and a red deploy: ssh offered the agent's
+# keys too, and a sibling project's key opened the account. A fake ssh
+# records what it was asked to do and is refused, as the server refused CI.
+mkdir -p "$TMP/sshbin"
+cat > "$TMP/sshbin/ssh" <<FAKE
+#!/usr/bin/env bash
+printf '%s\n' "\$@" > "$TMP/ssh-args"
+echo "someuser@example.invalid: Permission denied (publickey,password)." >&2
+exit 255
+FAKE
+chmod +x "$TMP/sshbin/ssh"
+
+PATH="$TMP/sshbin:$PATH" "$SECRETS" status > "$TMP/out" 2>&1 || true
+check "status offers only the deploy key" grep -qx "IdentitiesOnly=yes" "$TMP/ssh-args"
+check "and never the agent's" grep -qx "IdentityAgent=none" "$TMP/ssh-args"
+check "a refused key says how to print its public half" said "make deploy-public-key"
+check "the deploy offers only the deploy key too" \
+	bash -c 'grep -q -- "-o IdentitiesOnly=yes" "$0" && grep -q -- "-o IdentityAgent=none" "$0"' "$REPO_DIR/deploy/deploy.sh"
+
+# curl's certificate failure is a paragraph that ends in advice.
+cat > "$TMP/sshbin/curl" <<'FAKE'
+#!/usr/bin/env bash
+cat >&2 <<'MSG'
+curl: (60) SSL certificate problem: unable to get local issuer certificate
+More details here: https://curl.se/docs/sslcerts.html
+
+curl failed to verify the legitimacy of the server and therefore could not
+establish a secure connection to it. To learn more about this situation and
+how to fix it, please visit the web page mentioned above.
+MSG
+exit 60
+FAKE
+chmod +x "$TMP/sshbin/curl"
+
+# And a name that resolves, to a documentation address, so curl is reached.
+printf '#!/usr/bin/env bash\necho "192.0.2.1 STREAM $3"\n' > "$TMP/sshbin/getent"
+chmod +x "$TMP/sshbin/getent"
+
+PATH="$TMP/sshbin:$PATH" "$SECRETS" status > "$TMP/out" 2>&1 || true
+check "a certificate failure is called one" said "has no valid certificate yet"
+check "and shows curl's first line, not its last" said "SSL certificate problem"
+
+"$SECRETS" public-key > "$TMP/out" 2>&1
+check "public-key prints the public half of the key in secrets.env" \
+	grep -qF "$(cut -d' ' -f1-2 "$TMP/testkey.pub")" "$TMP/out"
+
+echo
 printf '%d passed, %d failed\n' "$pass" "$fail"
 test "$fail" -eq 0
