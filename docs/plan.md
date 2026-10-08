@@ -200,7 +200,7 @@ Owners, bookkeepers and accountants can download it (the Export permission). It 
    - The translations API, an MCP tool for Claude, and a review screen; then ES/PT go live (planned in `docs/translations.md`)
    - PDF statements
    - Budgets per project and category
-   - Categorization rules and suggestions (eumaeus `categorizebus`)
+   - Categorization rules and suggestions (eumaeus `categorizebus`; planned in `docs/sorting.md`)
    - Thumbnails (stewards `imaging`)
 
 ## Open items (do not block steps 1–8)
