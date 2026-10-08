@@ -806,6 +806,57 @@ func (b *Business) Overview(ctx context.Context, actor types.ID) (Overview, erro
 	return out, nil
 }
 
+// ProjectsFor is the projects, not archived, on which the actor may do p:
+// the choices when they put a transaction's money into a project.
+func (b *Business) ProjectsFor(ctx context.Context, actor types.ID, p Permission) ([]Project, error) {
+	ov, err := b.Overview(ctx, actor)
+	if err != nil {
+		return nil, err
+	}
+
+	all := ov.Projects
+	for _, o := range ov.Orgs {
+		all = append(all, o.Projects...)
+	}
+
+	var out []Project
+
+	for _, pr := range all {
+		access, err := b.AccessTo(ctx, actor, pr.Scope())
+		if err != nil {
+			return nil, err
+		}
+
+		if access.Can(p) {
+			out = append(out, pr)
+		}
+	}
+
+	slices.SortFunc(out, func(a, b Project) int { return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)) })
+
+	return out, nil
+}
+
+// ProjectNames is the names of projects by ID, asking nobody's permission.
+//
+// For the ledger, which has already asked whether the reader may see an
+// account and is naming the projects that account's own splits point at.
+// What a split of my account's money is spent on is part of my account,
+// even when the project's other books are not mine to read.
+func (b *Business) ProjectNames(ctx context.Context, ids []types.ID) (map[types.ID]string, error) {
+	projects, err := b.store.ProjectsByID(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(map[types.ID]string, len(projects))
+	for _, p := range projects {
+		out[p.ID] = p.Name
+	}
+
+	return out, nil
+}
+
 // --- the site administrator's list ------------------------------------------
 
 // Names is every organization and account by name, for the site

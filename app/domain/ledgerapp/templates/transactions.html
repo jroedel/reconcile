@@ -28,14 +28,19 @@
 
 {{range $v.Months}}{{if eq .Month $v.Month}}
 <p>{{t "Money in"}} <span class="money in">{{money .In $cur}}</span> · {{t "Money out"}} <span class="money out">{{money .Out $cur}}</span></p>
+{{if .Unsorted}}<p>{{if $v.Unsorted}}<a href="?month={{.Month}}">{{t "Show all of the month"}}</a>{{else}}<a href="?month={{.Month}}&amp;unsorted=1">{{t "{n} not sorted yet" "n" .Unsorted}}</a>{{end}}</p>
+{{else}}<p class="hint">{{t "Every transaction this month is sorted."}}</p>{{end}}
 {{end}}{{end}}
 
 {{if $v.Shown}}
 <div class="scroll">
 <table class="ledger">
-<thead><tr><th>{{t "Date"}}</th><th>{{t "Description"}}</th><th class="money">{{t "Amount"}}</th></tr></thead>
+<thead><tr><th>{{t "Date"}}</th><th>{{t "Description"}}</th><th>{{t "For"}}</th><th class="money">{{t "Amount"}}</th></tr></thead>
 <tbody>
-{{range $v.Shown}}<tr><td>{{.PostedOn}}</td><td>{{.Description}}</td><td class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $cur}}</td></tr>
+{{range $v.Shown}}<tr id="t-{{.ID}}"><td>{{.PostedOn}}</td><td><a href="/transactions/{{.ID}}">{{if .Description}}{{.Description}}{{else}}{{t "(no description)"}}{{end}}</a></td>
+<td>{{if gt (len .Splits) 1}}{{t "{n} parts" "n" (len .Splits)}}{{if not .Sorted}} <span class="badge">{{t "not sorted yet"}}</span>{{end}}
+{{else}}{{range .Splits}}{{with index $v.Categories .CategoryID}}{{.}}{{else}}<span class="badge">{{t "not sorted yet"}}</span>{{end}}{{with index $v.Projects .ProjectID}} · {{.}}{{end}}{{end}}{{end}}</td>
+<td class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $cur}}</td></tr>
 {{end}}</tbody>
 </table>
 </div>

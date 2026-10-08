@@ -105,8 +105,8 @@ positive). Times are Unix milliseconds. Every table is `STRICT`.
 **Ledger**
 - `statements(id, account_id, file_id, format[csv|ofx], period_start, period_end, opening NULL, closing NULL, checked[balances|totals|none], added, already, imported_by, imported_at)`. There is no "failed": a statement that does not balance is never stored. `added` and `already` are what the import found, kept because the second is not recoverable afterwards.
 - `transactions(id, account_id, statement_id, posted_on, description, amount, balance_after NULL, external_id, hash, occurrence)`. Unique on `(account_id, external_id)` where external_id is set; non-unique on `hash`.
-- `splits(id, transaction_id, amount, category_id NULL, project_id NULL, memo)`. The business layer enforces that the parts sum to the transaction. A new transaction gets one split for the full amount.
-- `categories(id, org_id NULL, account_id NULL, name, archived_at)`. Exactly one owner, either an org or a personal account.
+- `splits(id, transaction_id, position, amount, category_id NULL, project_id NULL, memo)`. The business layer enforces that the parts sum to the transaction, each the same way round as it and none zero. A new transaction gets one split for the full amount, and `ledgerdb.Init` gives one to any transaction without. A split goes with its transaction when a statement is removed. Putting money into a project takes Bookkeep on the account *and* on the project; a split already in a project stays there for a bookkeeper of the account who cannot see the project. Money into or out of a project is a line in the project's history (`split.added`, `split.removed`); re-sorting categories is not written into the account's, which it would flood.
+- `categories(id, org_id NULL, account_id NULL, name, created_by, created_at, archived_at)`. Exactly one owner, either an org or a personal account; an account in an org has no list of its own. Names are unique within a list, whatever their case. Archived, never deleted.
 - `csv_mappings(account_id, fingerprint, mapping, updated_by, updated_at)`. Once mapped, the same header is read with the same columns; the preview is still shown, because it is where the balance check is seen.
 
 **Receipts and files**
@@ -190,7 +190,7 @@ The accountant role can download it.
    - The events table.
    - **Cross-tenant isolation tests**: user A can never read B's org, account, project, file or export, through any route.
 5. **Import.** Statements, the CSV mapping screen and saved mappings, OFX/QFX, verification, dedupe, the transaction list by month, and the statement file stored and downloadable. Removing a statement takes its transactions with it. The list's filters by category, project and receipt arrive with those things, in steps 6 and 7.
-6. **Categories, splits, projects.** Per-org and personal category lists, the split editor, project assignment, the project dashboard.
+6. **Categories, splits, projects.** Per-org and personal category lists, the split editor, project assignment, the project dashboard (totals, by category, by month, every part, per currency), and the month list's "not sorted yet" filter.
 7. **Receipts.** Multi-file upload (direct and inbox), receipt viewer, attach and detach, match suggestions after import.
 8. **Reconcile and export.** The coverage grid, the statement reconcile screen, locking and reopening (audited), and the export zip.
 9. **Later, separately planned:**

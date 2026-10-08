@@ -28,6 +28,12 @@
 {{range .ArchivedProjects}}<li><a href="/projects/{{.ID}}">{{.Name}}</a></li>{{end}}</ul></details>{{end}}
 </section>
 
+<section class="card">
+<h2>{{t "Categories"}}</h2>
+<p class="hint">{{t "One list for every account in the organization."}}</p>
+<p><a class="button quiet" href="{{.Path}}/categories">{{t "The category list"}}</a></p>
+</section>
+
 {{template "people" .}}
 
 {{if .CanManage}}

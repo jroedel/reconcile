@@ -16,6 +16,8 @@ import (
 
 	"github.com/jroedel/reconcile/app/sdk/muxer"
 	"github.com/jroedel/reconcile/app/sdk/page"
+	"github.com/jroedel/reconcile/business/domain/category/categorybus"
+	"github.com/jroedel/reconcile/business/domain/category/stores/categorydb"
 	"github.com/jroedel/reconcile/business/domain/event/eventbus"
 	"github.com/jroedel/reconcile/business/domain/event/stores/eventdb"
 	"github.com/jroedel/reconcile/business/domain/file/filebus"
@@ -138,7 +140,8 @@ func run() error {
 	}
 
 	files := filebus.NewBusiness(log, filedb.NewStore(db), bytes)
-	ledger := ledgerbus.NewBusiness(log, ledgerdb.NewStore(db), tenancy, files)
+	categories := categorybus.NewBusiness(log, categorydb.NewStore(db), tenancy)
+	ledger := ledgerbus.NewBusiness(log, ledgerdb.NewStore(db), tenancy, files, categories)
 
 	go prune(ctx, log, users)
 
@@ -152,6 +155,7 @@ func run() error {
 		History:    history,
 		Files:      files,
 		Ledger:     ledger,
+		Categories: categories,
 		BaseURL:    cfg.Server.BaseURL,
 		Mail:       sender,
 		Bootstrap:  cfg.Auth.BootstrapSecret,
@@ -183,6 +187,7 @@ func prepare(ctx context.Context, db *sql.DB) error {
 		{"the history", eventdb.Init},
 		{"the organizations, accounts and projects", tenancydb.Init},
 		{"the uploaded files", filedb.Init},
+		{"the category lists", categorydb.Init},
 		{"the statements and transactions", ledgerdb.Init},
 	} {
 		if err := step.init(ctx, db); err != nil {
@@ -208,6 +213,7 @@ func expectedSchema() sqldb.Expected {
 		eventdb.Expected,
 		tenancydb.Expected,
 		filedb.Expected,
+		categorydb.Expected,
 		ledgerdb.Expected,
 	} {
 		maps.Copy(expected, store)

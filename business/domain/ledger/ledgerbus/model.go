@@ -85,6 +85,36 @@ type Transaction struct {
 	// Hash and Occurrence are the fallback identity (hash).
 	Hash       string
 	Occurrence int
+
+	// Splits are its parts, at least one, adding up to Amount. Filled in
+	// where a page needs them.
+	Splits []Split
+}
+
+// Sorted reports whether every part has a category.
+func (t Transaction) Sorted() bool {
+	for _, s := range t.Splits {
+		if s.CategoryID.Zero() {
+			return false
+		}
+	}
+
+	return len(t.Splits) > 0
+}
+
+// Split is one part of a transaction: how much of it went where.
+//
+// Every transaction has at least one, made with it for its whole amount, so
+// that "what is this money for" has one answer however many parts there
+// are, and a project's book is the sum of its splits and nothing else.
+type Split struct {
+	ID            types.ID
+	TransactionID types.ID
+	Position      int
+	Amount        money.Amount
+	CategoryID    types.ID // zero: not sorted yet
+	ProjectID     types.ID // zero: in no project
+	Memo          string
 }
 
 // Month is one month of an account's transactions, summed.
@@ -93,6 +123,10 @@ type Month struct {
 	Count    int
 	In, Out  money.Amount
 	Earliest types.Date
+
+	// Unsorted is how many of its transactions have a part with no
+	// category.
+	Unsorted int
 }
 
 // Net is what the month did to the account.
@@ -120,6 +154,7 @@ func transactions(account types.ID, recs []importbus.Record) []Transaction {
 		seen[key]++
 		t.Occurrence = seen[key]
 		t.Hash = hash(t)
+		t.Splits = []Split{{ID: types.NewID(), TransactionID: t.ID, Amount: t.Amount}}
 
 		out[i] = t
 	}

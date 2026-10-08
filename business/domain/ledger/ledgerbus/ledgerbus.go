@@ -68,9 +68,14 @@ const (
 // is a few hundred kilobytes; this is room for a bank that pads.
 const MaxFile = 10 << 20
 
-// Accounts is how this domain asks who may do what (tenancybus).
+// Accounts is how this domain asks who may do what, and names projects
+// (tenancybus).
 type Accounts interface {
 	Account(ctx context.Context, actor, id types.ID) (tenancybus.Account, tenancybus.Access, error)
+	Project(ctx context.Context, actor, id types.ID) (tenancybus.Project, tenancybus.Access, error)
+	AccessTo(ctx context.Context, actor types.ID, scope types.Scope) (tenancybus.Access, error)
+	ProjectsFor(ctx context.Context, actor types.ID, p tenancybus.Permission) ([]tenancybus.Project, error)
+	ProjectNames(ctx context.Context, ids []types.ID) (map[types.ID]string, error)
 }
 
 // Files is where statements' bytes are (filebus).
@@ -96,6 +101,16 @@ type Storer interface {
 	Transactions(ctx context.Context, account types.ID, from, to types.Date) ([]Transaction, error)
 
 	Mappings(ctx context.Context, account types.ID) (map[string]csvsource.Mapping, error)
+
+	// TransactionByID is one transaction with its parts.
+	TransactionByID(ctx context.Context, id types.ID) (Transaction, error)
+
+	// ReplaceSplits writes a transaction's new parts in place of the old,
+	// with the history, in one transaction.
+	ReplaceSplits(ctx context.Context, transactionID types.ID, splits []Split, events []eventbus.Event) error
+
+	// ProjectLines is every part in a project, oldest first.
+	ProjectLines(ctx context.Context, projectID types.ID) ([]ProjectLine, error)
 }
 
 // SavedMapping is a CSV mapping kept for the next file with the same
@@ -109,15 +124,16 @@ type SavedMapping struct {
 
 // Business is the set of operations on the ledger.
 type Business struct {
-	log      *slog.Logger
-	store    Storer
-	accounts Accounts
-	files    Files
+	log        *slog.Logger
+	store      Storer
+	accounts   Accounts
+	files      Files
+	categories Categories
 }
 
 // NewBusiness constructs one.
-func NewBusiness(log *slog.Logger, store Storer, accounts Accounts, files Files) *Business {
-	return &Business{log: log, store: store, accounts: accounts, files: files}
+func NewBusiness(log *slog.Logger, store Storer, accounts Accounts, files Files, categories Categories) *Business {
+	return &Business{log: log, store: store, accounts: accounts, files: files, categories: categories}
 }
 
 // --- reading a file ---------------------------------------------------------
@@ -467,7 +483,7 @@ func (b *Business) StatementFile(ctx context.Context, actor, id types.ID) (fileb
 }
 
 // RemoveStatement takes a statement out, with the transactions it brought
-// in. Transactions a later statement also listed go with it: they were this
+// in and how they were split and sorted. Transactions a later statement also listed go with it: they were this
 // one's, and the later one counted them as already here. Importing this
 // file again brings them back; that is what removing is for, a statement
 // read with the wrong columns.

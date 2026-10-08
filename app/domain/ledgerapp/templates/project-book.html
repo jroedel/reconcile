@@ -1,0 +1,41 @@
+{{define "title"}}{{.Data.Book.Project.Name}}{{end}}
+{{define "content"}}{{$v := .Data}}{{$b := $v.Book}}
+<p class="crumbs"><a href="{{$v.Path}}">{{$b.Project.Name}}</a></p>
+<h1>{{t "Money in and out"}}</h1>
+
+{{if $b.Lines}}
+<section class="card">
+{{range $b.Totals}}
+<p>{{t "Money in"}} <span class="money in">{{money .In .Currency}}</span> · {{t "Money out"}} <span class="money out">{{money .Out .Currency}}</span></p>
+<p><strong>{{if lt .Net 0}}{{t "Short by {amount}" "amount" (money .Net.Abs .Currency)}}{{else if gt .Net 0}}{{t "{amount} in hand" "amount" (money .Net .Currency)}}{{else}}{{t "Even"}}{{end}}</strong></p>
+{{end}}
+</section>
+
+<section class="card">
+<h2>{{t "By category"}}</h2>
+<div class="scroll"><table class="ledger">
+<thead><tr><th>{{t "Category"}}</th><th class="money">{{t "Money in"}}</th><th class="money">{{t "Money out"}}</th></tr></thead>
+<tbody>{{range $b.ByCategory}}<tr><td>{{if .Key}}{{.Key}}{{else}}<span class="badge">{{t "not sorted yet"}}</span>{{end}}</td><td class="money in">{{money .In .Currency}}</td><td class="money out">{{money .Out .Currency}}</td></tr>{{end}}</tbody>
+</table></div>
+</section>
+
+<section class="card">
+<h2>{{t "By month"}}</h2>
+<div class="scroll"><table class="ledger">
+<thead><tr><th>{{t "Month"}}</th><th class="money">{{t "Money in"}}</th><th class="money">{{t "Money out"}}</th></tr></thead>
+<tbody>{{range $b.ByMonth}}<tr><td>{{.Key}}</td><td class="money in">{{money .In .Currency}}</td><td class="money out">{{money .Out .Currency}}</td></tr>{{end}}</tbody>
+</table></div>
+</section>
+
+<section class="card">
+<h2>{{t "Every part"}}</h2>
+<div class="scroll"><table class="ledger">
+<thead><tr><th>{{t "Date"}}</th><th>{{t "Description"}}</th><th>{{t "Account"}}</th><th>{{t "Category"}}</th><th class="money">{{t "Amount"}}</th></tr></thead>
+<tbody>{{range $b.Lines}}<tr><td>{{.PostedOn}}</td><td>{{.Description}}{{if .Split.Memo}}<br><span class="hint">{{.Split.Memo}}</span>{{end}}</td><td>{{.AccountName}}</td><td>{{.CategoryName}}</td><td class="money {{if lt .Split.Amount 0}}out{{else}}in{{end}}">{{money .Split.Amount .Currency}}</td></tr>
+{{end}}</tbody>
+</table></div>
+</section>
+{{else}}
+<p class="hint">{{t "Nothing in this project yet. A bookkeeper puts a transaction's money into it from the transaction's page."}}</p>
+{{end}}
+{{end}}

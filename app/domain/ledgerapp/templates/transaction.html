@@ -1,0 +1,57 @@
+{{define "title"}}{{.Data.Editor.Transaction.Description}}{{end}}
+{{define "content"}}{{$v := .Data}}{{$e := $v.Editor}}{{$t := $e.Transaction}}{{$cur := $e.Account.Currency}}
+<p class="crumbs"><a href="{{$v.Back}}">{{$e.Account.Name}}</a></p>
+<h1>{{if $t.Description}}{{$t.Description}}{{else}}{{t "A transaction with no description"}}{{end}}</h1>
+<p>{{$t.PostedOn}} · <span class="money {{if lt $t.Amount 0}}out{{else}}in{{end}}">{{money $t.Amount $cur}}</span></p>
+{{template "parts-problem" $v}}
+
+{{if $v.CanBookkeep}}
+<form method="post" action="/transactions/{{$t.ID}}">
+{{range $i, $row := $v.Rows}}
+<fieldset class="card part">
+  {{if gt (len $v.Rows) 1}}<legend>{{t "Part {n}" "n" (inc $i)}}</legend>{{end}}
+  <div class="field">
+    <label for="amount-{{$i}}">{{if $v.Out}}{{t "Money out"}}{{else}}{{t "Money in"}}{{end}}</label>
+    <input id="amount-{{$i}}" name="amount-{{$i}}" type="text" inputmode="decimal" value="{{$row.Amount}}">
+  </div>
+  <div class="field">
+    <label for="category-{{$i}}">{{t "Category"}}</label>
+    <select id="category-{{$i}}" name="category-{{$i}}">
+      <option value="">{{t "(not sorted yet)"}}</option>
+      {{range $e.Categories}}<option value="{{.ID}}"{{if eq .ID.String $row.CategoryID}} selected{{end}}>{{.Name}}</option>{{end}}
+    </select>
+  </div>
+  {{if $e.Projects}}
+  <div class="field">
+    <label for="project-{{$i}}">{{t "Project"}}</label>
+    <select id="project-{{$i}}" name="project-{{$i}}">
+      <option value="">{{t "(none)"}}</option>
+      {{range $e.Projects}}<option value="{{.ID}}"{{if eq .ID.String $row.ProjectID}} selected{{end}}>{{if .Name}}{{.Name}}{{else}}{{t "a project you have no role on"}}{{end}}</option>{{end}}
+    </select>
+  </div>
+  {{end}}
+  <div class="field">
+    <label for="memo-{{$i}}">{{t "Memo"}}</label>
+    <input id="memo-{{$i}}" name="memo-{{$i}}" type="text" maxlength="500" value="{{$row.Memo}}">
+  </div>
+</fieldset>
+{{end}}
+{{if gt (len $v.Rows) 1}}<p class="hint">{{t "The parts must add up to {total}. To take a part out, empty all of its fields." "total" (money $t.Amount.Abs $cur)}}</p>{{end}}
+<div class="actions">
+  <button type="submit" name="action" value="save">{{t "Save"}}</button>
+  <button type="submit" name="action" value="add" class="quiet">{{t "Split into another part"}}</button>
+</div>
+</form>
+{{if not $e.Categories}}<p class="hint">{{t "There are no categories to choose from yet. A bookkeeper adds them to the list."}}</p>{{end}}
+{{else}}
+<section class="card">
+<ul class="list">
+{{range $t.Splits}}<li><span class="money">{{money .Amount $cur}}</span> ·
+{{with $e.CategoryName .CategoryID}}{{.}}{{else}}<span class="badge">{{t "not sorted yet"}}</span>{{end}}
+{{if not .ProjectID.Zero}} · {{with $e.ProjectName .ProjectID}}{{.}}{{else}}{{t "a project you have no role on"}}{{end}}{{end}}
+{{if .Memo}}<br><span class="hint">{{.Memo}}</span>{{end}}</li>
+{{end}}</ul>
+</section>
+{{end}}
+<p class="hint"><a href="/statements/{{$t.StatementID}}">{{t "The statement it came from"}}</a></p>
+{{end}}

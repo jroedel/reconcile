@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/jroedel/reconcile/app/sdk/mid"
+	"github.com/jroedel/reconcile/business/domain/category/categorybus"
 	"github.com/jroedel/reconcile/business/domain/file/filebus"
 	"github.com/jroedel/reconcile/business/domain/importing/importbus"
 	"github.com/jroedel/reconcile/business/domain/importing/sources/csvsource"
@@ -73,7 +74,10 @@ type Config struct {
 	Tenancy *tenancybus.Business
 	Files   *filebus.Business
 	Users   Users
-	Render  Renderer
+
+	// Categories names the parts on the transaction list.
+	Categories *categorybus.Business
+	Render     Renderer
 
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
@@ -100,6 +104,9 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	handle("GET /statements/{id}", a.statement)
 	handle("GET /statements/{id}/file", a.download)
 	handle("POST /statements/{id}/remove", a.remove)
+	handle("GET /transactions/{id}", a.transaction)
+	handle("POST /transactions/{id}", a.sortTransaction)
+	handle("GET /projects/{id}/book", a.book)
 }
 
 // --- the shared tail --------------------------------------------------------
@@ -164,7 +171,12 @@ func problem(err error) string {
 
 func back(w http.ResponseWriter, r *http.Request, to, done string) {
 	if done != "" {
-		to += "?done=" + url.QueryEscape(done)
+		sep := "?"
+		if strings.Contains(to, "?") {
+			sep = "&"
+		}
+
+		to += sep + "done=" + url.QueryEscape(done)
 	}
 
 	http.Redirect(w, r, to, http.StatusSeeOther)
@@ -181,6 +193,14 @@ type transactionsView struct {
 	Month      string
 	Shown      []ledgerbus.Transaction
 	Statements []ledgerbus.Statement
+
+	// Unsorted shows only the month's transactions with a part that has
+	// no category: the treasurer's to-do list.
+	Unsorted bool
+
+	// Names of the categories and projects the shown parts point at.
+	Categories map[types.ID]string
+	Projects   map[types.ID]string
 
 	Problem string
 	Done    string
@@ -244,7 +264,46 @@ func (a app) transactionsPage(w http.ResponseWriter, r *http.Request, status int
 		}
 	}
 
+	if view.Unsorted = r.URL.Query().Get("unsorted") == "1"; view.Unsorted {
+		view.Shown = slices.DeleteFunc(view.Shown, ledgerbus.Transaction.Sorted)
+	}
+
+	if err := a.names(r, account, &view); err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
 	a.cfg.Render.Render(w, r, status, "transactions", view)
+}
+
+// names fills in what the shown parts' categories and projects are called.
+// The reader may read the account, which was asked first: the names of
+// where its own money went are part of it (tenancybus.ProjectNames).
+func (a app) names(r *http.Request, account tenancybus.Account, view *transactionsView) error {
+	cats, err := a.cfg.Categories.ForAccount(r.Context(), account)
+	if err != nil {
+		return err
+	}
+
+	view.Categories = make(map[types.ID]string, len(cats))
+	for _, c := range cats {
+		view.Categories[c.ID] = c.Name
+	}
+
+	var projects []types.ID
+
+	for _, t := range view.Shown {
+		for _, s := range t.Splits {
+			if !s.ProjectID.Zero() {
+				projects = append(projects, s.ProjectID)
+			}
+		}
+	}
+
+	view.Projects, err = a.cfg.Tenancy.ProjectNames(r.Context(), projects)
+
+	return err
 }
 
 // --- uploading --------------------------------------------------------------

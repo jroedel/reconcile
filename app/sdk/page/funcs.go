@@ -15,6 +15,18 @@ var Funcs = template.FuncMap{
 	"sentence": Sentence,
 	"short":    Short,
 	"money":    Money,
+
+	// amount reads an amount kept as text, as the history keeps one.
+	// Unreadable is zero rather than a failed page: the history is read
+	// long after it was written.
+	"amount": func(s string) money.Amount {
+		a, _ := money.Parse(s)
+
+		return a
+	},
+
+	// inc counts a range's index from one, as a person counts.
+	"inc": func(i int) int { return i + 1 },
 }
 
 // symbols are the currencies whose sign a reader expects in front. Any other

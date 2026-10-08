@@ -14,12 +14,14 @@ import (
 
 	"github.com/jroedel/reconcile/app/domain/adminapp"
 	"github.com/jroedel/reconcile/app/domain/authapp"
+	"github.com/jroedel/reconcile/app/domain/categoryapp"
 	"github.com/jroedel/reconcile/app/domain/homeapp"
 	"github.com/jroedel/reconcile/app/domain/ledgerapp"
 	"github.com/jroedel/reconcile/app/domain/tenancyapp"
 	"github.com/jroedel/reconcile/app/sdk/health"
 	"github.com/jroedel/reconcile/app/sdk/mid"
 	"github.com/jroedel/reconcile/app/sdk/page"
+	"github.com/jroedel/reconcile/business/domain/category/categorybus"
 	"github.com/jroedel/reconcile/business/domain/event/eventbus"
 	"github.com/jroedel/reconcile/business/domain/file/filebus"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
@@ -34,7 +36,7 @@ import (
 // renderer rather than this package, because the strings it reads out of
 // these are registered for translation before anything is served.
 func Templates() []fs.FS {
-	return []fs.FS{homeapp.Templates, authapp.Templates, tenancyapp.Templates, ledgerapp.Templates, adminapp.Templates}
+	return []fs.FS{homeapp.Templates, authapp.Templates, tenancyapp.Templates, ledgerapp.Templates, categoryapp.Templates, adminapp.Templates}
 }
 
 // Config is everything the routes need, gathered by main and passed in.
@@ -48,6 +50,8 @@ type Config struct {
 	History  *eventbus.Business
 	Files    *filebus.Business
 	Ledger   *ledgerbus.Business
+
+	Categories *categorybus.Business
 
 	// BaseURL is the public origin. Empty means sign-in is off: its routes
 	// are not mounted, because a code sent from a site that cannot say where
@@ -71,8 +75,8 @@ const maxBody = 64 << 10
 // New builds the handler.
 func New(cfg Config) (http.Handler, error) {
 	if cfg.Log == nil || cfg.DB == nil || cfg.Render == nil || cfg.Users == nil || cfg.Tenancy == nil || cfg.History == nil ||
-		cfg.Files == nil || cfg.Ledger == nil {
-		return nil, errors.New("the muxer needs a logger, a database, a renderer, and the users, organizations, history, files and ledger")
+		cfg.Files == nil || cfg.Ledger == nil || cfg.Categories == nil {
+		return nil, errors.New("the muxer needs a logger, a database, a renderer, and the users, organizations, history, files, ledger and categories")
 	}
 
 	mux := http.NewServeMux()
@@ -117,6 +121,15 @@ func New(cfg Config) (http.Handler, error) {
 			Files:   cfg.Files,
 			Users:   cfg.Users,
 			Render:  cfg.Render,
+
+			Categories: cfg.Categories,
+		}, guard)
+
+		categoryapp.Routes(mux, categoryapp.Config{
+			Log:        cfg.Log,
+			Categories: cfg.Categories,
+			Tenancy:    cfg.Tenancy,
+			Render:     cfg.Render,
 		}, guard)
 
 		adminapp.Routes(mux, adminapp.Config{
