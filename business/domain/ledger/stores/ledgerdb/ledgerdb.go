@@ -36,6 +36,7 @@ var Expected = sqldb.Expected{
 	"transactions": {"id", "account_id", "statement_id", "posted_on", "description", "amount", "balance",
 		"external_id", "hash", "occurrence"},
 	"csv_mappings": {"account_id", "fingerprint", "mapping", "updated_by", "updated_at"},
+	"splits":       {"id", "transaction_id", "position", "amount", "category_id", "project_id", "memo"},
 }
 
 // Init creates the tables. After tenancydb and filedb, which they reference.
@@ -100,6 +101,50 @@ CREATE TABLE IF NOT EXISTS csv_mappings (
 		return fmt.Errorf("creating the ledger tables: %w", err)
 	}
 
+	return initSplits(ctx, db)
+}
+
+// initSplits creates the splits table, which arrived after the first
+// statements were imported, and gives every transaction without parts one
+// for its whole amount.
+//
+// The second statement runs on every start and finds nothing to do after
+// the first: Import makes a transaction's split with it. It is here, rather
+// than once, so that it cannot be forgotten -- a transaction with no parts
+// is money in no category and no project, and missing from every total.
+// The identifier is sixteen random bytes in lower-case hex, which is what
+// types.NewID makes.
+//
+// A split goes with its transaction (ON DELETE CASCADE): removing a
+// statement removes how its transactions were sorted.
+func initSplits(ctx context.Context, db *sql.DB) error {
+	const schema = `
+CREATE TABLE IF NOT EXISTS splits (
+    id             TEXT    PRIMARY KEY,
+    transaction_id TEXT    NOT NULL REFERENCES transactions (id) ON DELETE CASCADE,
+    position       INTEGER NOT NULL,
+    amount         INTEGER NOT NULL,
+    category_id    TEXT    REFERENCES categories (id),
+    project_id     TEXT    REFERENCES projects (id),
+    memo           TEXT    NOT NULL DEFAULT ''
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS splits_transaction ON splits (transaction_id, position);
+CREATE INDEX IF NOT EXISTS splits_project ON splits (project_id) WHERE project_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS splits_category ON splits (category_id) WHERE category_id IS NOT NULL;
+`
+
+	if _, err := db.ExecContext(ctx, schema); err != nil {
+		return fmt.Errorf("creating the splits table: %w", err)
+	}
+
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO splits (id, transaction_id, position, amount)
+SELECT lower(hex(randomblob(16))), t.id, 0, t.amount FROM transactions t
+WHERE NOT EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id)`); err != nil {
+		return fmt.Errorf("giving every transaction its part: %w", err)
+	}
+
 	return nil
 }
 
@@ -155,6 +200,10 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			t.ID.String(), t.AccountID.String(), st.ID.String(), t.PostedOn.String(), t.Description, int64(t.Amount),
 			nullAmount(t.Balance, t.HasBalance), t.ExternalID, t.Hash, t.Occurrence); err != nil {
 			return ledgerbus.Statement{}, fmt.Errorf("storing a transaction: %w", err)
+		}
+
+		if err := insertSplits(ctx, tx, t.Splits); err != nil {
+			return ledgerbus.Statement{}, err
 		}
 
 		st.Added++
@@ -377,8 +426,9 @@ func (s *Store) Months(ctx context.Context, account types.ID) ([]ledgerbus.Month
 SELECT substr(posted_on, 1, 7), count(*),
        coalesce(sum(CASE WHEN amount > 0 THEN amount END), 0),
        coalesce(sum(CASE WHEN amount < 0 THEN amount END), 0),
-       min(posted_on)
-FROM transactions WHERE account_id = ?
+       min(posted_on),
+       sum(EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id AND s.category_id IS NULL))
+FROM transactions t WHERE account_id = ?
 GROUP BY 1 ORDER BY 1 DESC`, account.String())
 	if err != nil {
 		return nil, fmt.Errorf("reading the months: %w", err)
@@ -394,7 +444,7 @@ GROUP BY 1 ORDER BY 1 DESC`, account.String())
 			earliest string
 		)
 
-		if err := rows.Scan(&m.Month, &m.Count, &in, &outs, &earliest); err != nil {
+		if err := rows.Scan(&m.Month, &m.Count, &in, &outs, &earliest, &m.Unsorted); err != nil {
 			return nil, fmt.Errorf("reading the months: %w", err)
 		}
 
@@ -408,12 +458,55 @@ GROUP BY 1 ORDER BY 1 DESC`, account.String())
 }
 
 // Transactions is an account's transactions posted from from up to but not
-// including to, in the order they were posted and then imported.
+// including to, in the order they were posted and then imported, with their
+// parts.
 func (s *Store) Transactions(ctx context.Context, account types.ID, from, to types.Date) ([]ledgerbus.Transaction, error) {
-	rows, err := s.db.QueryContext(ctx, `
-SELECT id, account_id, statement_id, posted_on, description, amount, balance, external_id, hash, occurrence
-FROM transactions WHERE account_id = ? AND posted_on >= ? AND posted_on < ?
-ORDER BY posted_on, rowid`, account.String(), from.String(), to.String())
+	const where = `account_id = ? AND posted_on >= ? AND posted_on < ?`
+
+	args := []any{account.String(), from.String(), to.String()}
+
+	txs, err := s.transactions(ctx, `SELECT `+transactionColumns+` FROM transactions WHERE `+where+` ORDER BY posted_on, rowid`, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	splits, err := s.splits(ctx, `transaction_id IN (SELECT id FROM transactions WHERE `+where+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range txs {
+		txs[i].Splits = splits[txs[i].ID]
+	}
+
+	return txs, nil
+}
+
+// TransactionByID is one transaction with its parts.
+func (s *Store) TransactionByID(ctx context.Context, id types.ID) (ledgerbus.Transaction, error) {
+	txs, err := s.transactions(ctx, `SELECT `+transactionColumns+` FROM transactions WHERE id = ?`, id.String())
+	if err != nil {
+		return ledgerbus.Transaction{}, err
+	}
+
+	if len(txs) == 0 {
+		return ledgerbus.Transaction{}, ledgerbus.ErrNotFound
+	}
+
+	splits, err := s.splits(ctx, `transaction_id = ?`, id.String())
+	if err != nil {
+		return ledgerbus.Transaction{}, err
+	}
+
+	txs[0].Splits = splits[id]
+
+	return txs[0], nil
+}
+
+const transactionColumns = `id, account_id, statement_id, posted_on, description, amount, balance, external_id, hash, occurrence`
+
+func (s *Store) transactions(ctx context.Context, q string, args ...any) ([]ledgerbus.Transaction, error) {
+	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("reading the transactions: %w", err)
 	}
@@ -450,6 +543,163 @@ ORDER BY posted_on, rowid`, account.String(), from.String(), to.String())
 	}
 
 	return out, rows.Err()
+}
+
+// --- splits -----------------------------------------------------------------
+
+const splitColumns = `id, transaction_id, position, amount, category_id, project_id, memo`
+
+// splits reads the parts matching a condition, by transaction, in order.
+func (s *Store) splits(ctx context.Context, where string, args ...any) (map[types.ID][]ledgerbus.Split, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+splitColumns+` FROM splits WHERE `+where+` ORDER BY transaction_id, position`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("reading the parts: %w", err)
+	}
+	defer rows.Close()
+
+	out := map[types.ID][]ledgerbus.Split{}
+
+	for rows.Next() {
+		sp, err := scanSplit(rows)
+		if err != nil {
+			return nil, err
+		}
+
+		out[sp.TransactionID] = append(out[sp.TransactionID], sp)
+	}
+
+	return out, rows.Err()
+}
+
+func scanSplit(row scanner, extra ...any) (ledgerbus.Split, error) {
+	var (
+		sp                ledgerbus.Split
+		id, tx            string
+		amount            int64
+		category, project sql.NullString
+	)
+
+	if err := row.Scan(append([]any{&id, &tx, &sp.Position, &amount, &category, &project, &sp.Memo}, extra...)...); err != nil {
+		return sp, fmt.Errorf("reading a part: %w", err)
+	}
+
+	var e [4]error
+	sp.ID, e[0] = types.ParseID(id)
+	sp.TransactionID, e[1] = types.ParseID(tx)
+
+	if category.Valid {
+		sp.CategoryID, e[2] = types.ParseID(category.String)
+	}
+
+	if project.Valid {
+		sp.ProjectID, e[3] = types.ParseID(project.String)
+	}
+
+	if err := errors.Join(e[:]...); err != nil {
+		return sp, fmt.Errorf("a stored part is unreadable: %w", err)
+	}
+
+	sp.Amount = money.Amount(amount)
+
+	return sp, nil
+}
+
+func insertSplits(ctx context.Context, tx *sql.Tx, splits []ledgerbus.Split) error {
+	for _, sp := range splits {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO splits (`+splitColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			sp.ID.String(), sp.TransactionID.String(), sp.Position, int64(sp.Amount),
+			nullID(sp.CategoryID), nullID(sp.ProjectID), sp.Memo); err != nil {
+			return fmt.Errorf("storing a part: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// ReplaceSplits writes a transaction's new parts in place of the old, and
+// the history, in one transaction.
+func (s *Store) ReplaceSplits(ctx context.Context, transactionID types.ID, splits []ledgerbus.Split, events []eventbus.Event) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("starting a change: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM splits WHERE transaction_id = ?`, transactionID.String()); err != nil {
+		return fmt.Errorf("replacing the parts: %w", err)
+	}
+
+	if err := insertSplits(ctx, tx, splits); err != nil {
+		return err
+	}
+
+	for _, ev := range events {
+		if err := eventdb.Insert(ctx, tx, ev); err != nil {
+			return err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("saving a change: %w", err)
+	}
+
+	return nil
+}
+
+// ProjectLines is every part in a project, with what a page shows about
+// its transaction, account and category, oldest first.
+//
+// Joined across the tenancy and category tables rather than asked of their
+// domains line by line: a project's book is read whole, and a line knows
+// nothing more about its account than the name and currency.
+func (s *Store) ProjectLines(ctx context.Context, projectID types.ID) ([]ledgerbus.ProjectLine, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT s.id, s.transaction_id, s.position, s.amount, s.category_id, s.project_id, s.memo,
+       t.posted_on, t.description, a.id, a.name, a.currency, coalesce(c.name, '')
+FROM splits s
+JOIN transactions t ON t.id = s.transaction_id
+JOIN accounts a ON a.id = t.account_id
+LEFT JOIN categories c ON c.id = s.category_id
+WHERE s.project_id = ?
+ORDER BY t.posted_on, t.rowid, s.position`, projectID.String())
+	if err != nil {
+		return nil, fmt.Errorf("reading the project's book: %w", err)
+	}
+	defer rows.Close()
+
+	var out []ledgerbus.ProjectLine
+
+	for rows.Next() {
+		var (
+			l               ledgerbus.ProjectLine
+			posted, account string
+		)
+
+		l.Split, err = scanSplit(rows, &posted, &l.Description, &account, &l.AccountName, &l.Currency, &l.CategoryName)
+		if err != nil {
+			return nil, err
+		}
+
+		var e1, e2 error
+		l.PostedOn, e1 = types.ParseDate(posted)
+		l.AccountID, e2 = types.ParseID(account)
+
+		if err := errors.Join(e1, e2); err != nil {
+			return nil, fmt.Errorf("a project's line is unreadable: %w", err)
+		}
+
+		out = append(out, l)
+	}
+
+	return out, rows.Err()
+}
+
+func nullID(id types.ID) any {
+	if id.Zero() {
+		return nil
+	}
+
+	return id.String()
 }
 
 // --- mappings -----------------------------------------------------------------

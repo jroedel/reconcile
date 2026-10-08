@@ -17,8 +17,19 @@
 {{- else}}{{t "Something went wrong at our end. Please try again in a few minutes."}}
 {{- end}}</p>{{end}}{{end}}
 
+{{define "parts-problem"}}{{if .Problem}}<p class="notice" role="alert">
+{{- if eq .Problem "amount"}}{{t "Part {n} needs an amount, such as 12.50." "n" .Part}}
+{{- else if eq .Problem "sum"}}{{t "The parts must add up to the whole transaction. Check the amounts."}}
+{{- else if eq .Problem "count"}}{{t "A transaction needs at least one part, and at most {max}." "max" 20}}
+{{- else if eq .Problem "category"}}{{t "Part {n} has a category that is not on this account's list. Choose another." "n" .Part}}
+{{- else if eq .Problem "project"}}{{t "Part {n} is in a project you do not keep the books of. Ask one of its owners for the bookkeeper role." "n" .Part}}
+{{- else if eq .Problem "memo"}}{{t "The memo on part {n} is too long." "n" .Part}}
+{{- else}}{{t "Something went wrong at our end. Please try again in a few minutes."}}
+{{- end}}</p>{{end}}{{end}}
+
 {{define "done"}}{{if .}}<p class="notice ok" role="status">
-{{- if eq . "removed"}}{{t "The statement and the transactions it brought in were removed. The file can be imported again."}}
+{{- if eq . "sorted"}}{{t "Saved."}}
+{{- else if eq . "removed"}}{{t "The statement and the transactions it brought in were removed. The file can be imported again."}}
 {{- end}}</p>{{end}}{{end}}
 
 {{define "warning"}}

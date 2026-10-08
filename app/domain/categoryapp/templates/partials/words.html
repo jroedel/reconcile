@@ -1,0 +1,12 @@
+{{define "problem"}}{{if .}}<p class="notice" role="alert">
+{{- if eq . "name"}}{{t "Give the category a name, of at most {max} characters." "max" 60}}
+{{- else if eq . "duplicate"}}{{t "The list already has a category with that name. If it is archived, bring it back instead."}}
+{{- else}}{{t "Something went wrong at our end. Please try again in a few minutes."}}
+{{- end}}</p>{{end}}{{end}}
+
+{{define "done"}}{{if .}}<p class="notice ok" role="status">
+{{- if eq . "added"}}{{t "Added."}}
+{{- else if eq . "renamed"}}{{t "Renamed, everywhere it is used."}}
+{{- else if eq . "archived"}}{{t "Archived. It is off the choices, and stays on the transactions that have it."}}
+{{- else if eq . "restored"}}{{t "Brought back."}}
+{{- end}}</p>{{end}}{{end}}

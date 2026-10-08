@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jroedel/reconcile/business/domain/category/categorybus"
+	"github.com/jroedel/reconcile/business/domain/category/stores/categorydb"
 	"github.com/jroedel/reconcile/business/domain/event/eventbus"
 	"github.com/jroedel/reconcile/business/domain/event/stores/eventdb"
 	"github.com/jroedel/reconcile/business/domain/file/filebus"
@@ -40,6 +42,8 @@ type world struct {
 	files   *filebus.Business
 	users   *userdb.Store
 	history *eventbus.Business
+	cats    *categorybus.Business
+	db      *sql.DB
 	tick    int
 }
 
@@ -55,7 +59,7 @@ func newWorld(t *testing.T) *world {
 
 	t.Cleanup(func() { db.Close() })
 
-	for _, init := range []func(context.Context, *sql.DB) error{userdb.Init, eventdb.Init, tenancydb.Init, filedb.Init, ledgerdb.Init} {
+	for _, init := range []func(context.Context, *sql.DB) error{userdb.Init, eventdb.Init, tenancydb.Init, filedb.Init, categorydb.Init, ledgerdb.Init} {
 		if err := init(t.Context(), db); err != nil {
 			t.Fatal(err)
 		}
@@ -70,14 +74,17 @@ func newWorld(t *testing.T) *world {
 	users := userdb.NewStore(db)
 	ten := tenancybus.NewBusiness(log, tenancydb.NewStore(db), userbus.NewBusiness(log, users))
 	files := filebus.NewBusiness(log, filedb.NewStore(db), bytes)
+	cats := categorybus.NewBusiness(log, categorydb.NewStore(db), ten)
 
 	return &world{
 		t:       t,
-		ledger:  ledgerbus.NewBusiness(log, ledgerdb.NewStore(db), ten, files),
+		ledger:  ledgerbus.NewBusiness(log, ledgerdb.NewStore(db), ten, files, cats),
 		ten:     ten,
 		files:   files,
 		users:   users,
 		history: eventbus.NewBusiness(eventdb.NewStore(db)),
+		cats:    cats,
+		db:      db,
 	}
 }
 
@@ -471,5 +478,14 @@ func TestAPDFIsSaidToComeLater(t *testing.T) {
 
 	if _, err := w.ledger.Prepare(t.Context(), me, acct, f.ID, nil); !errors.Is(err, ledgerbus.ErrPDF) {
 		t.Errorf("err = %v", err)
+	}
+}
+
+func (w *world) grant(by types.ID, scope types.Scope, addr string, role tenancybus.Role) {
+	w.t.Helper()
+
+	e, _ := types.ParseEmail(addr)
+	if _, _, err := w.ten.Grant(w.t.Context(), now, by, scope, e, role); err != nil {
+		w.t.Fatal(err)
 	}
 }

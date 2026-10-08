@@ -90,11 +90,15 @@ func NewStore(db *sql.DB) *Store { return &Store{db: db} }
 var _ eventbus.Storer = (*Store)(nil)
 
 // ForScope is the newest events on one scope, newest first.
+//
+// Ties on the millisecond are broken by the order the rows were written
+// (rowid), not by the random ID: a change that writes two lines at once, or
+// two changes in one millisecond, read back in the order they happened.
 func (s *Store) ForScope(ctx context.Context, scope types.Scope, limit int) ([]eventbus.Event, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT id, actor_id, scope_kind, scope_id, action, detail, at
 FROM events WHERE scope_kind = ? AND scope_id = ?
-ORDER BY at DESC, id DESC LIMIT ?`, string(scope.Kind), scope.ID.String(), limit)
+ORDER BY at DESC, rowid DESC LIMIT ?`, string(scope.Kind), scope.ID.String(), limit)
 	if err != nil {
 		return nil, fmt.Errorf("reading the history: %w", err)
 	}

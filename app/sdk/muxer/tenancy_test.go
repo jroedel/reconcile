@@ -113,6 +113,9 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 	gets := []string{
 		e.org, e.account, e.project, e.ownAccount, e.ownProject,
 		"/accounts/new?org=" + orgID, "/projects/new?org=" + orgID,
+		e.org + "/categories", e.ownAccount + "/categories", e.account + "/categories",
+		e.project + "/book", e.ownProject + "/book",
+		e.account + "/transactions", e.ownAccount + "/transactions",
 	}
 
 	type write struct {
@@ -128,6 +131,8 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		{e.orgGrant + "/remove", nil},
 		{"/accounts", url.Values{"org": {orgID}, "name": {"Mine now"}, "kind": {"cash"}}},
 		{"/projects", url.Values{"org": {orgID}, "name": {"Mine now"}}},
+		{e.org + "/categories", url.Values{"name": {"Mine now"}}},
+		{e.ownAccount + "/categories", url.Values{"name": {"Mine now"}}},
 	}
 
 	for _, scope := range []string{e.account, e.project, e.ownAccount, e.ownProject} {

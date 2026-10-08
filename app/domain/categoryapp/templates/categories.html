@@ -1,0 +1,44 @@
+{{define "title"}}{{t "Categories"}} · {{.Data.OwnerName}}{{end}}
+{{define "content"}}{{$v := .Data}}
+<p class="crumbs"><a href="{{$v.OwnerPath}}">{{$v.OwnerName}}</a></p>
+<h1>{{t "Categories"}}</h1>
+<p class="hint">{{t "What each part of a transaction is for. The same list for every account here, so that the accountant's package adds them up."}}</p>
+{{template "done" $v.Done}}
+{{template "problem" $v.Problem}}
+
+<section class="card">
+{{if $v.Categories}}
+<ul class="list">
+{{range $v.Categories}}<li>
+{{if $v.CanBookkeep}}
+<form method="post" action="/categories/{{.ID}}/rename" class="inline">
+  <label class="visually-hidden" for="name-{{.ID}}">{{t "Name"}}</label>
+  <input id="name-{{.ID}}" name="name" type="text" required maxlength="60" value="{{.Name}}">
+  <button type="submit" class="quiet">{{t "Rename"}}</button>
+</form>
+<form method="post" action="/categories/{{.ID}}/archive" class="inline">
+  <input type="hidden" name="archived" value="1"><button type="submit" class="link">{{t "Archive"}}</button>
+</form>
+{{else}}{{.Name}}{{end}}
+</li>
+{{end}}</ul>
+{{else}}<p class="hint">{{t "No categories yet."}}</p>{{end}}
+
+{{if $v.CanBookkeep}}
+<form method="post" action="{{$v.Path}}">
+  <div class="field">
+    <label for="name">{{t "Add a category"}}</label>
+    <input id="name" name="name" type="text" required maxlength="60" value="{{$v.Name}}" placeholder="{{t "Utilities"}}">
+  </div>
+  <button type="submit">{{t "Add"}}</button>
+</form>
+{{end}}
+
+{{if $v.Archived}}<details><summary>{{t "Archived categories"}}</summary>
+<p class="hint">{{t "Off the choices for new transactions, and still on the ones that have them."}}</p>
+<ul class="list">
+{{range $v.Archived}}<li>{{.Name}}
+{{if $v.CanBookkeep}}<form method="post" action="/categories/{{.ID}}/archive" class="inline"><input type="hidden" name="archived" value="0"><button type="submit" class="link">{{t "Bring it back"}}</button></form>{{end}}
+</li>{{end}}</ul></details>{{end}}
+</section>
+{{end}}
