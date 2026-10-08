@@ -55,8 +55,8 @@ type translatingSite struct {
 	sent  *mail.Recorder
 	users *userbus.Business
 
-	// admin is the site administrator, signed in; the one who translates
-	// until there are translators (docs/translations.md, PR 2).
+	// admin is the site administrator, signed in, who translates every
+	// language without being named (review_test.go names the others).
 	admin *browser
 }
 

@@ -207,6 +207,11 @@ code.key {
 
 .crumbs { margin: 0 0 -0.5rem; font-size: 0.9rem; }
 
+/* A row of links that pick what the page shows: a language, a queue. The
+ * one in force is marked as the current page rather than by colour alone. */
+.tabs { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; margin-bottom: var(--gap); }
+.tabs a[aria-current] { font-weight: 600; text-decoration: none; }
+
 .list, .people, .history { list-style: none; padding: 0; margin: 0 0 var(--gap); }
 .list li, .people li { padding: 0.6rem 0; border-bottom: 1px solid var(--line); }
 .list li:last-child, .people li:last-child { border-bottom: 0; }

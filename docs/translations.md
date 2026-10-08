@@ -99,7 +99,9 @@ All in existing stores except one new table; every later column arrives as
 
 ## The API
 
-Bearer `rcn_…` only; a cookie is never read. JSON, 64 KB a request.
+Bearer `rcn_…` only; a cookie is never read. JSON, up to 1 MB a request:
+a full batch of 200 with the English beside each is past the 64 KB a form
+is allowed.
 
 - `GET /api/v1`: the index: every endpoint, its method, its parameters,
   and its MCP tool name.
@@ -117,16 +119,30 @@ outcome.
 
 ## The pages
 
-- **Profile**: "Keys for Claude" (administrator and translators only): make
-  one with a name, see its secret once, see when each was last used, revoke.
+- **`/account/keys`**, linked from the account page (administrator and
+  translators only, a 404 to anybody else): make a key with a name, see its
+  secret once, see when each was last used, revoke.
   A connection made through claude.ai is listed here too, by its client's
   name, and revoked the same way.
-- **`/translations`** (administrator and translators): one language at a time,
-  the drafts to check first, 50 a page, each with the English, the
-  translation, who wrote it, the pages it is on and any note, and the three
-  actions. Counts at the top: pending, to check, sent back, approved. A
-  translator sees only their languages.
+- **`/translations?in=es`** (administrator and translators): one language
+  at a time, the drafts to check first, 50 a page, each with the English,
+  the translation, who wrote it, the pages it is on and any note. The
+  language is `in`, not `lang`, because `?lang=` anywhere on the site is the
+  reader choosing the language of the pages. Counts at the top: to check,
+  sent back, approved, not translated yet. A translator sees only their
+  languages. Each string is one form with the words in a box:
+  - *Keep these words*: as shown, approved; changed first, approved as the
+    person's. A string nobody has translated is translated by hand the same
+    way.
+  - *Send back to Claude*, with a note.
+  - *All N above look right*, at the foot of the drafts to check.
+
+  Every action carries the words the page showed, and is refused when they
+  changed meanwhile (Claude may write while somebody reads): approving
+  words nobody read is the one thing the screen must not do.
 - **Admin page**: translators: add by email address and language, remove.
+  Only somebody who has signed up; removing the last language closes their
+  review screen and their keys at once.
 - **OAuth consent** (`/oauth/authorize`): "claude.ai wants to translate
   Reconcile as you", for the administrator and translators; anyone else is
   told they cannot connect.

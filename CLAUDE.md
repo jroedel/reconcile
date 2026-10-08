@@ -141,7 +141,8 @@ and a project's book; and reconciling, which locks a period), `receipt`
 project's inbox until a person matches them) and `export` (the
 accountant's zip, read across the others and stored nowhere). The pages
 over them are `homeapp`, `authapp`, `tenancyapp`, `ledgerapp`,
-`categoryapp`, `receiptapp`, `exportapp` and `adminapp`; a program's ways
+`categoryapp`, `receiptapp`, `exportapp`, `adminapp` and `translationapp`
+(the review screen); a program's ways
 in are `apiapp` (`/api/v1`, translations only), `mcpapp` (the same as tools
 on `/mcp`) and `oauthapp` (how Claude on claude.ai gets a key). The rest is
 where the plan's domains go when they arrive.
@@ -246,7 +247,8 @@ The English is the key, so it must be a literal: the renderer reads every
 `t` out of the parse trees at startup and refuses to start on one it cannot
 read (`app/sdk/page/extract.go`). Each string is registered in `ui_strings`
 with a pending Spanish and Portuguese translation, which Claude fills
-through an API that arrives later (`docs/plan.md`, step 9). A sentence is
+through the translation API and a translator looks over at `/translations`
+(`docs/translations.md`). A sentence is
 translated whole; never build one by joining fragments, and never put markup
 inside one — two strings and the link between them.
 

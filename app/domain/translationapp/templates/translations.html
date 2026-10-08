@@ -1,0 +1,84 @@
+{{define "title"}}{{t "Translations"}}{{end}}
+{{define "content"}}{{with .Data}}{{$p := .Place}}
+<p class="crumbs"><a href="/account">{{t "Your account"}}</a></p>
+<h1>{{t "Translations"}}</h1>
+<p>{{t "Every translation here is already on the pages. Look them over: keep the words, change them, or send them back to Claude with a note saying what is wrong."}}</p>
+
+{{if gt (len .Langs) 1}}<nav class="tabs" aria-label="{{t "Language"}}">
+{{range .Langs}}<a href="/translations?in={{.}}" lang="{{.}}"{{if eq . $p.Lang}} aria-current="page"{{end}}>{{.Name}}</a>
+{{end}}</nav>{{end}}
+
+<nav class="tabs" aria-label="{{t "Which translations"}}">
+{{range .Tabs}}<a href="/translations?in={{$p.Lang}}&amp;show={{.Queue}}"{{if eq .Queue $p.Queue}} aria-current="page"{{end}}>
+{{- if eq .Queue "check"}}{{t "To check ({count})" "count" .Count}}
+{{- else if eq .Queue "sent-back"}}{{t "Sent back ({count})" "count" .Count}}
+{{- else if eq .Queue "approved"}}{{t "Approved ({count})" "count" .Count}}
+{{- else}}{{t "Not translated yet ({count})" "count" .Count}}{{end -}}
+</a>
+{{end}}</nav>
+
+{{if eq .Done "kept"}}<p class="notice ok" role="status">{{t "Kept."}}</p>
+{{else if eq .Done "sent-back"}}<p class="notice ok" role="status">{{t "Sent back. Claude sees your note the next time it is asked to translate."}}</p>
+{{else if eq .Done "approved"}}<p class="notice ok" role="status">{{t "{count} approved. Any that changed while you were reading are still here." "count" .Count}}</p>{{end}}
+{{if eq .Problem "gone"}}<p class="notice" role="alert">{{t "That string is no longer on any page, so there is nothing to translate."}}</p>{{end}}
+
+{{if .Items}}
+<ul class="list">
+{{range $i, $it := .Items}}{{with $it}}
+<li id="t-{{$i}}">
+  <p><strong>{{.EN}}</strong>{{if .Context}} <span class="badge">{{.Context}}</span>{{end}}</p>
+  <p class="hint">{{t "On: {pages}" "pages" .On}}
+  {{- if .Text}} · {{if eq .Origin "claude"}}{{t "written by Claude"}}{{else if .By}}{{t "written by {name}" "name" .By}}{{end}}{{end}}</p>
+  {{if .Note}}<p class="notice">{{t "Sent back: {note}" "note" .Note}}</p>{{end}}
+  {{if .Failed}}<p class="notice" role="alert">
+  {{- if eq .Problem "changed"}}{{t "These words changed while you were reading them. Here they are as they are now: look again."}}
+  {{- else if eq .Problem "note"}}{{t "Say in a few words what is wrong, at most {max} characters, so Claude can do better." "max" 500}}
+  {{- else if eq .Problem "nothing"}}{{t "There is nothing here to send back yet. Write a translation, or leave it for Claude."}}
+  {{- else if eq .Problem "empty"}}{{t "Write a translation, or leave it for Claude."}}
+  {{- else if eq .Problem "length"}}{{t "That is far longer than the English. Say it more briefly."}}
+  {{- else if eq .Problem "placeholders"}}{{t "Keep every word in curly brackets exactly as the English has it, untranslated: the page fills it in."}}
+  {{- else if eq .Problem "markup"}}{{t "A translation is plain text: take out the < and >."}}
+  {{- else}}{{t "Something went wrong at our end. Please try again in a few minutes."}}{{end}}</p>{{end}}
+  <form method="post" action="/translations/review">
+    <input type="hidden" name="in" value="{{$p.Lang}}">
+    <input type="hidden" name="show" value="{{$p.Queue}}">
+    <input type="hidden" name="from" value="{{$p.From}}">
+    <input type="hidden" name="context" value="{{.Context}}">
+    <input type="hidden" name="en" value="{{.EN}}">
+    <input type="hidden" name="shown" value="{{.Text}}">
+    <div class="field">
+      <label for="text-{{$i}}" class="hint">{{t "The words on the pages"}}</label>
+      <textarea id="text-{{$i}}" name="text" rows="2" lang="{{$p.Lang}}">{{.Typed}}</textarea>
+    </div>
+    <button type="submit" name="do" value="keep">{{if .Text}}{{t "Keep these words"}}{{else}}{{t "Save"}}{{end}}</button>
+    {{if .Text}}
+    <details{{if or .TypedNote (eq .Problem "note")}} open{{end}}>
+      <summary>{{t "Send back to Claude"}}</summary>
+      <div class="field">
+        <label for="note-{{$i}}">{{t "What is wrong with it"}}</label>
+        <input id="note-{{$i}}" name="note" type="text" maxlength="500" value="{{.TypedNote}}">
+      </div>
+      <button type="submit" name="do" value="send-back" class="quiet">{{t "Send back"}}</button>
+    </details>
+    {{end}}
+  </form>
+</li>
+{{end}}{{end}}
+</ul>
+
+{{if eq $p.Queue "check"}}
+<form method="post" action="/translations/approve-all" class="card">
+  <input type="hidden" name="in" value="{{$p.Lang}}">
+  <input type="hidden" name="show" value="{{$p.Queue}}">
+  {{range .Items}}<input type="hidden" name="context" value="{{.Context}}"><input type="hidden" name="en" value="{{.EN}}"><input type="hidden" name="text" value="{{.Text}}">
+  {{end}}
+  <button type="submit">{{t "All {count} above look right" "count" (len .Items)}}</button>
+  <p class="hint">{{t "Approves them as they are shown here. Any you changed but did not keep are approved as they were."}}</p>
+</form>
+{{end}}
+
+<p>{{with .Before}}<a href="{{.}}">{{t "Earlier ones"}}</a>{{end}}{{if and .Before .Next}} · {{end}}{{with .Next}}<a href="{{.}}">{{t "Later ones"}}</a>{{end}}</p>
+{{else}}
+<p class="hint">{{if eq $p.Queue "check"}}{{t "Nothing to check. When Claude translates more, it is here."}}{{else}}{{t "None."}}{{end}}</p>
+{{end}}
+{{end}}{{end}}

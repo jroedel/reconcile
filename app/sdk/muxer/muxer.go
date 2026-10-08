@@ -23,6 +23,7 @@ import (
 	"github.com/jroedel/reconcile/app/domain/oauthapp"
 	"github.com/jroedel/reconcile/app/domain/receiptapp"
 	"github.com/jroedel/reconcile/app/domain/tenancyapp"
+	"github.com/jroedel/reconcile/app/domain/translationapp"
 	"github.com/jroedel/reconcile/app/sdk/health"
 	"github.com/jroedel/reconcile/app/sdk/mid"
 	"github.com/jroedel/reconcile/app/sdk/page"
@@ -45,7 +46,7 @@ import (
 // renderer rather than this package, because the strings it reads out of
 // these are registered for translation before anything is served.
 func Templates() []fs.FS {
-	return []fs.FS{homeapp.Templates, authapp.Templates, tenancyapp.Templates, ledgerapp.Templates, categoryapp.Templates, receiptapp.Templates, exportapp.Templates, adminapp.Templates, oauthapp.Templates}
+	return []fs.FS{homeapp.Templates, authapp.Templates, tenancyapp.Templates, ledgerapp.Templates, categoryapp.Templates, receiptapp.Templates, exportapp.Templates, adminapp.Templates, oauthapp.Templates, translationapp.Templates}
 }
 
 // Config is everything the routes need, gathered by main and passed in.
@@ -180,6 +181,15 @@ func New(cfg Config) (http.Handler, error) {
 			Users:  cfg.Users,
 			Names:  cfg.Tenancy,
 			Render: cfg.Render,
+
+			Translators: cfg.Translations,
+		}, guard)
+
+		translationapp.Routes(mux, translationapp.Config{
+			Log:          cfg.Log,
+			Translations: cfg.Translations,
+			Users:        cfg.Users,
+			Render:       cfg.Render,
 		}, guard)
 
 		// How Claude on claude.ai gets a key: a translator agrees on a page

@@ -23,6 +23,37 @@
 </ul>
 </section>
 
+<section class="card" id="translators">
+<h2>{{t "Translators"}}</h2>
+<p>{{t "A translator looks over the Spanish or Portuguese on every page, and may connect Claude to write it. You do both for every language already."}}</p>
+{{if eq .Problem "translator-email"}}<p class="notice" role="alert">{{t "That does not look like an email address. Check for a typo."}}</p>
+{{else if eq .Problem "translator-unknown"}}<p class="notice" role="alert">{{t "Nobody has signed up with that address. Ask them to sign up first, then add them here."}}</p>
+{{else if eq .Problem "translator-lang"}}<p class="notice" role="alert">{{t "Choose Spanish or Portuguese."}}</p>{{end}}
+{{if .Translators}}<ul class="people">
+{{range .Translators}}<li>
+  <div class="who-line"><strong>{{.Who}}</strong> <span class="badge" lang="{{.Lang}}">{{.Lang.Name}}</span></div>
+  <form method="post" action="/admin/translators/{{.UserID}}/{{.Lang}}/remove" class="inline">
+    <button type="submit" class="quiet">{{t "Remove"}}</button>
+  </form>
+</li>
+{{end}}</ul>
+{{else}}<p class="hint">{{t "None yet."}}</p>{{end}}
+<form method="post" action="/admin/translators">
+  <div class="field">
+    <label for="translator-email">{{t "Email address"}}</label>
+    <input id="translator-email" name="email" type="email" required autocomplete="off" spellcheck="false" value="{{.Email}}">
+  </div>
+  <div class="field">
+    <label for="translator-lang">{{t "Language"}}</label>
+    <select id="translator-lang" name="lang">
+      {{range .Langs}}<option value="{{.}}" lang="{{.}}">{{.Name}}</option>
+      {{end}}
+    </select>
+  </div>
+  <button type="submit">{{t "Add a translator"}}</button>
+</form>
+</section>
+
 <section class="card">
 <h2>{{t "Organizations"}}</h2>
 {{if .Orgs}}<ul class="list">{{range .Orgs}}<li>{{.Name}}{{if .Archived}} <span class="badge">{{t "archived"}}</span>{{end}}</li>{{end}}</ul>
