@@ -197,7 +197,7 @@ Owners, bookkeepers and accountants can download it (the Export permission). It 
 7. **Receipts.** Multi-file upload (direct and inbox), receipt viewer, attach and detach, match suggestions (same amount within ±5 days, from the accounts the person may attach receipts on) on the waiting list and the transaction page. Uploads stream part by part, 20 MB a file, 20 files and 120 MB a request, ten minutes. Thumbnails wait for step 9; pages show the photo itself.
 8. **Reconcile and export.** In two pull requests: first the month-by-month page, the statement reconcile screen, and locking and reopening (audited); then the export zip (`exportbus`, `exportapp`).
 9. **Later, separately planned:**
-   - The translations API, an MCP tool for Claude, and a review screen; then ES/PT go live
+   - The translations API, an MCP tool for Claude, and a review screen; then ES/PT go live (planned in `docs/translations.md`)
    - PDF statements
    - Budgets per project and category
    - Categorization rules and suggestions (eumaeus `categorizebus`)
