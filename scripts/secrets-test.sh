@@ -129,6 +129,10 @@ check "a quote and a backslash in the password are escaped" \
 check "the port is a bare number, and defaults to 587" \
 	grep -qx 'port = 587' "$TMP/runtime.toml"
 
+SECRETS_ENV="$TMP/runtime.env" "$SECRETS" render local > "$TMP/runtime-local.toml"
+check "a local config has neither production's mail nor its bootstrap secret" \
+	bash -c '! grep -qE "^\[(auth|mail)\]|abcdefghij|smtp.example" "$0"' "$TMP/runtime-local.toml"
+
 # The host's own Exim, which is what the example file suggests: no account.
 {
 	cat "$SECRETS_ENV"
@@ -326,6 +330,28 @@ SECRETS_ENV="$TMP/messy.env" "$SECRETS" push > "$TMP/out" 2>&1 && pushed=yes || 
 check "a value GitHub never shows is still a failure" test "$pushed" = no
 check "which names what was sent and what GitHub has" said "sent 14, GitHub has 13"
 rm -f "$TMP/gh-stale"
+
+echo
+echo "make run on a fresh clone"
+# A copy of the repository's Makefile and scripts, with a secrets.env and no
+# config.toml: the config target makes one, and leaves an existing one be.
+mkdir -p "$TMP/clone/scripts"
+cp "$REPO_DIR/Makefile" "$TMP/clone/"
+cp "$SECRETS" "$REPO_DIR/scripts/env.sh" "$TMP/clone/scripts/"
+cp "$SECRETS_ENV" "$TMP/clone/secrets.env"
+
+SECRETS_ENV="$TMP/clone/secrets.env" make -s -C "$TMP/clone" config.toml > "$TMP/out" 2>&1 || true
+check "config.toml is made from secrets.env" grep -q '^addr = "127.0.0.1:18461"$' "$TMP/clone/config.toml"
+check "and only its owner can read it" test "$(stat -c %a "$TMP/clone/config.toml")" = 600
+
+echo '# mine' >> "$TMP/clone/config.toml"
+SECRETS_ENV="$TMP/clone/secrets.env" make -s -C "$TMP/clone" config.toml > /dev/null 2>&1 || true
+check "an existing config.toml is left as it is" grep -qx '# mine' "$TMP/clone/config.toml"
+
+rm -f "$TMP/clone/config.toml" "$TMP/clone/secrets.env"
+make -s -C "$TMP/clone" config.toml > "$TMP/out" 2>&1 && made=yes || made=no
+check "with no secrets.env, it says where to get one, and makes nothing" \
+	bash -c '[ "$0" = no ] && grep -q Bitwarden "$1" && [ ! -e "$2/config.toml" ] && [ ! -e "$2/config.toml.new" ]' "$made" "$TMP/out" "$TMP/clone"
 
 echo
 echo "the deploy key and no other"
