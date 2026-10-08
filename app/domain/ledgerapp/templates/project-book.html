@@ -31,7 +31,7 @@
 <h2>{{t "Every part"}}</h2>
 <div class="scroll"><table class="ledger">
 <thead><tr><th>{{t "Date"}}</th><th>{{t "Description"}}</th><th>{{t "Account"}}</th><th>{{t "Category"}}</th><th class="money">{{t "Amount"}}</th></tr></thead>
-<tbody>{{range $b.Lines}}<tr><td>{{.PostedOn}}</td><td>{{.Description}}{{if .Split.Memo}}<br><span class="hint">{{.Split.Memo}}</span>{{end}}</td><td>{{.AccountName}}</td><td>{{.CategoryName}}</td><td class="money {{if lt .Split.Amount 0}}out{{else}}in{{end}}">{{money .Split.Amount .Currency}}</td></tr>
+<tbody>{{range $b.Lines}}<tr><td>{{.PostedOn}}</td><td>{{.Description}}{{if .Split.Memo}}<br><span class="hint">{{.Split.Memo}}</span>{{end}}{{range index $v.Receipts .Split.TransactionID}}<br><a href="/receipts/{{.ID}}">{{with .Label}}{{.}}{{else}}{{t "Receipt"}}{{end}}</a>{{end}}</td><td>{{.AccountName}}</td><td>{{.CategoryName}}</td><td class="money {{if lt .Split.Amount 0}}out{{else}}in{{end}}">{{money .Split.Amount .Currency}}</td></tr>
 {{end}}</tbody>
 </table></div>
 </section>

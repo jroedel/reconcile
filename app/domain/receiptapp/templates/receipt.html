@@ -1,0 +1,65 @@
+{{define "title"}}{{with .Data.View.Receipt.Label}}{{.}}{{else}}{{t "A receipt"}}{{end}}{{end}}
+{{define "content"}}{{$v := .Data}}{{$r := $v.View.Receipt}}
+{{if $v.HomePath}}<p class="crumbs"><a href="{{$v.HomePath}}/receipts">{{t "Receipts"}} · {{$v.HomeName}}</a></p>{{end}}
+<h1>{{with $r.Label}}{{.}}{{else}}{{t "A receipt"}}{{end}}</h1>
+<p class="hint">{{if $v.UploadedBy}}{{t "Added by {who} on {date}." "who" $v.UploadedBy "date" ($r.CreatedAt.Format "2006-01-02")}}{{else}}{{t "Added on {date}." "date" ($r.CreatedAt.Format "2006-01-02")}}{{end}}</p>
+{{template "done" $v.Done}}
+{{template "problem" $v.Problem}}
+{{if $r.Removed}}<p class="notice">{{t "This receipt was removed from its inbox."}}</p>{{end}}
+
+<section class="card pages">
+{{range $i, $f := $r.Files}}
+<figure>
+{{if or (eq $f.ContentType "image/jpeg") (eq $f.ContentType "image/png") (eq $f.ContentType "image/webp")}}<a href="/receipts/{{$r.ID}}/files/{{$i}}"><img src="/receipts/{{$r.ID}}/files/{{$i}}" alt="{{t "Page {n}" "n" (inc $i)}}"></a>
+{{else}}<p><a class="button quiet" href="/receipts/{{$r.ID}}/files/{{$i}}">{{t "Download {name}" "name" $f.Name}}</a></p>{{end}}
+{{if gt (len $r.Files) 1}}<figcaption class="hint">{{t "Page {n}" "n" (inc $i)}}</figcaption>{{end}}
+</figure>
+{{end}}
+</section>
+
+<section class="card">
+<h2>{{t "Attached to"}}</h2>
+{{if $v.View.Transactions}}
+<ul class="list">
+{{range $v.View.Transactions}}{{$acct := index $v.Accounts .AccountID}}<li>
+{{if index $v.View.Readable .ID}}<a href="/transactions/{{.ID}}">{{.PostedOn}} · {{.Description}}</a> · <span class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $acct.Currency}}</span> · <span class="hint">{{$acct.Name}}</span>
+{{else}}{{.PostedOn}} · {{.Description}} · {{.Amount}}{{end}}
+{{if $v.View.CanEdit}}<form method="post" action="/receipts/{{$r.ID}}/detach" class="inline"><input type="hidden" name="transaction" value="{{.ID}}"><button type="submit" class="link">{{t "Take it off"}}</button></form>{{end}}
+</li>{{end}}
+</ul>
+{{else}}
+<p>{{t "Nothing yet: it is waiting for a match."}}</p>
+{{template "suggestions" (dict "Receipt" $r "Transactions" $v.Suggestions "Accounts" $v.Accounts "Back" (printf "/receipts/%s" $r.ID))}}
+{{end}}
+</section>
+
+{{if $v.View.CanEdit}}
+<section class="card">
+<h2>{{t "Details"}}</h2>
+<p class="hint">{{t "All optional. An amount and a date are what let it be matched to its charge."}}</p>
+<form method="post" action="/receipts/{{$r.ID}}/details">
+  <div class="field"><label for="amount">{{t "Amount"}}</label><input id="amount" name="amount" type="text" inputmode="decimal" value="{{$v.Typed.Amount}}"></div>
+  <div class="field"><label for="spent_on">{{t "Date"}}</label><input id="spent_on" name="spent_on" type="date" value="{{$v.Typed.SpentOn}}"></div>
+  <div class="field"><label for="merchant">{{t "Shop"}}</label><input id="merchant" name="merchant" type="text" maxlength="100" value="{{$v.Typed.Merchant}}"></div>
+  <div class="field"><label for="note">{{t "Note"}}</label><input id="note" name="note" type="text" maxlength="500" value="{{$v.Typed.Note}}"></div>
+  <button type="submit">{{t "Save"}}</button>
+</form>
+</section>
+{{else}}
+<section class="card">
+<p>{{if $r.HasAmount}}{{$r.Amount}}{{else}}{{t "no amount yet"}}{{end}} · {{if $r.SpentOn.String}}{{$r.SpentOn}}{{else}}{{t "no date yet"}}{{end}}</p>
+{{with $r.Note}}<p>{{.}}</p>{{end}}
+</section>
+{{end}}
+
+{{if $v.View.CanRemove}}
+<section class="card">
+{{if $r.Removed}}
+<form method="post" action="/receipts/{{$r.ID}}/remove"><input type="hidden" name="removed" value="0"><button type="submit" class="quiet">{{t "Bring it back"}}</button></form>
+{{else if $r.Waiting}}
+<p class="hint">{{t "Added by mistake? Removing takes it out of the inbox. It can be brought back."}}</p>
+<form method="post" action="/receipts/{{$r.ID}}/remove"><input type="hidden" name="removed" value="1"><button type="submit" class="quiet">{{t "Remove this receipt"}}</button></form>
+{{end}}
+</section>
+{{end}}
+{{end}}

@@ -111,10 +111,11 @@ positive). Times are Unix milliseconds. Every table is `STRICT`.
 
 **Receipts and files**
 - `files(id, sha256, size, content_type, name, uploaded_by, uploaded_at)`: one row per upload, because who uploaded it is part of what it is. The bytes go to `APP_DIR/files/<sha256>` (0700, `[files] dir`), once per content, and are served only through the app, after the domain that links the file to a scope has said who may read it. A file may be read into a statement only by the person who uploaded it.
-- `receipts(id, account_id NULL, project_id NULL, uploaded_by, date NULL, amount NULL, merchant, note, created_at)`. A receipt holds **one or more files**.
-- `receipt_files(receipt_id, file_id, position)`
-- `transaction_receipts(transaction_id, receipt_id)`. Many-to-many, because one receipt can cover two charges and one charge can have several receipts.
-- A receipt with no transaction is **waiting**. It sits in the account's (or project's) receipt inbox until it is matched.
+- `receipts(id, account_id NULL, project_id NULL, uploaded_by, spent_on, amount NULL, merchant, note, created_at, removed_at NULL)`. Exactly one of `account_id` and `project_id` is set: that is the receipt's **home**, the inbox it was put in. A receipt holds **one or more files**.
+- `receipt_files(receipt_id, position, file_id)`
+- `receipt_links(receipt_id, transaction_id, linked_by, linked_at)`. Many-to-many, because one receipt can cover two charges and one charge can have several receipts. The link goes with its transaction (`ON DELETE CASCADE`), so removing a statement puts its receipts back to waiting rather than losing them.
+- A receipt with no transaction is **waiting**. It sits in its home inbox until it is matched. Removing one is a mark (`removed_at`), allowed only while it waits, and can be undone; nothing that was uploaded is deleted.
+- **Who sees a receipt:** anyone who can read its home inbox, or the account of a transaction it is on, or a project holding a split of one. So a pilgrim given only the project sees what they uploaded and which charge it went to, and the treasurer sees it from the card. **Who attaches it:** someone with the Receipts permission on the transaction's account, or on a project of its splits.
 
 **Reconciliation**
 - `reconciliations(id, statement_id UNIQUE, state[open|reconciled], reconciled_by, reconciled_at, note)`. While a statement is reconciled, its transactions and splits are locked. A bookkeeper or owner can reopen it, giving a reason, and the reopening is recorded as an event.
@@ -141,7 +142,7 @@ positive). Times are Unix milliseconds. Every table is `STRICT`.
 5. Dedupe against existing transactions (FITID, then hash + occurrence), and show "N new, M already here". A failed verification imports nothing and explains which row broke.
 6. Store the original file as a `file` linked to the statement.
 
-**Receipts.** Uploading works from a phone: the file picker allows multiple files and the camera. Each file becomes its own receipt unless the person ticks "these pages are one receipt". The uploader can optionally type the date, amount and merchant. Receipts can be uploaded onto a transaction directly, or into the inbox. After every import, **match suggestions** pair waiting receipts with transactions (exact amount, date within ±5 days), and a person confirms each pair; nothing is auto-attached. Accepted types are JPEG, PNG, WebP, HEIC and PDF, sniffed with `http.DetectContentType` and not trusted from the extension. Files are streamed to disk and never decoded whole, because the host kills processes at about 300 MB.
+**Receipts.** Uploading works from a phone: the file picker allows multiple files and the camera. Each file becomes its own receipt unless the person ticks "these pages are one receipt", and a note can go with them. The date, amount and shop are typed afterwards on the receipt's page, by whoever has the paper in front of them -- asking for them at the counter is what would make the minute three. Receipts can be uploaded onto a transaction directly, or into the inbox. **Match suggestions** pair waiting receipts with transactions (exact amount, date within ±5 days); they are worked out whenever the waiting list or a transaction is shown, so a statement imported later finds receipts uploaded earlier, and a person confirms each pair; nothing is auto-attached. Accepted types are JPEG, PNG, WebP, HEIC and PDF, sniffed from the first bytes (`http.DetectContentType`, plus the `ftyp` brands for HEIC, which it does not know) and never trusted from the extension; a file of any other kind is named back to the person and not kept. Files are streamed to disk and never decoded whole, because the host kills processes at about 300 MB. A photo is shown in the page; a PDF is only ever a download, so nothing uploaded runs as a document on this site.
 
 **Projects.** The project page shows income, expense and net (whether it comes out even), a breakdown by category and month, and the splits it holds, from any account. Assigning a split to a project requires bookkeeper rights on the transaction's account. Budgets come later.
 
@@ -191,7 +192,7 @@ The accountant role can download it.
    - **Cross-tenant isolation tests**: user A can never read B's org, account, project, file or export, through any route.
 5. **Import.** Statements, the CSV mapping screen and saved mappings, OFX/QFX, verification, dedupe, the transaction list by month, and the statement file stored and downloadable. Removing a statement takes its transactions with it. The list's filters by category, project and receipt arrive with those things, in steps 6 and 7.
 6. **Categories, splits, projects.** Per-org and personal category lists, the split editor, project assignment, the project dashboard (totals, by category, by month, every part, per currency), and the month list's "not sorted yet" filter.
-7. **Receipts.** Multi-file upload (direct and inbox), receipt viewer, attach and detach, match suggestions after import.
+7. **Receipts.** Multi-file upload (direct and inbox), receipt viewer, attach and detach, match suggestions (same amount within ±5 days, from the accounts the person may attach receipts on) on the waiting list and the transaction page. Uploads stream part by part, 20 MB a file, 20 files and 120 MB a request, ten minutes. Thumbnails wait for step 9; pages show the photo itself.
 8. **Reconcile and export.** The coverage grid, the statement reconcile screen, locking and reopening (audited), and the export zip.
 9. **Later, separately planned:**
    - The translations API, an MCP tool for Claude, and a review screen; then ES/PT go live

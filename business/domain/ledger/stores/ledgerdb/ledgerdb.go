@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jroedel/reconcile/business/domain/event/eventbus"
@@ -501,6 +502,52 @@ func (s *Store) TransactionByID(ctx context.Context, id types.ID) (ledgerbus.Tra
 	txs[0].Splits = splits[id]
 
 	return txs[0], nil
+}
+
+// TransactionsByID is several transactions with their parts.
+func (s *Store) TransactionsByID(ctx context.Context, ids []types.ID) ([]ledgerbus.Transaction, error) {
+	in, args := inList(ids)
+
+	return s.withSplits(ctx, `id IN (`+in+`)`, `posted_on, rowid`, args...)
+}
+
+// Matching is the transactions in the accounts for the amount either way
+// round, posted from from to to inclusive, in date order.
+func (s *Store) Matching(ctx context.Context, accounts []types.ID, amount money.Amount, from, to types.Date) ([]ledgerbus.Transaction, error) {
+	in, args := inList(accounts)
+	args = append(args, int64(amount), -int64(amount), from.String(), to.String())
+
+	return s.withSplits(ctx, `account_id IN (`+in+`) AND amount IN (?, ?) AND posted_on >= ? AND posted_on <= ?`, `posted_on, rowid`, args...)
+}
+
+// withSplits reads the transactions matching a condition, and their parts.
+func (s *Store) withSplits(ctx context.Context, where, order string, args ...any) ([]ledgerbus.Transaction, error) {
+	txs, err := s.transactions(ctx, `SELECT `+transactionColumns+` FROM transactions WHERE `+where+` ORDER BY `+order, args...)
+	if err != nil || len(txs) == 0 {
+		return txs, err
+	}
+
+	splits, err := s.splits(ctx, `transaction_id IN (SELECT id FROM transactions WHERE `+where+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range txs {
+		txs[i].Splits = splits[txs[i].ID]
+	}
+
+	return txs, nil
+}
+
+func inList(ids []types.ID) (string, []any) {
+	marks := make([]string, len(ids))
+	args := make([]any, len(ids))
+
+	for i, id := range ids {
+		marks[i], args[i] = "?", id.String()
+	}
+
+	return strings.Join(marks, ", "), args
 }
 
 const transactionColumns = `id, account_id, statement_id, posted_on, description, amount, balance, external_id, hash, occurrence`

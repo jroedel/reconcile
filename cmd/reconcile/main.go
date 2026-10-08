@@ -25,6 +25,8 @@ import (
 	"github.com/jroedel/reconcile/business/domain/file/stores/filefs"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/ledger/stores/ledgerdb"
+	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
+	"github.com/jroedel/reconcile/business/domain/receipt/stores/receiptdb"
 	"github.com/jroedel/reconcile/business/domain/tenancy/stores/tenancydb"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/translation/stores/translationdb"
@@ -142,6 +144,7 @@ func run() error {
 	files := filebus.NewBusiness(log, filedb.NewStore(db), bytes)
 	categories := categorybus.NewBusiness(log, categorydb.NewStore(db), tenancy)
 	ledger := ledgerbus.NewBusiness(log, ledgerdb.NewStore(db), tenancy, files, categories)
+	receipts := receiptbus.NewBusiness(log, receiptdb.NewStore(db), tenancy, ledger, files)
 
 	go prune(ctx, log, users)
 
@@ -156,6 +159,7 @@ func run() error {
 		Files:      files,
 		Ledger:     ledger,
 		Categories: categories,
+		Receipts:   receipts,
 		BaseURL:    cfg.Server.BaseURL,
 		Mail:       sender,
 		Bootstrap:  cfg.Auth.BootstrapSecret,
@@ -189,6 +193,7 @@ func prepare(ctx context.Context, db *sql.DB) error {
 		{"the uploaded files", filedb.Init},
 		{"the category lists", categorydb.Init},
 		{"the statements and transactions", ledgerdb.Init},
+		{"the receipts", receiptdb.Init},
 	} {
 		if err := step.init(ctx, db); err != nil {
 			return fmt.Errorf("preparing %s: %w", step.what, err)
@@ -215,6 +220,7 @@ func expectedSchema() sqldb.Expected {
 		filedb.Expected,
 		categorydb.Expected,
 		ledgerdb.Expected,
+		receiptdb.Expected,
 	} {
 		maps.Copy(expected, store)
 	}

@@ -1,0 +1,37 @@
+{{define "title"}}{{t "Receipts"}} · {{.Data.Name}}{{end}}
+{{define "content"}}{{$v := .Data}}
+<p class="crumbs"><a href="{{$v.Path}}">{{$v.Name}}</a></p>
+<h1>{{t "Receipts"}}</h1>
+{{template "done" $v.Done}}
+{{template "uploaded" $v.Uploaded}}
+
+{{if $v.CanReceipts}}
+<section class="card">
+{{template "upload-form" (printf "%s/receipts" $v.Path)}}
+</section>
+{{end}}
+
+<section class="card">
+<h2>{{t "Waiting for a match"}}</h2>
+{{if $v.Inbox.Waiting}}
+<p class="hint">{{t "Receipts not yet attached to the charge they paid for. A bookkeeper attaches each one, or you can from the transaction's page."}}</p>
+<ul class="receipts">
+{{range $v.Inbox.Waiting}}<li>{{template "receipt-line" .}}
+{{template "suggestions" (dict "Receipt" . "Transactions" (index $v.Suggestions .ID) "Accounts" $v.Accounts "Back" (printf "%s/receipts" $v.Path))}}</li>
+{{end}}</ul>
+{{else}}<p class="hint">{{t "None. Every receipt here is attached to its charge."}}</p>{{end}}
+</section>
+
+{{if $v.Inbox.Matched}}
+<section class="card">
+<h2>{{t "Matched"}}</h2>
+<ul class="receipts">{{range $v.Inbox.Matched}}<li>{{template "receipt-line" .}}</li>{{end}}</ul>
+</section>
+{{end}}
+
+{{if $v.Inbox.Removed}}
+<details><summary>{{t "Removed receipts"}}</summary>
+<ul class="receipts">{{range $v.Inbox.Removed}}<li>{{template "receipt-line" .}}</li>{{end}}</ul>
+</details>
+{{end}}
+{{end}}

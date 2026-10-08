@@ -85,6 +85,9 @@
 {{- else if eq .Action "category.restored"}} {{t "brought back the category {name}" "name" .Detail.name}}
 {{- else if eq .Action "split.added"}} {{t "put {amount} of {description} ({date}, {account}) into it" "amount" (money (amount .Detail.amount) .Detail.currency) "description" .Detail.description "date" .Detail.date "account" .Detail.account}}
 {{- else if eq .Action "split.removed"}} {{t "took {description} ({date}, {account}) out of it" "description" .Detail.description "date" .Detail.date "account" .Detail.account}}
+{{- else if eq .Action "receipt.added"}} {{t "added {n} receipts" "n" .Detail.count}}
+{{- else if eq .Action "receipt.removed"}} {{t "removed the receipt {what}" "what" .Detail.what}}
+{{- else if eq .Action "receipt.restored"}} {{t "brought back the receipt {what}" "what" .Detail.what}}
 {{- else}} {{t "made a change"}}{{end}}</li>
 {{end}}
 </ol>

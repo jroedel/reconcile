@@ -4,6 +4,36 @@
 <h1>{{if $t.Description}}{{$t.Description}}{{else}}{{t "A transaction with no description"}}{{end}}</h1>
 <p>{{$t.PostedOn}} · <span class="money {{if lt $t.Amount 0}}out{{else}}in{{end}}">{{money $t.Amount $cur}}</span></p>
 {{template "parts-problem" $v}}
+{{if eq $v.Done "receipts"}}{{template "uploaded" $v.Uploaded}}{{end}}
+
+<section class="card">
+<h2>{{t "Receipts"}}</h2>
+{{if $v.Receipts}}
+<ul class="receipts">
+{{range $v.Receipts}}<li>{{template "receipt-line" .}}
+{{if $v.CanReceipts}}<form method="post" action="/receipts/{{.ID}}/detach" class="inline"><input type="hidden" name="transaction" value="{{$t.ID}}"><input type="hidden" name="back" value="/transactions/{{$t.ID}}"><button type="submit" class="link">{{t "Take it off"}}</button></form>{{end}}</li>
+{{end}}</ul>
+{{else}}<p class="hint">{{t "No receipt yet. Receipts are welcome, and never required."}}</p>{{end}}
+
+{{if $v.CanReceipts}}
+<form method="post" action="/transactions/{{$t.ID}}/receipts" enctype="multipart/form-data" class="upload">
+  <div class="field">
+    <label for="files">{{t "Add a photo or PDF of its receipt"}}</label>
+    <input id="files" name="files" type="file" multiple required accept="image/*,application/pdf">
+  </div>
+  <label class="choice"><input type="checkbox" name="together" value="1"> {{t "These are pages of one receipt"}}</label>
+  <button type="submit" class="quiet">{{t "Add receipts"}}</button>
+</form>
+{{if $v.Waiting}}
+<details{{if and $v.Waiting (index $v.Waiting 0).HasAmount (eq (index $v.Waiting 0).Amount $t.Amount.Abs)}} open{{end}}><summary>{{t "Or attach one that is waiting for a match"}}</summary>
+<ul class="receipts">
+{{range $v.Waiting}}<li>{{template "receipt-line" .}}
+<form method="post" action="/receipts/{{.ID}}/attach" class="inline"><input type="hidden" name="transaction" value="{{$t.ID}}"><input type="hidden" name="back" value="/transactions/{{$t.ID}}"><button type="submit" class="quiet">{{t "Attach"}}</button></form></li>
+{{end}}</ul>
+</details>
+{{end}}
+{{end}}
+</section>
 
 {{if $v.CanBookkeep}}
 <form method="post" action="/transactions/{{$t.ID}}">

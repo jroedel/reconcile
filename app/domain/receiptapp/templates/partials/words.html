@@ -1,0 +1,67 @@
+{{/*
+  The words and pieces this app's pages share.
+*/}}
+{{define "problem"}}{{if .}}<p class="notice" role="alert">
+{{- if eq . "spent_on"}}{{t "The date must be a date, such as 2026-07-14, or left empty."}}
+{{- else if eq . "amount"}}{{t "The amount must be an amount, such as 12.50, or left empty."}}
+{{- else if eq . "merchant"}}{{t "The shop's name can be at most {max} characters." "max" 100}}
+{{- else if eq . "note"}}{{t "The note can be at most {max} characters." "max" 500}}
+{{- else if eq . "attached"}}{{t "The receipt is attached to a transaction. Take it off the transaction first."}}
+{{- else}}{{t "Something went wrong at our end. Please try again in a few minutes."}}
+{{- end}}</p>{{end}}{{end}}
+
+{{define "done"}}{{if .}}{{if ne . "added"}}<p class="notice ok" role="status">
+{{- if eq . "saved"}}{{t "Saved."}}
+{{- else if eq . "attached"}}{{t "Attached. The transaction now shows this receipt."}}
+{{- else if eq . "detached"}}{{t "Taken off the transaction. If it is on no other, it is waiting for a match again."}}
+{{- else if eq . "removed"}}{{t "Removed. It is under Removed receipts below, and can be brought back."}}
+{{- else if eq . "restored"}}{{t "Brought back. It is waiting for a match."}}
+{{- end}}</p>{{end}}{{end}}{{end}}
+
+{{define "uploaded"}}
+{{if .Added}}<p class="notice ok" role="status">{{t "{n} receipts added. Add an amount and a date to any of them, and it can be matched to its charge." "n" .Added}}</p>{{end}}
+{{if .WrongKind}}<div class="notice" role="alert"><p>{{t "These are not photos or PDFs, and were not kept:"}}</p><ul>{{range .WrongKind}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
+{{if .TooBig}}<div class="notice" role="alert"><p>{{t "These were too big, or one too many for one upload, and were not kept. Add them on their own:"}}</p><ul>{{range .TooBig}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
+{{if .Cut}}<p class="notice" role="alert">{{t "The upload stopped part way: it was too big, or the connection dropped. What arrived whole is above; add the rest again."}}</p>{{end}}
+{{end}}
+
+{{define "upload-form"}}
+<form method="post" action="{{.}}" enctype="multipart/form-data" class="upload">
+  <div class="field">
+    <label for="files">{{t "Photos or PDFs of receipts"}}</label>
+    <input id="files" name="files" type="file" multiple required accept="image/*,application/pdf">
+    <p class="hint">{{t "Take photos, or choose several at once. Each one becomes its own receipt."}}</p>
+  </div>
+  <label class="choice"><input type="checkbox" name="together" value="1"> {{t "These are pages of one receipt"}}</label>
+  <div class="field">
+    <label for="note">{{t "What was it for? (optional)"}}</label>
+    <input id="note" name="note" type="text" maxlength="500">
+  </div>
+  <button type="submit">{{t "Add receipts"}}</button>
+</form>
+{{end}}
+
+{{define "thumb"}}{{with index .Files 0}}{{if or (eq .ContentType "image/jpeg") (eq .ContentType "image/png") (eq .ContentType "image/webp")}}<img class="thumb" src="/receipts/{{$.ID}}/files/0" alt="" loading="lazy">{{else}}<span class="thumb doc">{{if eq .ContentType "application/pdf"}}PDF{{else}}{{t "Photo"}}{{end}}</span>{{end}}{{end}}{{end}}
+
+{{define "receipt-line"}}
+<a href="/receipts/{{.ID}}" class="receipt-line">{{template "thumb" .}}
+<span><strong>{{with .Label}}{{.}}{{else}}{{t "A receipt"}}{{end}}</strong>
+{{if gt (len .Files) 1}}<br><span class="hint">{{t "{n} pages" "n" (len .Files)}}</span>{{end}}
+<br><span class="hint">{{if .HasAmount}}{{.Amount}}{{else}}{{t "no amount yet"}}{{end}} · {{if .SpentOn.String}}{{.SpentOn}}{{else}}{{t "no date yet"}}{{end}}</span>
+{{with .Note}}<br><span class="hint">{{.}}</span>{{end}}</span></a>
+{{end}}
+
+{{define "suggestions"}}{{$r := .Receipt}}
+{{if .Transactions}}
+<p class="hint">{{t "Might be:"}}</p>
+<ul class="list">
+{{range .Transactions}}{{$acct := index $.Accounts .AccountID}}<li>
+<form method="post" action="/receipts/{{$r.ID}}/attach" class="inline">
+<input type="hidden" name="transaction" value="{{.ID}}">
+<input type="hidden" name="back" value="{{$.Back}}">
+<button type="submit" class="quiet">{{t "This is it"}}</button>
+</form>
+{{.PostedOn}} · {{.Description}} · <span class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $acct.Currency}}</span> · <span class="hint">{{$acct.Name}}</span>
+</li>{{end}}
+</ul>
+{{end}}{{end}}

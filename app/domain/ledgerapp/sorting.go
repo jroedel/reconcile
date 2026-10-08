@@ -3,10 +3,13 @@ package ledgerapp
 import (
 	"errors"
 	"net/http"
+	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
+	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/types"
 )
@@ -25,7 +28,15 @@ type partRow struct {
 type transactionView struct {
 	Editor      ledgerbus.Editor
 	CanBookkeep bool
+	CanReceipts bool
 	Back        string
+
+	// Receipts is those on it; Waiting is those it might be given, the
+	// ones for its amount first.
+	Receipts []receiptbus.Receipt
+	Waiting  []receiptbus.Receipt
+	Done     string
+	Uploaded uploaded
 
 	Rows []partRow
 
@@ -88,14 +99,80 @@ func (a app) transactionPage(w http.ResponseWriter, r *http.Request, status int,
 		rows = rowsOf(e.Transaction)
 	}
 
-	a.cfg.Render.Render(w, r, status, "transaction", transactionView{
+	view := transactionView{
 		Editor:      e,
 		CanBookkeep: e.Access.Can(tenancybus.Bookkeep),
+		CanReceipts: e.Access.Can(tenancybus.Receipts),
 		Back:        monthOf(e.Transaction),
 		Rows:        rows,
 		Problem:     problem,
 		Part:        part,
+		Done:        r.URL.Query().Get("done"),
+		Uploaded:    uploadedFrom(r.URL.Query()),
+	}
+
+	on, err := a.cfg.Receipts.OnTransactions(r.Context(), []types.ID{id})
+	if err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
+	view.Receipts = on[id]
+
+	if view.CanReceipts {
+		if view.Waiting, err = a.waitingFor(r, me.ID, e.Transaction); err != nil {
+			a.failed(w, r, err)
+
+			return
+		}
+	}
+
+	a.cfg.Render.Render(w, r, status, "transaction", view)
+}
+
+// shownWaiting is how many waiting receipts a transaction's page offers.
+const shownWaiting = 20
+
+// waitingFor is the waiting receipts a transaction might be given: those
+// for its amount first, then the newest.
+func (a app) waitingFor(r *http.Request, me types.ID, t ledgerbus.Transaction) ([]receiptbus.Receipt, error) {
+	waiting, err := a.cfg.Receipts.Waiting(r.Context(), me)
+	if err != nil {
+		return nil, err
+	}
+
+	same := func(rc receiptbus.Receipt) bool { return rc.HasAmount && rc.Amount == t.Amount.Abs() }
+
+	slices.SortStableFunc(waiting, func(x, y receiptbus.Receipt) int {
+		switch {
+		case same(x) && !same(y):
+			return -1
+		case same(y) && !same(x):
+			return 1
+		}
+
+		return 0
 	})
+
+	return waiting[:min(len(waiting), shownWaiting)], nil
+}
+
+// uploaded is what an upload onto a transaction brought, as receiptapp's
+// redirect says it in the query: how many were added, and the names of the
+// files that were not kept, by why. A copy of receiptapp's few lines,
+// because an app does not import another.
+type uploaded struct {
+	Added     int
+	WrongKind []string
+	TooBig    []string
+	Cut       bool
+}
+
+func uploadedFrom(q url.Values) uploaded {
+	n, _ := strconv.Atoi(q.Get("n"))
+
+	return uploaded{Added: n, WrongKind: q["kind"], TooBig: q["big"], Cut: q.Get("cut") == "1"}
 }
 
 // sortTransaction is the parts form: save, or add a row and show it again.
@@ -226,6 +303,10 @@ func partsOf(rows []partRow, t ledgerbus.Transaction) ([]ledgerbus.Part, int) {
 type bookView struct {
 	Book ledgerbus.Book
 	Path string
+
+	// Receipts is those on the book's transactions: a role on a project is
+	// the right to see its parts with their receipts.
+	Receipts map[types.ID][]receiptbus.Receipt
 }
 
 func (a app) book(w http.ResponseWriter, r *http.Request) {
@@ -246,5 +327,17 @@ func (a app) book(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.cfg.Render.Render(w, r, http.StatusOK, "project-book", bookView{Book: b, Path: "/projects/" + id.String()})
+	ids := make([]types.ID, len(b.Lines))
+	for i, l := range b.Lines {
+		ids[i] = l.Split.TransactionID
+	}
+
+	receipts, err := a.cfg.Receipts.OnTransactions(r.Context(), ids)
+	if err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
+	a.cfg.Render.Render(w, r, http.StatusOK, "project-book", bookView{Book: b, Path: "/projects/" + id.String(), Receipts: receipts})
 }

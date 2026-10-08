@@ -1,0 +1,13 @@
+{{define "title"}}{{t "Receipts waiting for a match"}}{{end}}
+{{define "content"}}{{$v := .Data}}
+<p class="crumbs"><a href="/">{{t "Your organizations"}}</a></p>
+<h1>{{t "Receipts waiting for a match"}}</h1>
+{{template "done" $v.Done}}
+<p class="hint">{{t "Every receipt you can see that is not yet attached to the charge it paid for. Where one has an amount and a date, the charges it might be are listed under it."}}</p>
+{{if $v.Waiting}}
+<ul class="receipts">
+{{range $v.Waiting}}<li>{{template "receipt-line" .}}
+{{template "suggestions" (dict "Receipt" . "Transactions" (index $v.Suggestions .ID) "Accounts" $v.Accounts "Back" "/receipts")}}</li>
+{{end}}</ul>
+{{else}}<p>{{t "None. Every receipt is attached to its charge."}}</p>{{end}}
+{{end}}

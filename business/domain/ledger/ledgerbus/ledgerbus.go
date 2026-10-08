@@ -32,6 +32,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/importing/sources/ofxsource"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/types"
+	"github.com/jroedel/reconcile/business/types/money"
 )
 
 // The errors a page tells apart.
@@ -111,6 +112,13 @@ type Storer interface {
 
 	// ProjectLines is every part in a project, oldest first.
 	ProjectLines(ctx context.Context, projectID types.ID) ([]ProjectLine, error)
+
+	// TransactionsByID is several transactions with their parts.
+	TransactionsByID(ctx context.Context, ids []types.ID) ([]Transaction, error)
+
+	// Matching is the transactions in any of the accounts for exactly the
+	// amount, either way round, posted between from and to inclusive.
+	Matching(ctx context.Context, accounts []types.ID, amount money.Amount, from, to types.Date) ([]Transaction, error)
 }
 
 // SavedMapping is a CSV mapping kept for the next file with the same
@@ -530,6 +538,40 @@ func (b *Business) Transactions(ctx context.Context, actor, accountID types.ID, 
 	}
 
 	return b.store.Transactions(ctx, accountID, from, to)
+}
+
+// --- for other domains -------------------------------------------------------
+
+// Lookup is one transaction with its parts, asking nobody's permission: for
+// the receipt domain, which decides who may see a receipt by what it is
+// attached to and must read the transaction to know.
+func (b *Business) Lookup(ctx context.Context, id types.ID) (Transaction, error) {
+	return b.store.TransactionByID(ctx, id)
+}
+
+// LookupAll is Lookup for several, in no promised order.
+func (b *Business) LookupAll(ctx context.Context, ids []types.ID) ([]Transaction, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	return b.store.TransactionsByID(ctx, ids)
+}
+
+// Matching is the transactions a receipt for amount, dated on, might be: in
+// the accounts given, for exactly the amount, either way round, within
+// days of it. Asks nobody's permission; the caller chose the accounts.
+func (b *Business) Matching(ctx context.Context, accounts []types.ID, amount money.Amount, on types.Date, days int) ([]Transaction, error) {
+	if len(accounts) == 0 || amount == 0 || on.Zero() {
+		return nil, nil
+	}
+
+	t, err := time.Parse("2006-01-02", on.String())
+	if err != nil {
+		return nil, err
+	}
+
+	return b.store.Matching(ctx, accounts, amount.Abs(), types.DateOf(t.AddDate(0, 0, -days)), types.DateOf(t.AddDate(0, 0, days)))
 }
 
 // MonthRange is the first day of a month, "2026-07", and the first day of

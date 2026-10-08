@@ -3,6 +3,7 @@
 <p class="crumbs"><a href="/accounts/{{$v.Account.ID}}/transactions">{{$v.Account.Name}}</a></p>
 <h1>{{t "Statement, {start} to {end}" "start" $st.Start "end" $st.End}}</h1>
 {{if eq $v.Done "imported"}}<p class="notice ok" role="status">{{t "Imported: {added} new transactions, and {already} that were here already." "added" $st.Added "already" $st.Already}}</p>{{end}}
+{{if $v.Waiting}}<p class="notice"><a href="/receipts">{{t "{n} receipts waiting for a match" "n" $v.Waiting}}</a></p>{{end}}
 
 <section class="card">
 <p>{{template "method" (printf "%s" $st.Checked)}}</p>

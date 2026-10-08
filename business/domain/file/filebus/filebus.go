@@ -25,6 +25,7 @@ import (
 	"log/slog"
 	"net/http"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -37,6 +38,20 @@ var ErrTooBig = errors.New("that file is too big")
 
 // ErrNotFound is no such file.
 var ErrNotFound = errors.New("no such file")
+
+// ErrType is a file whose content is not one of the kinds the caller
+// accepts. Nothing of it is kept.
+var ErrType = errors.New("that kind of file is not accepted here")
+
+// The content types a receipt may be: what a phone's camera and a shop's
+// emailed invoice produce. HEIC is what an iPhone takes photos in.
+const (
+	JPEG = "image/jpeg"
+	PNG  = "image/png"
+	WebP = "image/webp"
+	HEIC = "image/heic"
+	PDF  = "application/pdf"
+)
 
 // File is one upload.
 type File struct {
@@ -77,8 +92,9 @@ func NewBusiness(log *slog.Logger, store Storer, bytes Bytes) *Business {
 
 // Save keeps an upload. The content type is sniffed from the bytes, never
 // taken from the browser: what a file says it is, is whatever the sender
-// liked.
-func (b *Business) Save(ctx context.Context, now time.Time, actor types.ID, name string, r io.Reader, limit int64) (File, error) {
+// liked. With accept, a file of any other type is refused with ErrType
+// before a byte of it is written.
+func (b *Business) Save(ctx context.Context, now time.Time, actor types.ID, name string, r io.Reader, limit int64, accept []string) (File, error) {
 	head := make([]byte, 512)
 
 	n, err := io.ReadFull(r, head)
@@ -87,6 +103,11 @@ func (b *Business) Save(ctx context.Context, now time.Time, actor types.ID, name
 	}
 
 	head = head[:n]
+	kind := Sniff(head)
+
+	if accept != nil && !slices.Contains(accept, strings.SplitN(kind, ";", 2)[0]) {
+		return File{}, ErrType
+	}
 
 	sha, size, err := b.bytes.Put(io.MultiReader(strings.NewReader(string(head)), r), limit)
 	if err != nil {
@@ -97,7 +118,7 @@ func (b *Business) Save(ctx context.Context, now time.Time, actor types.ID, name
 		ID:          types.NewID(),
 		SHA256:      sha,
 		Size:        size,
-		ContentType: http.DetectContentType(head),
+		ContentType: kind,
 		Name:        tidyName(name),
 		UploadedBy:  actor,
 		UploadedAt:  now,
@@ -132,6 +153,21 @@ func (b *Business) ReadAll(f File) ([]byte, error) {
 	defer rc.Close()
 
 	return io.ReadAll(rc)
+}
+
+// Sniff is the content type of a file from its first bytes:
+// http.DetectContentType, which knows JPEG, PNG, WebP and PDF, and HEIC,
+// which it does not. HEIC is an ISO media file -- a box named "ftyp" four
+// bytes in -- whose brand says it holds a still image rather than a film.
+func Sniff(head []byte) string {
+	if len(head) >= 12 && string(head[4:8]) == "ftyp" {
+		switch string(head[8:12]) {
+		case "heic", "heix", "heim", "heis", "hevc", "hevx", "mif1", "msf1":
+			return HEIC
+		}
+	}
+
+	return http.DetectContentType(head)
 }
 
 // maxName is the longest name kept for a file.
