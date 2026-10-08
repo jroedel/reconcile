@@ -77,6 +77,8 @@
 {{- else if eq .Action "grant.changed"}} {{t "changed the role of {who}" "who" .Detail.who}} — {{template "role" .Detail.from}} → {{template "role" .Detail.role}}
 {{- else if eq .Action "grant.removed"}} {{t "took away the role of {who}" "who" .Detail.who}} — {{template "role" .Detail.role}}
 {{- else if eq .Action "grant.claimed"}} {{t "signed in and took up the role given to {email}" "email" .Detail.email}} — {{template "role" .Detail.role}}
+{{- else if eq .Action "statement.imported"}} {{t "imported {name}, {start} to {end}: {added} new transactions" "name" .Detail.name "start" .Detail.start "end" .Detail.end "added" .Detail.added}}
+{{- else if eq .Action "statement.removed"}} {{t "removed the statement {name}, {start} to {end}, and the transactions it brought in" "name" .Detail.name "start" .Detail.start "end" .Detail.end}}
 {{- else}} {{t "made a change"}}{{end}}</li>
 {{end}}
 </ol>

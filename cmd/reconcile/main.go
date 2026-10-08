@@ -18,6 +18,11 @@ import (
 	"github.com/jroedel/reconcile/app/sdk/page"
 	"github.com/jroedel/reconcile/business/domain/event/eventbus"
 	"github.com/jroedel/reconcile/business/domain/event/stores/eventdb"
+	"github.com/jroedel/reconcile/business/domain/file/filebus"
+	"github.com/jroedel/reconcile/business/domain/file/stores/filedb"
+	"github.com/jroedel/reconcile/business/domain/file/stores/filefs"
+	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
+	"github.com/jroedel/reconcile/business/domain/ledger/stores/ledgerdb"
 	"github.com/jroedel/reconcile/business/domain/tenancy/stores/tenancydb"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/translation/stores/translationdb"
@@ -127,6 +132,14 @@ func run() error {
 	tenancy := tenancybus.NewBusiness(log, tenancydb.NewStore(db), users)
 	history := eventbus.NewBusiness(eventdb.NewStore(db))
 
+	bytes, err := filefs.NewStore(cfg.Files.Dir)
+	if err != nil {
+		return err
+	}
+
+	files := filebus.NewBusiness(log, filedb.NewStore(db), bytes)
+	ledger := ledgerbus.NewBusiness(log, ledgerdb.NewStore(db), tenancy, files)
+
 	go prune(ctx, log, users)
 
 	handler, err := muxer.New(muxer.Config{
@@ -137,6 +150,8 @@ func run() error {
 		Users:      users,
 		Tenancy:    tenancy,
 		History:    history,
+		Files:      files,
+		Ledger:     ledger,
 		BaseURL:    cfg.Server.BaseURL,
 		Mail:       sender,
 		Bootstrap:  cfg.Auth.BootstrapSecret,
@@ -146,7 +161,7 @@ func run() error {
 		return err
 	}
 
-	log.Info("starting", "addr", cfg.Server.Addr, "db", cfg.DB.Path)
+	log.Info("starting", "addr", cfg.Server.Addr, "db", cfg.DB.Path, "files", cfg.Files.Dir)
 
 	return web.Serve(ctx, log, cfg.Server.ShutdownGrace.Duration, cfg.Server.Addr, handler)
 }
@@ -167,6 +182,8 @@ func prepare(ctx context.Context, db *sql.DB) error {
 		{"the users", userdb.Init},
 		{"the history", eventdb.Init},
 		{"the organizations, accounts and projects", tenancydb.Init},
+		{"the uploaded files", filedb.Init},
+		{"the statements and transactions", ledgerdb.Init},
 	} {
 		if err := step.init(ctx, db); err != nil {
 			return fmt.Errorf("preparing %s: %w", step.what, err)
@@ -190,6 +207,8 @@ func expectedSchema() sqldb.Expected {
 		userdb.Expected,
 		eventdb.Expected,
 		tenancydb.Expected,
+		filedb.Expected,
+		ledgerdb.Expected,
 	} {
 		maps.Copy(expected, store)
 	}

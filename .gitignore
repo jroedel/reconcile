@@ -56,3 +56,6 @@ id_ed25519
 # on purpose -- they are how the project is built. The rest is not.
 .claude/worktrees/
 .claude/settings.local.json
+
+# Uploaded statements and receipts, on a developer's machine as on the server.
+/files/

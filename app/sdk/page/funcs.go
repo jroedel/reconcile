@@ -5,6 +5,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/jroedel/reconcile/business/types/money"
 )
 
 // Funcs are the template helpers every page has, besides t and tc
@@ -12,6 +14,27 @@ import (
 var Funcs = template.FuncMap{
 	"sentence": Sentence,
 	"short":    Short,
+	"money":    Money,
+}
+
+// symbols are the currencies whose sign a reader expects in front. Any other
+// is written as its code, which is never wrong, only less familiar.
+var symbols = map[string]string{
+	"USD": "$", "EUR": "€", "GBP": "£", "BRL": "R$", "MXN": "MX$", "CAD": "CA$", "AUD": "A$",
+	"ARS": "AR$", "CLP": "CLP$", "COP": "COL$", "PYG": "₲", "UYU": "$U", "CHF": "CHF ", "JPY": "¥",
+}
+
+// Money is an amount as a person reads it: the minus sign first, the
+// currency's symbol, grouped digits and two decimals (docs/design.md, "Money
+// looks like money"). Grouped the English way in every language for now;
+// "1.234,56" for Spanish and Portuguese readers is a later version's.
+func Money(a money.Amount, currency string) string {
+	symbol, ok := symbols[currency]
+	if !ok {
+		symbol = currency + " "
+	}
+
+	return strings.Replace(a.Display(), "$", symbol, 1)
 }
 
 // ShortLen is how much of an ID a person is shown: as much as anybody needs

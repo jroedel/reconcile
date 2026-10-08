@@ -1,0 +1,121 @@
+{{define "title"}}{{t "Check the statement"}}{{end}}
+{{define "content"}}{{$v := .Data}}{{$d := $v.Draft}}{{$cur := $d.Account.Currency}}{{$m := $d.Mapping}}
+<p class="crumbs"><a href="/accounts/{{$d.Account.ID}}/transactions">{{$d.Account.Name}}</a></p>
+<h1>{{t "Check the statement"}}</h1>
+<p class="hint">{{$d.File.Name}}</p>
+{{template "problem" $v.Problem}}
+{{if $d.HasEarlier}}<p class="notice">{{t "This file was imported into this account already, on {date}." "date" ($d.Earlier.ImportedAt.Format "2006-01-02")}} <a href="/statements/{{$d.Earlier.ID}}">{{t "See that statement"}}</a></p>{{end}}
+
+<form method="post" action="{{$v.Path}}">
+{{if eq (printf "%s" $d.Format) "csv"}}
+<section class="card">
+<h2>{{t "Columns"}}</h2>
+{{if $d.Remembered}}<p class="hint">{{t "These are the columns chosen for the last file with the same headings."}}</p>
+{{else}}<p class="hint">{{t "These columns are a guess from the headings. Check them against the rows below; they are remembered for the next file like this one."}}</p>{{end}}
+<input type="hidden" name="separator" value="{{$m.Separator}}">
+
+<div class="field">
+  <label for="date">{{t "Date"}}</label>
+  <select id="date" name="date">{{range $v.Options $m.Date false}}<option value="{{.}}"{{if eq . $m.Date}} selected{{end}}>{{.}}</option>{{end}}</select>
+</div>
+<div class="field">
+  <label for="description">{{t "Description"}}</label>
+  <select id="description" name="description">{{range $v.Options $m.Description true}}<option value="{{.}}"{{if eq . $m.Description}} selected{{end}}>{{if .}}{{.}}{{else}}{{t "(none)"}}{{end}}</option>{{end}}</select>
+</div>
+
+<fieldset>
+  <legend>{{t "Amounts"}}</legend>
+  <label class="choice"><input type="radio" name="columns" value="one"{{if not $m.Debit}}{{if not $m.Credit}} checked{{end}}{{end}}> {{t "One column, with money out as a negative number"}}</label>
+  <div class="field">
+    <label for="amount">{{t "Amount"}}</label>
+    <select id="amount" name="amount">{{range $v.Options $m.Amount true}}<option value="{{.}}"{{if eq . $m.Amount}} selected{{end}}>{{if .}}{{.}}{{else}}{{t "(none)"}}{{end}}</option>{{end}}</select>
+  </div>
+  <label class="choice"><input type="radio" name="columns" value="split"{{if or $m.Debit $m.Credit}} checked{{end}}> {{t "Two columns, money out and money in"}}</label>
+  <div class="field">
+    <label for="debit">{{t "Money out"}}</label>
+    <select id="debit" name="debit">{{range $v.Options $m.Debit true}}<option value="{{.}}"{{if eq . $m.Debit}} selected{{end}}>{{if .}}{{.}}{{else}}{{t "(none)"}}{{end}}</option>{{end}}</select>
+  </div>
+  <div class="field">
+    <label for="credit">{{t "Money in"}}</label>
+    <select id="credit" name="credit">{{range $v.Options $m.Credit true}}<option value="{{.}}"{{if eq . $m.Credit}} selected{{end}}>{{if .}}{{.}}{{else}}{{t "(none)"}}{{end}}</option>{{end}}</select>
+  </div>
+  <label class="choice"><input type="checkbox" name="invert" value="1"{{if $m.Invert}} checked{{end}}> {{t "The file shows money out as positive: turn the signs round"}}</label>
+  <label class="choice"><input type="checkbox" name="decimal_comma" value="1"{{if $m.DecimalComma}} checked{{end}}> {{t "Amounts are written 1.234,56"}}</label>
+</fieldset>
+
+<div class="field">
+  <label for="balance">{{t "Balance after each row"}}</label>
+  <select id="balance" name="balance">{{range $v.Options $m.Balance true}}<option value="{{.}}"{{if eq . $m.Balance}} selected{{end}}>{{if .}}{{.}}{{else}}{{t "(none)"}}{{end}}</option>{{end}}</select>
+  <p class="hint">{{t "If the file has one, every row is checked against it, and a missing row is found."}}</p>
+</div>
+
+<div class="field">
+  <label for="date_format">{{t "Dates look like"}}</label>
+  <select id="date_format" name="date_format">
+    <option value=""{{if not $m.DateFormat}} selected{{end}}>{{t "Work it out from the file"}}</option>
+    {{range $v.DateFormats}}<option value="{{.}}"{{if eq . $m.DateFormat}} selected{{end}}>{{$v.Example .}}</option>{{end}}
+  </select>
+  <p class="hint">{{t "Shown as the last day of July 2026 would be written."}}</p>
+</div>
+<div class="field">
+  <label for="skip">{{t "Lines before the headings"}}</label>
+  <input id="skip" name="skip" type="number" min="0" max="50" value="{{$m.SkipLines}}">
+</div>
+</section>
+{{end}}
+
+{{if not $d.Unmapped}}
+<section class="card">
+<h2>{{t "What was read"}}</h2>
+{{if $v.Rows}}
+<div class="scroll">
+<table class="ledger">
+<thead><tr><th>{{t "Line"}}</th><th>{{t "Date"}}</th><th>{{t "Description"}}</th><th class="money">{{t "Amount"}}</th>{{if $m.Balance}}<th class="money">{{t "Balance"}}</th>{{end}}</tr></thead>
+<tbody>
+{{range $v.Rows}}<tr><td>{{.Line}}</td><td>{{.Date.Format "2006-01-02"}}</td><td>{{.Description}}</td><td class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $cur}}</td>{{if $m.Balance}}<td class="money">{{if .HasBalance}}{{money .Balance $cur}}{{end}}</td>{{end}}</tr>
+{{end}}</tbody>
+</table>
+</div>
+{{if $v.More}}<p class="hint">{{t "and {n} more rows" "n" $v.More}}</p>{{end}}
+{{else}}{{template "problem" "empty"}}{{end}}
+
+{{if $d.Result.Skipped}}
+<p class="notice">{{t "{n} rows could not be read, and will not be imported:" "n" $d.Result.Skipped}}</p>
+<ul class="list">{{range $d.Result.Warnings}}<li>{{if .Line}}{{t "Line {line}" "line" .Line}}: {{end}}{{template "warning" .}}</li>{{end}}</ul>
+{{else if $d.Result.Warnings}}
+<ul class="list">{{range $d.Result.Warnings}}<li>{{if .Line}}{{t "Line {line}" "line" .Line}}: {{end}}{{template "warning" .}}</li>{{end}}</ul>
+{{end}}
+</section>
+
+<section class="card">
+<h2>{{t "Does it balance?"}}</h2>
+{{$c := $d.Check}}{{$how := printf "%s" $c.Method}}
+{{if eq $how "balances"}}
+  {{if $c.OK}}<p class="notice ok">{{t "Every row's balance follows from the one before. No row is missing."}}</p>
+  {{else}}<p class="notice" role="alert">{{t "The balance on line {line} should be {expected}, but the file says {stated}. A row may be missing just above it, or a column may be wrong." "line" $c.Line "expected" (money $c.Expected $cur) "stated" (money $c.Stated $cur)}}</p>{{end}}
+{{else}}
+  {{if eq $how "totals"}}
+    {{if $c.OK}}<p class="notice ok">{{t "The opening balance plus everything in the file comes to the closing balance."}}</p>
+    {{else}}<p class="notice" role="alert">{{t "The opening balance plus everything in the file comes to {expected}, but the closing balance is {stated}. Check both against the paper statement, and the rows above for one that could not be read." "expected" (money $c.Expected $cur) "stated" (money $c.Stated $cur)}}</p>{{end}}
+  {{else}}
+    <p>{{t "This file has no balance on each row. Type the opening and closing balances from the statement to check it, or import it unchecked."}}</p>
+  {{end}}
+  <div class="field">
+    <label for="opening">{{t "Opening balance"}}</label>
+    <input id="opening" name="opening" type="text" inputmode="decimal" value="{{$v.Opening}}">
+  </div>
+  <div class="field">
+    <label for="closing">{{t "Closing balance"}}</label>
+    <input id="closing" name="closing" type="text" inputmode="decimal" value="{{$v.Closing}}">
+  </div>
+{{end}}
+{{if $d.Statement.ID.String}}<p>{{t "{new} new transactions, and {already} that are here already and will be left as they are." "new" $d.Statement.Added "already" $d.Statement.Already}}</p>{{end}}
+</section>
+{{end}}
+
+<div class="actions">
+  <button type="submit" name="action" value="import"{{if not $d.Ready}} disabled{{end}}>{{t "Import"}}</button>
+  <button type="submit" name="action" value="preview" class="quiet">{{t "Read it again with these choices"}}</button>
+</div>
+</form>
+{{end}}

@@ -273,3 +273,13 @@ summary { cursor: pointer; color: var(--muted); }
 	main { padding: 2rem var(--gap); }
 	h1 { font-size: 2rem; }
 }
+
+/* ---------------------------------------------------------------- ledger */
+
+.scroll { overflow-x: auto; margin-bottom: var(--gap); }
+table.ledger { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+.ledger th, .ledger td { padding: 0.4rem 0.35rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.ledger th { font-weight: 600; color: var(--muted); font-size: 0.85rem; }
+.ledger .money { text-align: right; }
+.months { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; list-style: none; padding: 0; margin: 0 0 var(--gap); }
+.months a[aria-current] { font-weight: 600; color: var(--ink); text-decoration: none; }

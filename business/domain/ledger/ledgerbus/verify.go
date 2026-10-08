@@ -1,0 +1,129 @@
+package ledgerbus
+
+import (
+	"slices"
+
+	"github.com/jroedel/reconcile/business/domain/importing/importbus"
+	"github.com/jroedel/reconcile/business/types/money"
+)
+
+// Check is what checking a statement found.
+type Check struct {
+	Method Method
+	OK     bool
+
+	// When it did not balance: the line it broke on (zero for a check of
+	// totals, which cannot say where), what the balance should have been
+	// there, and what the statement said.
+	Line             int
+	Expected, Stated money.Amount
+}
+
+// Failed reports a check that was made and did not hold. An unchecked
+// statement has not failed.
+func (c Check) Failed() bool { return c.Method != Unchecked && !c.OK }
+
+// verify checks what a file listed against the balances it states or a
+// person typed. The idea is eumaeus's: the running balance is the truth,
+// and an import is believed only as far as it agrees with it.
+//
+// Neither the order of the rows nor the sign of a balance is known. Banks
+// list newest first as often as oldest first, and a card's balance is what
+// is owed, so a charge (money out, negative) raises it. Each is tried both
+// ways, and the statement balances if any of the four does. Accepting the
+// wrong combination by accident needs the rows to balance read backwards or
+// sign-flipped, which a dropped or doubled row does not do.
+//
+// debt says which sign is likelier -- what the account's balance means to
+// the person reading it -- and so which to report a failure in.
+func verify(recs []importbus.Record, opening, closing importbus.Balance, debt bool) Check {
+	signs := []money.Amount{1, -1}
+	if debt {
+		signs = []money.Amount{-1, 1}
+	}
+
+	if balances(recs) >= 2 {
+		// Oldest first is the likelier reading of a file whose dates run
+		// forward, and newest first of one whose dates run back. Both are
+		// tried; the likelier one, with the sign the account's kind
+		// suggests, is the one a failure is reported in. "Furthest before
+		// it broke" was tried instead, and on a short file it picked a
+		// reading that was wrong from its first row.
+		forward := slices.Clone(recs)
+		backward := slices.Clone(recs)
+		slices.Reverse(backward)
+
+		orders := [][]importbus.Record{forward, backward}
+		if last := len(recs) - 1; recs[last].Date.Before(recs[0].Date) {
+			orders[0], orders[1] = backward, forward
+		}
+
+		for _, ordered := range orders {
+			for _, sign := range signs {
+				if c := chain(ordered, sign); c.OK {
+					return c
+				}
+			}
+		}
+
+		return chain(orders[0], signs[0])
+	}
+
+	if opening.Known && closing.Known {
+		var sum money.Amount
+		for _, r := range recs {
+			sum += r.Amount
+		}
+
+		for _, sign := range signs {
+			if opening.Amount+sign*sum == closing.Amount {
+				return Check{Method: ByTotals, OK: true}
+			}
+		}
+
+		return Check{Method: ByTotals, Expected: opening.Amount + signs[0]*sum, Stated: closing.Amount}
+	}
+
+	return Check{Method: Unchecked}
+}
+
+// balances counts the rows that print a balance.
+func balances(recs []importbus.Record) int {
+	n := 0
+
+	for _, r := range recs {
+		if r.HasBalance {
+			n++
+		}
+	}
+
+	return n
+}
+
+// chain walks the rows in order, carrying the balance forward by each
+// amount, and stops at the first printed balance that disagrees. A row with
+// no balance printed -- some banks print one a day -- is carried through.
+func chain(recs []importbus.Record, sign money.Amount) Check {
+	var (
+		running money.Amount
+		known   bool
+	)
+
+	for _, r := range recs {
+		if known {
+			running += sign * r.Amount
+		}
+
+		if !r.HasBalance {
+			continue
+		}
+
+		if known && running != r.Balance {
+			return Check{Method: ByBalances, Line: r.Line, Expected: running, Stated: r.Balance}
+		}
+
+		running, known = r.Balance, true
+	}
+
+	return Check{Method: ByBalances, OK: true}
+}
