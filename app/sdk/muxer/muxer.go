@@ -15,6 +15,7 @@ import (
 	"github.com/jroedel/reconcile/app/domain/adminapp"
 	"github.com/jroedel/reconcile/app/domain/authapp"
 	"github.com/jroedel/reconcile/app/domain/categoryapp"
+	"github.com/jroedel/reconcile/app/domain/exportapp"
 	"github.com/jroedel/reconcile/app/domain/homeapp"
 	"github.com/jroedel/reconcile/app/domain/ledgerapp"
 	"github.com/jroedel/reconcile/app/domain/receiptapp"
@@ -24,6 +25,7 @@ import (
 	"github.com/jroedel/reconcile/app/sdk/page"
 	"github.com/jroedel/reconcile/business/domain/category/categorybus"
 	"github.com/jroedel/reconcile/business/domain/event/eventbus"
+	"github.com/jroedel/reconcile/business/domain/export/exportbus"
 	"github.com/jroedel/reconcile/business/domain/file/filebus"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
@@ -38,7 +40,7 @@ import (
 // renderer rather than this package, because the strings it reads out of
 // these are registered for translation before anything is served.
 func Templates() []fs.FS {
-	return []fs.FS{homeapp.Templates, authapp.Templates, tenancyapp.Templates, ledgerapp.Templates, categoryapp.Templates, receiptapp.Templates, adminapp.Templates}
+	return []fs.FS{homeapp.Templates, authapp.Templates, tenancyapp.Templates, ledgerapp.Templates, categoryapp.Templates, receiptapp.Templates, exportapp.Templates, adminapp.Templates}
 }
 
 // Config is everything the routes need, gathered by main and passed in.
@@ -55,6 +57,7 @@ type Config struct {
 
 	Categories *categorybus.Business
 	Receipts   *receiptbus.Business
+	Export     *exportbus.Business
 
 	// BaseURL is the public origin. Empty means sign-in is off: its routes
 	// are not mounted, because a code sent from a site that cannot say where
@@ -78,7 +81,7 @@ const maxBody = 64 << 10
 // New builds the handler.
 func New(cfg Config) (http.Handler, error) {
 	if cfg.Log == nil || cfg.DB == nil || cfg.Render == nil || cfg.Users == nil || cfg.Tenancy == nil || cfg.History == nil ||
-		cfg.Files == nil || cfg.Ledger == nil || cfg.Categories == nil || cfg.Receipts == nil {
+		cfg.Files == nil || cfg.Ledger == nil || cfg.Categories == nil || cfg.Receipts == nil || cfg.Export == nil {
 		return nil, errors.New("the muxer needs a logger, a database, a renderer, and every domain's business")
 	}
 
@@ -138,6 +141,12 @@ func New(cfg Config) (http.Handler, error) {
 			Render:   cfg.Render,
 		}, guard)
 
+		exportapp.Routes(mux, exportapp.Config{
+			Log:    cfg.Log,
+			Export: cfg.Export,
+			Render: cfg.Render,
+		}, guard)
+
 		categoryapp.Routes(mux, categoryapp.Config{
 			Log:        cfg.Log,
 			Categories: cfg.Categories,
@@ -173,6 +182,13 @@ func New(cfg Config) (http.Handler, error) {
 	for _, pattern := range receiptapp.UploadPatterns {
 		shape.Handle(pattern, web.Wrap(inner,
 			web.Deadline(receiptapp.UploadTime), web.MaxBody(receiptapp.MaxUpload), web.MultipartOnly()))
+	}
+
+	// A download is the other way round: a small request, and an answer
+	// that may take many minutes to send.
+	for _, pattern := range exportapp.DownloadPatterns {
+		shape.Handle(pattern, web.Wrap(inner,
+			web.Deadline(exportapp.DownloadTime), web.MaxBody(maxBody), web.FormEncodedOnly()))
 	}
 
 	// Outermost first: the id, then the request line, then the headers, so

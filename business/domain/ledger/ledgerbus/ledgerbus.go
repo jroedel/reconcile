@@ -566,7 +566,25 @@ func (b *Business) Transactions(ctx context.Context, actor, accountID types.ID, 
 	return b.store.Transactions(ctx, accountID, from, to)
 }
 
+// Between is an account's transactions posted from one day to another, both
+// included, oldest first.
+func (b *Business) Between(ctx context.Context, actor, accountID types.ID, from, to types.Date) ([]Transaction, error) {
+	if _, _, err := b.accounts.Account(ctx, actor, accountID); err != nil {
+		return nil, err
+	}
+
+	return b.store.Transactions(ctx, accountID, from, to.AddDays(1))
+}
+
 // --- for other domains -------------------------------------------------------
+
+// Reconciliations is an account's, by the start of their periods, asking
+// nobody's permission: for the export, which has asked for the account or
+// the project already, and says beside each line whether its period was
+// reconciled.
+func (b *Business) Reconciliations(ctx context.Context, accountID types.ID) ([]Reconciliation, error) {
+	return b.store.Reconciliations(ctx, accountID)
+}
 
 // Lookup is one transaction with its parts, asking nobody's permission: for
 // the receipt domain, which decides who may see a receipt by what it is

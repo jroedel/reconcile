@@ -69,6 +69,7 @@ type Renderer struct {
 	// mails is every message the app sends, by name: text/template, because
 	// a plain-text message escaped for HTML would arrive full of &amp;.
 	mails map[string]*texttemplate.Template
+	texts map[string]*texttemplate.Template
 
 	// strings is every {{t}} and {{tc}} in every page and message, read once
 	// at startup.
@@ -211,6 +212,11 @@ func NewRenderer(log *slog.Logger, tr Translator, own ...fs.FS) (*Renderer, erro
 		return nil, err
 	}
 
+	texts, err := parseTexts(own)
+	if err != nil {
+		return nil, err
+	}
+
 	trees := map[string][]*parse.Tree{}
 
 	for name, set := range pages {
@@ -222,6 +228,12 @@ func NewRenderer(log *slog.Logger, tr Translator, own ...fs.FS) (*Renderer, erro
 	for name, set := range mails {
 		for _, tmpl := range set.Templates() {
 			trees[name+".txt"] = append(trees[name+".txt"], tmpl.Tree)
+		}
+	}
+
+	for name, set := range texts {
+		for _, tmpl := range set.Templates() {
+			trees["text/"+name+".txt"] = append(trees["text/"+name+".txt"], tmpl.Tree)
 		}
 	}
 
@@ -243,6 +255,7 @@ func NewRenderer(log *slog.Logger, tr Translator, own ...fs.FS) (*Renderer, erro
 		tr:          tr,
 		pages:       pages,
 		mails:       mails,
+		texts:       texts,
 		strings:     found,
 		css:         css,
 		cssPath:     "/static/app." + digest + ".css",

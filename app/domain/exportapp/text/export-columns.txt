@@ -1,0 +1,14 @@
+{{/* The header row of transactions.csv in the accountant's package, one
+     column to a line, in exportbus.Columns' order. */ -}}
+{{t "Date"}}
+{{t "Account"}}
+{{t "Description"}}
+{{t "Amount"}}
+{{t "Currency"}}
+{{t "Whole transaction"}}
+{{t "Category"}}
+{{t "Project"}}
+{{t "Memo"}}
+{{t "Receipts"}}
+{{t "Statement"}}
+{{t "Reconciled on"}}

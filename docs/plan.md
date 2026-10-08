@@ -155,11 +155,12 @@ positive). Times are Unix milliseconds. Every table is `STRICT`.
 
 Receipts are never required.
 
-**Export (accountant package).** For an account and period, or for a project, the export is a zip containing:
-- `transactions.csv`, one row per split: date, account, description, amount, category, project, memo, receipt filenames
-- a `receipts/` folder of files named `YYYY-MM-DD_amount_merchant_n.ext`
+**Export (accountant package).** For an account and a period of months (from the month-by-month page, or a statement's own period from its page), or for a whole project (from its book), the export is a zip containing:
+- `transactions.csv`, one row per split: date, account, description, the split's amount, currency, the whole transaction's amount, category, project, memo, its receipts' paths in the zip, the statement file it came from, and the day its period was reconciled (empty if it was not). UTF-8 with a byte-order mark so that Excel reads accents; a text cell that starts with `=`, `+`, `-` or `@` gets a leading apostrophe so that it is never run as a formula. The header row is words, so it goes through `t` (an app's `text/*.txt`).
+- a `receipts/` folder of files named `YYYY-MM-DD_amount_merchant_n.ext`: the date, amount and shop typed on the receipt, or else the transaction's date, amount and description; `n` is the page. A receipt on two charges is in the zip once.
+- for an account, a `statements/` folder with the original file of every statement whose period touches the export's. A project's package has none: a role on a project is no window into its accounts.
 
-The accountant role can download it.
+Owners, bookkeepers and accountants can download it (the Export permission). It is streamed, a file at a time, with thirty minutes to send; nothing is written to the history, since nothing changed, and the log keeps who downloaded what.
 
 **Translations.**
 - Templates call `{{t "Upload receipts"}}` (keyed by English text plus an optional context: `{{tc "verb" "Close"}}`), and Go-side copy calls `i18n.T(ctx, "…")`.
@@ -194,7 +195,7 @@ The accountant role can download it.
 5. **Import.** Statements, the CSV mapping screen and saved mappings, OFX/QFX, verification, dedupe, the transaction list by month, and the statement file stored and downloadable. Removing a statement takes its transactions with it. The list's filters by category, project and receipt arrive with those things, in steps 6 and 7.
 6. **Categories, splits, projects.** Per-org and personal category lists, the split editor, project assignment, the project dashboard (totals, by category, by month, every part, per currency), and the month list's "not sorted yet" filter.
 7. **Receipts.** Multi-file upload (direct and inbox), receipt viewer, attach and detach, match suggestions (same amount within ±5 days, from the accounts the person may attach receipts on) on the waiting list and the transaction page. Uploads stream part by part, 20 MB a file, 20 files and 120 MB a request, ten minutes. Thumbnails wait for step 9; pages show the photo itself.
-8. **Reconcile and export.** In two pull requests: first the month-by-month page, the statement reconcile screen, and locking and reopening (audited); then the export zip.
+8. **Reconcile and export.** In two pull requests: first the month-by-month page, the statement reconcile screen, and locking and reopening (audited); then the export zip (`exportbus`, `exportapp`).
 9. **Later, separately planned:**
    - The translations API, an MCP tool for Claude, and a review screen; then ES/PT go live
    - PDF statements

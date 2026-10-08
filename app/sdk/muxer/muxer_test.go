@@ -16,6 +16,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/category/stores/categorydb"
 	"github.com/jroedel/reconcile/business/domain/event/eventbus"
 	"github.com/jroedel/reconcile/business/domain/event/stores/eventdb"
+	"github.com/jroedel/reconcile/business/domain/export/exportbus"
 	"github.com/jroedel/reconcile/business/domain/file/filebus"
 	"github.com/jroedel/reconcile/business/domain/file/stores/filedb"
 	"github.com/jroedel/reconcile/business/domain/file/stores/filefs"
@@ -95,6 +96,7 @@ func newSite(t *testing.T, want sqldb.Expected, configure func(*Config)) (http.H
 	files := filebus.NewBusiness(log, filedb.NewStore(db), bytes)
 	categories := categorybus.NewBusiness(log, categorydb.NewStore(db), tenancy)
 	ledger := ledgerbus.NewBusiness(log, ledgerdb.NewStore(db), tenancy, files, categories)
+	receipts := receiptbus.NewBusiness(log, receiptdb.NewStore(db), tenancy, ledger, files)
 
 	cfg := Config{
 		Log: log, DB: db, Expected: want, Render: render,
@@ -105,7 +107,8 @@ func newSite(t *testing.T, want sqldb.Expected, configure func(*Config)) (http.H
 		Ledger:  ledger,
 
 		Categories: categories,
-		Receipts:   receiptbus.NewBusiness(log, receiptdb.NewStore(db), tenancy, ledger, files),
+		Receipts:   receipts,
+		Export:     exportbus.NewBusiness(log, tenancy, ledger, receipts, categories, files),
 		BaseURL:    base,
 		Mail:       sent,
 	}

@@ -3,6 +3,7 @@ package ledgerapp
 import (
 	"errors"
 	"net/http"
+	"net/url"
 
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
@@ -17,6 +18,10 @@ type statementView struct {
 	ImportedBy  string
 	CanBookkeep bool
 	Done        string
+
+	// Export is the accountant's package for the statement's period, for
+	// a reader who may download it.
+	Export string
 
 	// ReconciledBy names who reconciled it, when somebody has.
 	ReconciledBy string
@@ -78,6 +83,12 @@ func (a app) statementPage(w http.ResponseWriter, r *http.Request, status int, f
 	if view.Form.From == "" && view.Form.To == "" {
 		start, end := st.Period()
 		view.Form.From, view.Form.To = start.String(), end.String()
+	}
+
+	if rv.Access.Can(tenancybus.Export) {
+		start, end := st.Period()
+		view.Export = "/accounts/" + st.AccountID.String() + "/export?" +
+			url.Values{"from": {start.String()}, "to": {end.String()}}.Encode()
 	}
 
 	if u, err := a.cfg.Users.ByID(ctx, st.ImportedBy); err == nil {
@@ -234,7 +245,12 @@ type monthsView struct {
 	Account     tenancybus.Account
 	Path        string
 	CanBookkeep bool
+	CanExport   bool
 	Months      []ledgerbus.MonthCover
+
+	// LastMonth is the month before this one, "2026-07": what the download
+	// form offers first, because the end of a month is when it is wanted.
+	LastMonth string
 }
 
 // months is an account's months, each with how it stands: the page a
@@ -263,6 +279,8 @@ func (a app) months(w http.ResponseWriter, r *http.Request) {
 		Account:     account,
 		Path:        "/accounts/" + id.String(),
 		CanBookkeep: access.Can(tenancybus.Bookkeep),
+		CanExport:   access.Can(tenancybus.Export),
+		LastMonth:   a.cfg.Now().AddDate(0, 0, -a.cfg.Now().Day()).Format("2006-01"),
 	}
 
 	// Today where the server is. A month's edge is a day either way for

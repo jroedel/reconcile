@@ -315,6 +315,10 @@ type bookView struct {
 	Receipts map[types.ID][]receiptbus.Receipt
 }
 
+// CanExport reports whether the reader may download the accountant's
+// package of the project.
+func (v bookView) CanExport() bool { return v.Book.Access.Can(tenancybus.Export) }
+
 func (a app) book(w http.ResponseWriter, r *http.Request) {
 	me, ok := actor(w, r)
 	if !ok {
