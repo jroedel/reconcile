@@ -38,6 +38,8 @@ var Expected = sqldb.Expected{
 		"external_id", "hash", "occurrence"},
 	"csv_mappings": {"account_id", "fingerprint", "mapping", "updated_by", "updated_at"},
 	"splits":       {"id", "transaction_id", "position", "amount", "category_id", "project_id", "memo"},
+	"reconciliations": {"statement_id", "account_id", "period_start", "period_end", "note",
+		"reconciled_by", "reconciled_at"},
 }
 
 // Init creates the tables. After tenancydb and filedb, which they reference.
@@ -102,8 +104,51 @@ CREATE TABLE IF NOT EXISTS csv_mappings (
 		return fmt.Errorf("creating the ledger tables: %w", err)
 	}
 
-	return initSplits(ctx, db)
+	if err := initSplits(ctx, db); err != nil {
+		return err
+	}
+
+	return initReconciliations(ctx, db)
 }
+
+// initReconciliations creates the table of statements a person has checked
+// against the paper (ledgerbus/reconcile.go). A statement has one or none,
+// so the statement is the key, and marking is an insert that does nothing
+// the second time.
+//
+// The reference to the statement does not cascade. A reconciled statement
+// is reopened before it can be removed, and the foreign key holds that
+// even against a mistake in the code above it.
+//
+// account_id is the statement's, copied, because the question asked of
+// this table on every edit is "is this day of this account locked", and
+// that is one index rather than a join.
+func initReconciliations(ctx context.Context, db *sql.DB) error {
+	const schema = `
+CREATE TABLE IF NOT EXISTS reconciliations (
+    statement_id  TEXT    PRIMARY KEY REFERENCES statements (id),
+    account_id    TEXT    NOT NULL REFERENCES accounts (id),
+    period_start  TEXT    NOT NULL,
+    period_end    TEXT    NOT NULL,
+    note          TEXT    NOT NULL DEFAULT '',
+    reconciled_by TEXT    NOT NULL,
+    reconciled_at INTEGER NOT NULL
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS reconciliations_account ON reconciliations (account_id, period_start);
+`
+
+	if _, err := db.ExecContext(ctx, schema); err != nil {
+		return fmt.Errorf("creating the reconciliations table: %w", err)
+	}
+
+	return nil
+}
+
+// lockedWhere is the condition a transaction t is in a reconciled period
+// of its account under. Dates are ISO text, which compares as dates do.
+const lockedWhere = `EXISTS (SELECT 1 FROM reconciliations r
+WHERE r.account_id = t.account_id AND t.posted_on BETWEEN r.period_start AND r.period_end)`
 
 // initSplits creates the splits table, which arrived after the first
 // statements were imported, and gives every transaction without parts one
@@ -210,6 +255,15 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		st.Added++
 	}
 
+	// What it added inside a reconciled period, counted here because
+	// only here is it known which rows were new. The business refuses an
+	// import that counts any (ledgerbus.ErrLocked); the preview shows the
+	// number.
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM transactions t WHERE t.statement_id = ? AND `+lockedWhere,
+		st.ID.String()).Scan(&st.Locked); err != nil {
+		return ledgerbus.Statement{}, fmt.Errorf("checking the reconciled periods: %w", err)
+	}
+
 	if !commit {
 		return st, nil
 	}
@@ -289,9 +343,11 @@ WHERE rowid = (SELECT rowid FROM transactions WHERE account_id = ? AND hash = ? 
 // --- statements -------------------------------------------------------------
 
 const statementColumns = `s.id, s.account_id, s.file_id, f.name, s.format, s.period_start, s.period_end, s.opening, s.closing,
-s.checked, s.added, s.already, s.imported_by, s.imported_at`
+s.checked, s.added, s.already, s.imported_by, s.imported_at,
+r.period_start, r.period_end, r.note, r.reconciled_by, r.reconciled_at`
 
-const statementFrom = ` FROM statements s JOIN files f ON f.id = s.file_id `
+const statementFrom = ` FROM statements s JOIN files f ON f.id = s.file_id
+LEFT JOIN reconciliations r ON r.statement_id = s.id `
 
 // StatementByID finds one.
 func (s *Store) StatementByID(ctx context.Context, id types.ID) (ledgerbus.Statement, error) {
@@ -351,6 +407,19 @@ func (s *Store) RemoveStatement(ctx context.Context, st ledgerbus.Statement, ev 
 	}
 	defer tx.Rollback()
 
+	// Transactions the statement brought into a period another statement
+	// was reconciled for are that period's now: removing them would change
+	// a month somebody has said agrees with the bank.
+	var locked int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM transactions t WHERE t.statement_id = ? AND `+lockedWhere,
+		st.ID.String()).Scan(&locked); err != nil {
+		return 0, fmt.Errorf("checking the reconciled periods: %w", err)
+	}
+
+	if locked > 0 {
+		return 0, ledgerbus.ErrLocked
+	}
+
 	res, err := tx.ExecContext(ctx, `DELETE FROM transactions WHERE statement_id = ?`, st.ID.String())
 	if err != nil {
 		return 0, fmt.Errorf("removing the statement's transactions: %w", err)
@@ -387,10 +456,12 @@ func scanStatement(row scanner) (ledgerbus.Statement, error) {
 		format, start, end, chkd string
 		opening, closing         sql.NullInt64
 		at                       int64
+		rStart, rEnd, rNote, rBy sql.NullString
+		rAt                      sql.NullInt64
 	)
 
 	if err := row.Scan(&id, &account, &file, &st.FileName, &format, &start, &end, &opening, &closing,
-		&chkd, &st.Added, &st.Already, &by, &at); err != nil {
+		&chkd, &st.Added, &st.Already, &by, &at, &rStart, &rEnd, &rNote, &rBy, &rAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ledgerbus.Statement{}, err
 		}
@@ -415,6 +486,15 @@ func scanStatement(row scanner) (ledgerbus.Statement, error) {
 	st.Opening, st.HasOpening = money.Amount(opening.Int64), opening.Valid
 	st.Closing, st.HasClosing = money.Amount(closing.Int64), closing.Valid
 	st.ImportedAt = time.UnixMilli(at).UTC()
+
+	if rBy.Valid {
+		r, err := reconciliation(st.ID.String(), account, rStart.String, rEnd.String, rNote.String, rBy.String, rAt.Int64)
+		if err != nil {
+			return ledgerbus.Statement{}, err
+		}
+
+		st.Reconciliation = r
+	}
 
 	return st, nil
 }
@@ -788,4 +868,115 @@ func nullAmount(a money.Amount, ok bool) any {
 	}
 
 	return int64(a)
+}
+
+// --- reconciliations ----------------------------------------------------------
+
+// Reconcile stores a reconciliation unless the statement has one.
+func (s *Store) Reconcile(ctx context.Context, r ledgerbus.Reconciliation, ev eventbus.Event) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("starting a change: %w", err)
+	}
+	defer tx.Rollback()
+
+	res, err := tx.ExecContext(ctx, `
+INSERT INTO reconciliations (statement_id, account_id, period_start, period_end, note, reconciled_by, reconciled_at)
+VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (statement_id) DO NOTHING`,
+		r.StatementID.String(), r.AccountID.String(), r.Start.String(), r.End.String(), r.Note, r.By.String(), r.At.UnixMilli())
+	if err != nil {
+		return false, fmt.Errorf("reconciling: %w", err)
+	}
+
+	if n, err := res.RowsAffected(); err != nil || n == 0 {
+		return false, err
+	}
+
+	if err := eventdb.Insert(ctx, tx, ev); err != nil {
+		return false, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("saving a change: %w", err)
+	}
+
+	return true, nil
+}
+
+// Reopen deletes a statement's reconciliation.
+func (s *Store) Reopen(ctx context.Context, statementID types.ID, ev eventbus.Event) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("starting a change: %w", err)
+	}
+	defer tx.Rollback()
+
+	res, err := tx.ExecContext(ctx, `DELETE FROM reconciliations WHERE statement_id = ?`, statementID.String())
+	if err != nil {
+		return false, fmt.Errorf("reopening: %w", err)
+	}
+
+	if n, err := res.RowsAffected(); err != nil || n == 0 {
+		return false, err
+	}
+
+	if err := eventdb.Insert(ctx, tx, ev); err != nil {
+		return false, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("saving a change: %w", err)
+	}
+
+	return true, nil
+}
+
+// Reconciliations is an account's, by the start of their periods.
+func (s *Store) Reconciliations(ctx context.Context, account types.ID) ([]ledgerbus.Reconciliation, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT statement_id, account_id, period_start, period_end, note, reconciled_by, reconciled_at
+FROM reconciliations WHERE account_id = ? ORDER BY period_start, statement_id`, account.String())
+	if err != nil {
+		return nil, fmt.Errorf("reading the reconciliations: %w", err)
+	}
+	defer rows.Close()
+
+	var out []ledgerbus.Reconciliation
+
+	for rows.Next() {
+		var (
+			st, acc, start, end, note, by string
+			at                            int64
+		)
+
+		if err := rows.Scan(&st, &acc, &start, &end, &note, &by, &at); err != nil {
+			return nil, fmt.Errorf("reading a reconciliation: %w", err)
+		}
+
+		r, err := reconciliation(st, acc, start, end, note, by, at)
+		if err != nil {
+			return nil, err
+		}
+
+		out = append(out, r)
+	}
+
+	return out, rows.Err()
+}
+
+func reconciliation(statement, account, start, end, note, by string, at int64) (ledgerbus.Reconciliation, error) {
+	r := ledgerbus.Reconciliation{Note: note, At: time.UnixMilli(at).UTC()}
+
+	var e [5]error
+	r.StatementID, e[0] = types.ParseID(statement)
+	r.AccountID, e[1] = types.ParseID(account)
+	r.By, e[2] = types.ParseID(by)
+	r.Start, e[3] = types.ParseDate(start)
+	r.End, e[4] = types.ParseDate(end)
+
+	if err := errors.Join(e[:]...); err != nil {
+		return ledgerbus.Reconciliation{}, fmt.Errorf("a stored reconciliation is unreadable: %w", err)
+	}
+
+	return r, nil
 }

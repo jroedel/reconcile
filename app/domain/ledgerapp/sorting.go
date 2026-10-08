@@ -27,7 +27,7 @@ type partRow struct {
 
 type transactionView struct {
 	Editor      ledgerbus.Editor
-	CanBookkeep bool
+	CanSort     bool
 	CanReceipts bool
 	Back        string
 
@@ -101,7 +101,7 @@ func (a app) transactionPage(w http.ResponseWriter, r *http.Request, status int,
 
 	view := transactionView{
 		Editor:      e,
-		CanBookkeep: e.Access.Can(tenancybus.Bookkeep),
+		CanSort:     e.CanSort(),
 		CanReceipts: e.Access.Can(tenancybus.Receipts),
 		Back:        monthOf(e.Transaction),
 		Rows:        rows,
@@ -221,6 +221,12 @@ func (a app) sortTransaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	t, err := a.cfg.Ledger.SetSplits(r.Context(), a.cfg.Now(), me.ID, id, parts)
+	if errors.Is(err, ledgerbus.ErrLocked) {
+		a.transactionPage(w, r, http.StatusConflict, rows, "locked", 0)
+
+		return
+	}
+
 	if invalid, ok := errors.AsType[ledgerbus.Invalid](err); ok {
 		a.transactionPage(w, r, http.StatusUnprocessableEntity, rows, invalid.Field, invalid.Index+1)
 

@@ -118,7 +118,8 @@ positive). Times are Unix milliseconds. Every table is `STRICT`.
 - **Who sees a receipt:** anyone who can read its home inbox, or the account of a transaction it is on, or a project holding a split of one. So a pilgrim given only the project sees what they uploaded and which charge it went to, and the treasurer sees it from the card. **Who attaches it:** someone with the Receipts permission on the transaction's account, or on a project of its splits.
 
 **Reconciliation**
-- `reconciliations(id, statement_id UNIQUE, state[open|reconciled], reconciled_by, reconciled_at, note)`. While a statement is reconciled, its transactions and splits are locked. A bookkeeper or owner can reopen it, giving a reason, and the reopening is recorded as an event.
+- `reconciliations(statement_id PK, account_id, period_start, period_end, note, reconciled_by, reconciled_at)`. A row is the statement reconciled; reopening deletes it, with an event that keeps the reason. The period is the one on the bank's paper statement: it includes the file's own and may reach up to 31 days beyond it either side, because a CSV states no period and its first and last rows are rarely the 1st and the 31st.
+- **The lock is on the period, not the statement.** While a period of an account is reconciled, no transaction posted in it can have its splits changed, no import may add one to it, and no statement that brought one in may be removed. Statements overlap (a card's June lists what May brought in), so a lock on one statement's own rows would leave the month open through the other. Receipts are not locked: they change no figure, and are welcome late.
 
 **Translations**
 - `ui_strings(key PK, en, context, first_seen, last_seen)` and `ui_translations(key, lang[es|pt], text, status[pending|draft|approved], updated_by, updated_at)`.
@@ -146,11 +147,11 @@ positive). Times are Unix milliseconds. Every table is `STRICT`.
 
 **Projects.** The project page shows income, expense and net (whether it comes out even), a breakdown by category and month, and the splits it holds, from any account. Assigning a split to a project requires bookkeeper rights on the transaction's account. Budgets come later.
 
-**Reconcile (end of month).** A per-account grid of months shows whether each one is covered by a statement, verified, reconciled, or missing (eumaeus coverage). Opening a statement shows:
-- the verification result
-- transactions with no category
-- unmatched receipts dated in the period
-- a "Mark reconciled" button, which locks the period
+**Reconcile (end of month).** Each account has a month-by-month page. A month is *reconciled* when every day of it is in a reconciled period, *imported* when every day is in some statement, *partial* when some days are in none (and it names them), *missing* when no statement reaches it, and *still going* while it is the current month. A month with no transactions looks the same as one nobody imported in a list of transactions; this page is how to tell them apart. The days of the first month before the account's first statement are not a gap. Opening a statement shows:
+- the verification result, and the closing balance to compare with the paper (stated, typed, or read from the last row when the file balanced row by row)
+- its period's transactions, money in and out, and those with no category, which do not block reconciling but cannot be sorted afterwards without reopening
+- waiting receipts that may belong: put into the account's inbox and dated in the period, or for the amount of one of its transactions
+- a "Mark reconciled" form with the period (bookkeeper), or, once reconciled, who did it and when, and a "Reopen" form that asks why
 
 Receipts are never required.
 
@@ -193,7 +194,7 @@ The accountant role can download it.
 5. **Import.** Statements, the CSV mapping screen and saved mappings, OFX/QFX, verification, dedupe, the transaction list by month, and the statement file stored and downloadable. Removing a statement takes its transactions with it. The list's filters by category, project and receipt arrive with those things, in steps 6 and 7.
 6. **Categories, splits, projects.** Per-org and personal category lists, the split editor, project assignment, the project dashboard (totals, by category, by month, every part, per currency), and the month list's "not sorted yet" filter.
 7. **Receipts.** Multi-file upload (direct and inbox), receipt viewer, attach and detach, match suggestions (same amount within ±5 days, from the accounts the person may attach receipts on) on the waiting list and the transaction page. Uploads stream part by part, 20 MB a file, 20 files and 120 MB a request, ten minutes. Thumbnails wait for step 9; pages show the photo itself.
-8. **Reconcile and export.** The coverage grid, the statement reconcile screen, locking and reopening (audited), and the export zip.
+8. **Reconcile and export.** In two pull requests: first the month-by-month page, the statement reconcile screen, and locking and reopening (audited); then the export zip.
 9. **Later, separately planned:**
    - The translations API, an MCP tool for Claude, and a review screen; then ES/PT go live
    - PDF statements

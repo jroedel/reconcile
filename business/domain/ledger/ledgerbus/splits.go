@@ -76,7 +76,14 @@ type Editor struct {
 	// already in -- including one the actor cannot otherwise see, named
 	// so that a person knows where the money is.
 	Projects []tenancybus.Project
+
+	// Lock is the reconciliation whose period holds the transaction, if
+	// one does: its parts cannot change until that is reopened.
+	Lock Reconciliation
 }
+
+// CanSort reports whether the parts may be changed by this reader now.
+func (e Editor) CanSort() bool { return e.Access.Can(tenancybus.Bookkeep) && !e.Lock.Made() }
 
 // CategoryName and ProjectName name a part's choices for a page.
 func (e Editor) CategoryName(id types.ID) string {
@@ -112,6 +119,10 @@ func (b *Business) Transaction(ctx context.Context, actor, id types.ID) (Editor,
 	}
 
 	e := Editor{Transaction: t, Account: account, Access: access}
+
+	if e.Lock, err = b.lock(ctx, t.AccountID, t.PostedOn); err != nil {
+		return Editor{}, err
+	}
 
 	cats, err := b.categories.ForAccount(ctx, account)
 	if err != nil {
@@ -188,6 +199,10 @@ func (b *Business) SetSplits(ctx context.Context, now time.Time, actor, id types
 
 	if !e.Access.Can(tenancybus.Bookkeep) {
 		return Transaction{}, ErrForbidden
+	}
+
+	if e.Lock.Made() {
+		return Transaction{}, ErrLocked
 	}
 
 	t := e.Transaction

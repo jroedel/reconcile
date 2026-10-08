@@ -4,6 +4,7 @@
 <h1>{{if $t.Description}}{{$t.Description}}{{else}}{{t "A transaction with no description"}}{{end}}</h1>
 <p>{{$t.PostedOn}} · <span class="money {{if lt $t.Amount 0}}out{{else}}in{{end}}">{{money $t.Amount $cur}}</span></p>
 {{template "parts-problem" $v}}
+{{if $e.Lock.Made}}<p class="notice">{{t "This transaction is in a reconciled period, {start} to {end}, so its parts cannot change. Receipts can still be attached." "start" $e.Lock.Start "end" $e.Lock.End}} <a href="/statements/{{$e.Lock.StatementID}}#reconcile">{{t "See the statement"}}</a></p>{{end}}
 {{if eq $v.Done "receipts"}}{{template "uploaded" $v.Uploaded}}{{end}}
 
 <section class="card">
@@ -35,7 +36,7 @@
 {{end}}
 </section>
 
-{{if $v.CanBookkeep}}
+{{if $v.CanSort}}
 <form method="post" action="/transactions/{{$t.ID}}">
 {{range $i, $row := $v.Rows}}
 <fieldset class="card part">

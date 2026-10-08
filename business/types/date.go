@@ -51,3 +51,14 @@ func (d Date) Zero() bool { return d.s == "" }
 
 // Before reports whether d is an earlier day than e. Both must be set.
 func (d Date) Before(e Date) bool { return d.s < e.s }
+
+// AddDays is the day n days after d, or before it for a negative n. The
+// zero Date stays zero.
+func (d Date) AddDays(n int) Date {
+	t, err := time.Parse(dateLayout, d.s)
+	if err != nil {
+		return Date{}
+	}
+
+	return DateOf(t.AddDate(0, 0, n))
+}

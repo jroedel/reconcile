@@ -14,6 +14,12 @@
 {{- else if eq . "same-file"}}{{t "This file was imported into this account already."}}
 {{- else if eq . "opening"}}{{t "The opening balance must be an amount, such as 1234.56, or left empty."}}
 {{- else if eq . "closing"}}{{t "The closing balance must be an amount, such as 1234.56, or left empty."}}
+{{- else if eq . "locked"}}{{t "Some of these transactions fall in a period that has been reconciled, so nothing was imported. If the bank really changed that period, reopen its statement first."}}
+{{- else if eq . "remove-locked"}}{{t "This statement cannot be removed while transactions it brought in are in a reconciled period. Reopen the reconciled statement first."}}
+{{- else if eq . "period"}}{{t "The period must include every day of this statement, and reach no more than a month beyond it."}}
+{{- else if eq . "note"}}{{t "The note is too long. Keep it under 500 characters."}}
+{{- else if eq . "reason"}}{{t "Say why it is being reopened, in under 500 characters. The history keeps the reason."}}
+{{- else if eq . "already-reconciled"}}{{t "Somebody reconciled this statement already."}}
 {{- else}}{{t "Something went wrong at our end. Please try again in a few minutes."}}
 {{- end}}</p>{{end}}{{end}}
 
@@ -24,12 +30,15 @@
 {{- else if eq .Problem "category"}}{{t "Part {n} has a category that is not on this account's list. Choose another." "n" .Part}}
 {{- else if eq .Problem "project"}}{{t "Part {n} is in a project you do not keep the books of. Ask one of its owners for the bookkeeper role." "n" .Part}}
 {{- else if eq .Problem "memo"}}{{t "The memo on part {n} is too long." "n" .Part}}
+{{- else if eq .Problem "locked"}}{{t "This transaction is in a reconciled period, so its parts cannot change. Reopen the statement first."}}
 {{- else}}{{t "Something went wrong at our end. Please try again in a few minutes."}}
 {{- end}}</p>{{end}}{{end}}
 
 {{define "done"}}{{if .}}<p class="notice ok" role="status">
 {{- if eq . "sorted"}}{{t "Saved."}}
 {{- else if eq . "removed"}}{{t "The statement and the transactions it brought in were removed. The file can be imported again."}}
+{{- else if eq . "reconciled"}}{{t "Reconciled. The transactions in its period are locked."}}
+{{- else if eq . "reopened"}}{{t "Reopened. The history keeps the reason."}}
 {{- end}}</p>{{end}}{{end}}
 
 {{define "warning"}}
@@ -48,3 +57,12 @@
 {{- if eq . "balances"}}<span class="badge">{{t "balanced row by row"}}</span>
 {{- else if eq . "totals"}}<span class="badge">{{t "balanced in total"}}</span>
 {{- else}}<span class="badge">{{t "not checked"}}</span>{{end}}{{end}}
+
+{{/* cover is how a month of an account stands (ledgerbus.Cover), in words
+     first: the colour only repeats them. */}}
+{{define "cover"}}
+{{- if eq . "reconciled"}}<span class="badge ok">{{t "Reconciled"}}</span>
+{{- else if eq . "imported"}}<span class="badge">{{t "Imported, not reconciled yet"}}</span>
+{{- else if eq . "partial"}}<span class="badge warn">{{t "Some days missing"}}</span>
+{{- else if eq . "missing"}}<span class="badge warn">{{t "No statement yet"}}</span>
+{{- else}}<span class="badge">{{t "Still going"}}</span>{{end}}{{end}}

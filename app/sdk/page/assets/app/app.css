@@ -217,6 +217,15 @@ input.code {
 	font-size: 0.8rem;
 	white-space: nowrap;
 }
+.badge.ok { border-color: var(--ok-line); background: var(--ok-bg); color: var(--ink); }
+.badge.warn { border-color: var(--warn-line); background: var(--warn-bg); color: var(--ink); }
+
+.coverage { list-style: none; padding: 0; margin: 0 0 var(--gap); }
+.coverage > li { padding: 0.75rem 0; border-bottom: 1px solid var(--line); }
+.coverage > li:last-child { border-bottom: 0; }
+.coverage .month { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.75rem; }
+.coverage .month strong { font-variant-numeric: tabular-nums; }
+.coverage p { margin: 0.25rem 0 0; }
 
 .role { color: var(--muted); }
 

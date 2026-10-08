@@ -53,8 +53,9 @@
 {{if $v.Statements}}
 <section class="card">
 <h2>{{t "Statements"}}</h2>
+<p><a href="{{$v.Path}}/months">{{t "Month by month: what is reconciled, and what is missing"}}</a></p>
 <ul class="list">
-{{range $v.Statements}}<li><a href="/statements/{{.ID}}">{{t "{start} to {end}" "start" .Start "end" .End}}</a> {{template "method" (printf "%s" .Checked)}}
+{{range $v.Statements}}<li><a href="/statements/{{.ID}}">{{t "{start} to {end}" "start" .Start "end" .End}}</a> {{template "method" (printf "%s" .Checked)}}{{if .Reconciled}} <span class="badge ok">{{t "Reconciled"}}</span>{{end}}
 <span class="hint">{{.FileName}} · {{t "{n} new" "n" .Added}}</span></li>
 {{end}}</ul>
 </section>

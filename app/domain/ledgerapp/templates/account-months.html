@@ -1,0 +1,24 @@
+{{define "title"}}{{t "Month by month"}} · {{.Data.Account.Name}}{{end}}
+{{define "content"}}{{$v := .Data}}
+<p class="crumbs"><a href="{{$v.Path}}">{{$v.Account.Name}}</a> · <a href="{{$v.Path}}/transactions">{{t "Transactions"}}</a></p>
+<h1>{{t "Month by month"}}</h1>
+<p class="hint">{{t "A month is reconciled when every day of it is in a statement somebody has checked against the one the bank sent. A reconciled month is locked."}}</p>
+
+{{if $v.Months}}
+<ul class="coverage">
+{{range $v.Months}}<li>
+<div class="month"><strong>{{.Month}}</strong> {{template "cover" (printf "%s" .State)}}
+{{if .Count}}<a href="{{$v.Path}}/transactions?month={{.Month}}">{{t "{n} transactions" "n" .Count}}</a>{{end}}
+{{if .Unsorted}}<a href="{{$v.Path}}/transactions?month={{.Month}}&amp;unsorted=1">{{t "{n} not sorted yet" "n" .Unsorted}}</a>{{end}}</div>
+{{if eq (printf "%s" .State) "partial"}}<p>{{t "Not in any statement:"}}
+{{range $i, $g := .Gaps}}{{if $i}}, {{end}}{{if eq $g.From.String $g.To.String}}{{$g.From}}{{else}}{{t "{from} to {to}" "from" $g.From "to" $g.To}}{{end}}{{end}}</p>
+<p class="hint">{{t "If nothing happened on those days, widen the period when you reconcile the statement next to them."}}</p>
+{{else if eq (printf "%s" .State) "missing"}}<p class="hint">{{t "No statement reaches this month. A month with no transactions looks the same as one nobody imported; this is how to tell."}}</p>{{end}}
+{{if .Statements}}<p class="hint">{{range $i, $s := .Statements}}{{if $i}} · {{end}}<a href="/statements/{{$s.ID}}{{if not $s.Reconciled}}#reconcile{{end}}">{{t "{start} to {end}" "start" $s.Start "end" $s.End}}</a>{{if $s.Reconciled}} ✓{{end}}{{end}}</p>{{end}}
+</li>
+{{end}}</ul>
+{{else}}
+<p class="hint">{{t "No statements yet. The months appear with the first one."}}</p>
+{{if $v.CanBookkeep}}<p><a class="button" href="{{$v.Path}}/transactions">{{t "Add a statement"}}</a></p>{{end}}
+{{end}}
+{{end}}

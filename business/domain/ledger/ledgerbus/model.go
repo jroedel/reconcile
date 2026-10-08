@@ -51,7 +51,9 @@ type Statement struct {
 	Start, End types.Date
 
 	// Opening and Closing are the balances the statement was checked
-	// against, when there were any (ByTotals).
+	// against: stated or typed (ByTotals), or before its first row and
+	// after its last (ByBalances; statements imported before reconciling
+	// arrived have none).
 	Opening, Closing       money.Amount
 	HasOpening, HasClosing bool
 
@@ -63,6 +65,14 @@ type Statement struct {
 
 	ImportedBy types.ID
 	ImportedAt time.Time
+
+	// Reconciliation is its reconciliation, if it has been reconciled
+	// (reconcile.go).
+	Reconciliation Reconciliation
+
+	// Locked is how many of the transactions importing it would add fall
+	// in a period already reconciled. Counted with Added, and refused.
+	Locked int
 }
 
 // Transaction is one line of an account's history, as a statement reported

@@ -108,6 +108,9 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	handle("GET /statements/{id}", a.statement)
 	handle("GET /statements/{id}/file", a.download)
 	handle("POST /statements/{id}/remove", a.remove)
+	handle("POST /statements/{id}/reconcile", a.reconcile)
+	handle("POST /statements/{id}/reopen", a.reopen)
+	handle("GET /accounts/{id}/months", a.months)
 	handle("GET /transactions/{id}", a.transaction)
 	handle("POST /transactions/{id}", a.sortTransaction)
 	handle("GET /projects/{id}/book", a.book)
@@ -166,6 +169,8 @@ func problem(err error) string {
 		return "unbalanced"
 	case errors.Is(err, ledgerbus.ErrSameFile):
 		return "same-file"
+	case errors.Is(err, ledgerbus.ErrLocked):
+		return "locked"
 	case errors.Is(err, filebus.ErrTooBig):
 		return "too-big"
 	}
@@ -658,64 +663,7 @@ func typedAmount(s string) (money.Amount, error) {
 	return csvsource.ParseAmount(s, comma)
 }
 
-// --- a statement ------------------------------------------------------------
-
-type statementView struct {
-	Statement   ledgerbus.Statement
-	Account     tenancybus.Account
-	ImportedBy  string
-	CanBookkeep bool
-	Done        string
-
-	// Waiting is how many receipts the reader can see that wait for a
-	// match: after an import is when some of them can be matched.
-	Waiting int
-}
-
-func (a app) statement(w http.ResponseWriter, r *http.Request) {
-	me, ok := actor(w, r)
-	if !ok {
-		return
-	}
-
-	id, ok := a.pathID(w, r, "id")
-	if !ok {
-		return
-	}
-
-	ctx := r.Context()
-
-	st, access, err := a.cfg.Ledger.Statement(ctx, me.ID, id)
-	if err != nil {
-		a.failed(w, r, err)
-
-		return
-	}
-
-	account, _, err := a.cfg.Tenancy.Account(ctx, me.ID, st.AccountID)
-	if err != nil {
-		a.failed(w, r, err)
-
-		return
-	}
-
-	view := statementView{
-		Statement:   st,
-		Account:     account,
-		CanBookkeep: access.Can(tenancybus.Bookkeep),
-		Done:        r.URL.Query().Get("done"),
-	}
-
-	if u, err := a.cfg.Users.ByID(ctx, st.ImportedBy); err == nil {
-		view.ImportedBy = u.Named()
-	}
-
-	if waiting, err := a.cfg.Receipts.Waiting(ctx, me.ID); err == nil {
-		view.Waiting = len(waiting)
-	}
-
-	a.cfg.Render.Render(w, r, http.StatusOK, "statement", view)
-}
+// --- a statement's file -------------------------------------------------------
 
 // download sends the file a statement was read from, as an attachment
 // whatever it is: a file somebody uploaded is never shown inline on this
@@ -765,6 +713,12 @@ func (a app) remove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	st, err := a.cfg.Ledger.RemoveStatement(r.Context(), a.cfg.Now(), me.ID, id)
+	if errors.Is(err, ledgerbus.ErrLocked) {
+		a.statementPage(w, r, http.StatusConflict, statementForm{Problem: "remove-locked"})
+
+		return
+	}
+
 	if err != nil {
 		a.failed(w, r, err)
 
