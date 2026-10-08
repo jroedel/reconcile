@@ -1,9 +1,9 @@
-# Translations: Claude fills them, a person checks them
+# Translations: Claude fills them, a person looks them over
 
 The plan for step 9's first item (`docs/plan.md`, build order): an API and an
 MCP server through which Claude fills the pending Spanish and Portuguese
-strings, a screen on which a person checks them, and with that, Spanish and
-Portuguese go live.
+strings, which go live as they arrive, and a screen on which a person looks
+them over afterwards.
 
 ## Where things stand
 
@@ -22,7 +22,8 @@ So nothing about *showing* translations changes. What is missing is a way to
 
 | Topic | Decision |
 |---|---|
-| Who checks | **The site administrator, and people the administrator makes translators** for Spanish, Portuguese or both. Nobody else: anyone may sign up here, so "every signed-in user" (stewards' rule) would let a stranger rewrite the interface |
+| Claude's translations | **Trusted.** They are shown on the pages as soon as they are written. Reviewing is a look over them afterwards, from the web, not a gate they wait at |
+| Who reviews | **The site administrator, and people the administrator makes translators** for Spanish, Portuguese or both. Nobody else: anyone may sign up here, so "every signed-in user" (stewards' rule) would let a stranger rewrite the interface |
 | How Claude connects | **Both in this step:** personal API keys with a small `/api/v1` and a Claude Code skill, *and* the MCP server with OAuth so claude.ai can connect. Lifted from stewards |
 | Which Spanish and Portuguese | **Latin American Spanish with *tú*; Brazilian Portuguese with *você*.** Plain, as the English is |
 | Agents and production | **A narrow exception in CLAUDE.md:** an agent may call the public `/api/v1` translation endpoints, only when a person asks it to, with a key the person put in an environment variable. Nothing else about production changes: no ssh, no deploy, no `make prod-*` |
@@ -67,15 +68,18 @@ All in existing stores except one new table; every later column arrives as
 
 ## The rules (translationbus)
 
-- **Claude writes drafts.** Through the API a translation becomes `draft`,
-  `origin = claude`, shown on pages at once (the catalogue reloads after every
-  batch). Each item stands alone: a refusal does not stop the rest.
+- **Claude's translations are live at once.** Through the API a translation
+  becomes `draft`, `origin = claude`, and is shown on pages straight away (the
+  catalogue reloads after every batch). `draft` means only "no person has
+  looked at it yet", never "not ready". Each item stands alone: a refusal does
+  not stop the rest.
 - **Refused:** an unknown string or language; empty text, or longer than four
   times the English plus 100 characters; a set of `{placeholders}` that differs
   from the English's (order may change, as word order does); `<` or `>` the
   English does not have; and any row a person has approved, unless sent
   unchanged.
-- **A person checks.** On the review screen, a reviewer of that language can:
+- **A person looks over them, afterwards.** On the review screen, a reviewer
+  of that language can:
   - *Looks right*: `approved`, the note cleared.
   - *Change it*: their text, checked by the same rules, `approved`,
     `origin = person`.
@@ -160,36 +164,36 @@ A new rule beside section 6:
 > **One exception: translations.** An agent may call the public `/api/v1`
 > translation endpoints, and only those, when a person asks it to, with the
 > key in `RECONCILE_API_KEY` and the site in `RECONCILE_URL` — set by that
-> person in their environment, never written to a file. It never approves its
-> own work; that is what the review screen is for.
+> person in their environment, never written to a file. What it writes is
+> live at once; it never overwrites a translation a person has approved or
+> corrected, because that is the person's word on it.
 
 and `.claude/settings.json` keeps denying everything else it denies now.
 
 ## Build order
 
-Two pull requests, in this order:
+Two pull requests, Claude's way in first, so that the pages are in Spanish
+and Portuguese as soon as possible:
 
-1. **Translators and the review screen.**
-   - The schema changes and their old-schema test.
-   - `pages` from the extraction.
-   - The translators table and its admin page.
-   - The review rules and `/translations`.
-
-   A person can translate by hand from here on.
-2. **Claude's way in.**
-   - API keys and the profile screen.
+1. **Claude's way in.**
+   - The schema changes and their old-schema test: `pages` from the
+     extraction, and `origin` and `note`.
+   - API keys and the profile screen, for the administrator.
    - `/api/v1` and its three endpoints.
    - The MCP server and OAuth.
    - The skill, `scripts/reconcile-api`, the MCP guide, and the CLAUDE.md
      exception.
 
-   After it deploys, the administrator makes a key, a person asks Claude to
-   translate, and the drafts appear on the pages at once, waiting on
-   `/translations` to be checked.
+   After it deploys, the administrator makes a key or connects claude.ai,
+   asks Claude to translate, and the pages are in Spanish and Portuguese.
+2. **Looking them over.**
+   - The translators table and its admin page; translators may then hold keys
+     too.
+   - The review rules and `/translations`.
 
-"Spanish and Portuguese go live" is then not a switch: the language chooser is
-already there, and a draft is already shown. It is the day the review screen's
-"to check" count reaches zero.
+"Spanish and Portuguese go live" is not a switch: the language chooser is
+already there, and a translation is shown the moment it is written. They are
+live when Claude has filled them, after the first pull request.
 
 ## Verification
 
