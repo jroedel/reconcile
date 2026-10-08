@@ -209,6 +209,7 @@ type scopeView struct {
 
 	CanManage   bool
 	CanBookkeep bool
+	CanReceipts bool
 
 	People    []person
 	Inherited []person
@@ -276,6 +277,7 @@ func (a app) scope(r *http.Request, me userbus.User, scope types.Scope, path str
 		Access:      access,
 		CanManage:   access.Can(tenancybus.Manage),
 		CanBookkeep: access.Can(tenancybus.Bookkeep),
+		CanReceipts: access.Can(tenancybus.Receipts),
 		Roles:       tenancybus.Roles,
 		Done:        r.URL.Query().Get("done"),
 		Role:        tenancybus.Viewer,

@@ -11,6 +11,7 @@ import (
 	"net/http"
 
 	"github.com/jroedel/reconcile/app/sdk/mid"
+	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/types"
 	"github.com/jroedel/reconcile/foundation/web"
@@ -33,13 +34,20 @@ type Overviewer interface {
 }
 
 // view is the front page's data. Overview is empty for somebody signed out.
+// Waiter is the receipts waiting for a match (receiptbus): the overview says
+// how many, so that a treasurer sees there is matching to do.
+type Waiter interface {
+	Waiting(ctx context.Context, actor types.ID) ([]receiptbus.Receipt, error)
+}
+
 type view struct {
 	Overview tenancybus.Overview
+	Waiting  int
 }
 
 // Routes mounts the front page. {$} so that it is "/" and nothing else; every
 // other path that nothing claims is a 404, not the front page again.
-func Routes(mux *http.ServeMux, log *slog.Logger, render Renderer, overview Overviewer) {
+func Routes(mux *http.ServeMux, log *slog.Logger, render Renderer, overview Overviewer, receipts Waiter) {
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		var v view
 
@@ -53,6 +61,14 @@ func Routes(mux *http.ServeMux, log *slog.Logger, render Renderer, overview Over
 			}
 
 			v.Overview = ov
+
+			// A count that cannot be read is a line missing from the page,
+			// not a page that fails.
+			if waiting, err := receipts.Waiting(r.Context(), u.ID); err == nil {
+				v.Waiting = len(waiting)
+			} else {
+				log.Error("the waiting receipts could not be read", "request_id", web.RequestIDFrom(r.Context()), "error", err)
+			}
 		}
 
 		render.Render(w, r, http.StatusOK, "index", v)

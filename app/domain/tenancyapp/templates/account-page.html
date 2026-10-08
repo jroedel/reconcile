@@ -14,6 +14,22 @@
 {{if .Account.OrgID.Zero}}<p><a href="{{.Path}}/categories">{{t "This account's categories"}}</a></p>{{end}}
 </section>
 
+<section class="card">
+<h2>{{t "Receipts"}}</h2>
+{{if .CanReceipts}}
+<form method="post" action="{{.Path}}/receipts" enctype="multipart/form-data" class="upload">
+  <div class="field">
+    <label for="files">{{t "Photos or PDFs of receipts"}}</label>
+    <input id="files" name="files" type="file" multiple required accept="image/*,application/pdf">
+    <p class="hint">{{t "Take photos, or choose several at once. Each one becomes its own receipt."}}</p>
+  </div>
+  <label class="choice"><input type="checkbox" name="together" value="1"> {{t "These are pages of one receipt"}}</label>
+  <button type="submit">{{t "Add receipts"}}</button>
+</form>
+{{end}}
+<p><a href="{{.Path}}/receipts">{{t "Every receipt here, and those waiting for a match"}}</a></p>
+</section>
+
 {{template "people" .}}
 
 {{if .CanManage}}

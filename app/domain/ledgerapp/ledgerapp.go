@@ -35,6 +35,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/importing/importbus"
 	"github.com/jroedel/reconcile/business/domain/importing/sources/csvsource"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
+	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/user/userbus"
 	"github.com/jroedel/reconcile/business/types"
@@ -77,7 +78,10 @@ type Config struct {
 
 	// Categories names the parts on the transaction list.
 	Categories *categorybus.Business
-	Render     Renderer
+
+	// Receipts are shown on a transaction, a month and a project's book.
+	Receipts *receiptbus.Business
+	Render   Renderer
 
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
@@ -202,6 +206,9 @@ type transactionsView struct {
 	Categories map[types.ID]string
 	Projects   map[types.ID]string
 
+	// Receipts is how many each shown transaction has.
+	Receipts map[types.ID]int
+
 	Problem string
 	Done    string
 }
@@ -301,7 +308,21 @@ func (a app) names(r *http.Request, account tenancybus.Account, view *transactio
 		}
 	}
 
-	view.Projects, err = a.cfg.Tenancy.ProjectNames(r.Context(), projects)
+	if view.Projects, err = a.cfg.Tenancy.ProjectNames(r.Context(), projects); err != nil {
+		return err
+	}
+
+	ids := make([]types.ID, len(view.Shown))
+	for i, t := range view.Shown {
+		ids[i] = t.ID
+	}
+
+	on, err := a.cfg.Receipts.OnTransactions(r.Context(), ids)
+
+	view.Receipts = make(map[types.ID]int, len(on))
+	for id, rs := range on {
+		view.Receipts[id] = len(rs)
+	}
 
 	return err
 }
@@ -376,7 +397,7 @@ func (a app) receive(r *http.Request, me types.ID) (filebus.File, error) {
 			continue
 		}
 
-		f, err := a.cfg.Files.Save(r.Context(), a.cfg.Now(), me, part.FileName(), part, ledgerbus.MaxFile)
+		f, err := a.cfg.Files.Save(r.Context(), a.cfg.Now(), me, part.FileName(), part, ledgerbus.MaxFile, nil)
 		part.Close()
 
 		if err != nil {
@@ -645,6 +666,10 @@ type statementView struct {
 	ImportedBy  string
 	CanBookkeep bool
 	Done        string
+
+	// Waiting is how many receipts the reader can see that wait for a
+	// match: after an import is when some of them can be matched.
+	Waiting int
 }
 
 func (a app) statement(w http.ResponseWriter, r *http.Request) {
@@ -683,6 +708,10 @@ func (a app) statement(w http.ResponseWriter, r *http.Request) {
 
 	if u, err := a.cfg.Users.ByID(ctx, st.ImportedBy); err == nil {
 		view.ImportedBy = u.Named()
+	}
+
+	if waiting, err := a.cfg.Receipts.Waiting(ctx, me.ID); err == nil {
+		view.Waiting = len(waiting)
 	}
 
 	a.cfg.Render.Render(w, r, http.StatusOK, "statement", view)

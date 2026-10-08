@@ -125,7 +125,7 @@ func (w *world) upload(actor types.ID, name string) types.ID {
 	}
 	defer f.Close()
 
-	saved, err := w.files.Save(w.t.Context(), now, actor, name, f, ledgerbus.MaxFile)
+	saved, err := w.files.Save(w.t.Context(), now, actor, name, f, ledgerbus.MaxFile, nil)
 	if err != nil {
 		w.t.Fatal(err)
 	}
@@ -471,7 +471,7 @@ func TestAPDFIsSaidToComeLater(t *testing.T) {
 	me := w.user("treasurer@example.org")
 	acct := w.account(me, "checking")
 
-	f, err := w.files.Save(t.Context(), now, me, "statement.pdf", strings.NewReader("%PDF-1.7\n%invented\n"), ledgerbus.MaxFile)
+	f, err := w.files.Save(t.Context(), now, me, "statement.pdf", strings.NewReader("%PDF-1.7\n%invented\n"), ledgerbus.MaxFile, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

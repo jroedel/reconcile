@@ -40,7 +40,7 @@
 {{range $v.Shown}}<tr id="t-{{.ID}}"><td>{{.PostedOn}}</td><td><a href="/transactions/{{.ID}}">{{if .Description}}{{.Description}}{{else}}{{t "(no description)"}}{{end}}</a></td>
 <td>{{if gt (len .Splits) 1}}{{t "{n} parts" "n" (len .Splits)}}{{if not .Sorted}} <span class="badge">{{t "not sorted yet"}}</span>{{end}}
 {{else}}{{range .Splits}}{{with index $v.Categories .CategoryID}}{{.}}{{else}}<span class="badge">{{t "not sorted yet"}}</span>{{end}}{{with index $v.Projects .ProjectID}} · {{.}}{{end}}{{end}}{{end}}</td>
-<td class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $cur}}</td></tr>
+<td class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $cur}}{{with index $v.Receipts .ID}}<br><span class="hint">{{t "{n} receipts" "n" .}}</span>{{end}}</td></tr>
 {{end}}</tbody>
 </table>
 </div>

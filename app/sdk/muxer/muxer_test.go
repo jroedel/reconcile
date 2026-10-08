@@ -21,6 +21,8 @@ import (
 	"github.com/jroedel/reconcile/business/domain/file/stores/filefs"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/ledger/stores/ledgerdb"
+	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
+	"github.com/jroedel/reconcile/business/domain/receipt/stores/receiptdb"
 	"github.com/jroedel/reconcile/business/domain/tenancy/stores/tenancydb"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/translation/stores/translationdb"
@@ -60,7 +62,7 @@ func newSite(t *testing.T, want sqldb.Expected, configure func(*Config)) (http.H
 	}
 
 	for _, init := range []func(context.Context, *sql.DB) error{
-		translationdb.Init, userdb.Init, eventdb.Init, tenancydb.Init, filedb.Init, categorydb.Init, ledgerdb.Init,
+		translationdb.Init, userdb.Init, eventdb.Init, tenancydb.Init, filedb.Init, categorydb.Init, ledgerdb.Init, receiptdb.Init,
 	} {
 		if err := init(t.Context(), db); err != nil {
 			t.Fatal(err)
@@ -92,6 +94,7 @@ func newSite(t *testing.T, want sqldb.Expected, configure func(*Config)) (http.H
 
 	files := filebus.NewBusiness(log, filedb.NewStore(db), bytes)
 	categories := categorybus.NewBusiness(log, categorydb.NewStore(db), tenancy)
+	ledger := ledgerbus.NewBusiness(log, ledgerdb.NewStore(db), tenancy, files, categories)
 
 	cfg := Config{
 		Log: log, DB: db, Expected: want, Render: render,
@@ -99,9 +102,10 @@ func newSite(t *testing.T, want sqldb.Expected, configure func(*Config)) (http.H
 		Tenancy: tenancy,
 		History: eventbus.NewBusiness(eventdb.NewStore(db)),
 		Files:   files,
-		Ledger:  ledgerbus.NewBusiness(log, ledgerdb.NewStore(db), tenancy, files, categories),
+		Ledger:  ledger,
 
 		Categories: categories,
+		Receipts:   receiptbus.NewBusiness(log, receiptdb.NewStore(db), tenancy, ledger, files),
 		BaseURL:    base,
 		Mail:       sent,
 	}

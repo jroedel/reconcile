@@ -1,6 +1,8 @@
 package page
 
 import (
+	"errors"
+	"fmt"
 	"html/template"
 	"strings"
 	"unicode"
@@ -24,6 +26,10 @@ var Funcs = template.FuncMap{
 
 		return a
 	},
+
+	// dict gathers named values for a partial that needs more than one:
+	// {{template "x" (dict "Receipt" . "Back" "/receipts")}}.
+	"dict": Dict,
 
 	// inc counts a range's index from one, as a person counts.
 	"inc": func(i int) int { return i + 1 },
@@ -83,4 +89,26 @@ func Sentence(s string) string {
 	}
 
 	return s
+}
+
+// Dict is pairs of a name and a value as a map. An odd count or a name that
+// is not a string is a mistake in a template, and fails the render that has
+// it rather than passing a partial half its data.
+func Dict(pairs ...any) (map[string]any, error) {
+	if len(pairs)%2 != 0 {
+		return nil, errors.New("dict takes pairs of a name and a value")
+	}
+
+	out := make(map[string]any, len(pairs)/2)
+
+	for i := 0; i < len(pairs); i += 2 {
+		name, ok := pairs[i].(string)
+		if !ok {
+			return nil, fmt.Errorf("dict: %v is not a name", pairs[i])
+		}
+
+		out[name] = pairs[i+1]
+	}
+
+	return out, nil
 }

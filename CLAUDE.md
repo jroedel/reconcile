@@ -134,10 +134,13 @@ do what on each), `event` (the history, written by the domain that made
 the change, in its transaction), `file` (what people upload, bytes kept once
 per content outside anything Apache serves), `importing` (reading a bank's
 CSV or OFX into records, knowing nothing of accounts), `category` (each
-organization's list, or a personal account's) and `ledger` (statements,
+organization's list, or a personal account's), `ledger` (statements,
 transactions and their splits: checking, deduplicating, storing, sorting,
-and a project's book). The pages over them are `homeapp`, `authapp`,
-`tenancyapp`, `ledgerapp`, `categoryapp` and `adminapp`. The rest is where the plan's domains go when they arrive.
+and a project's book) and `receipt` (the photos and PDFs that justify a
+charge, waiting in an account's or project's inbox until a person matches
+them). The pages over them are `homeapp`, `authapp`, `tenancyapp`,
+`ledgerapp`, `categoryapp`, `receiptapp` and `adminapp`. The rest is where
+the plan's domains go when they arrive.
 
 **Access is asked of tenancybus, every time.** A business method that reads
 or changes something in an organization takes the actor and answers

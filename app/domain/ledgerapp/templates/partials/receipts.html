@@ -1,0 +1,18 @@
+{{/*
+  Receipts as this app's pages show them. A copy of receiptapp's few
+  pieces: partials belong to the app whose pages use them.
+*/}}
+{{define "thumb"}}{{with index .Files 0}}{{if or (eq .ContentType "image/jpeg") (eq .ContentType "image/png") (eq .ContentType "image/webp")}}<img class="thumb" src="/receipts/{{$.ID}}/files/0" alt="" loading="lazy">{{else}}<span class="thumb doc">{{if eq .ContentType "application/pdf"}}PDF{{else}}{{t "Photo"}}{{end}}</span>{{end}}{{end}}{{end}}
+
+{{define "receipt-line"}}
+<a href="/receipts/{{.ID}}" class="receipt-line">{{template "thumb" .}}
+<span><strong>{{with .Label}}{{.}}{{else}}{{t "A receipt"}}{{end}}</strong>
+<br><span class="hint">{{if .HasAmount}}{{.Amount}}{{else}}{{t "no amount yet"}}{{end}} · {{if .SpentOn.String}}{{.SpentOn}}{{else}}{{t "no date yet"}}{{end}}</span></span></a>
+{{end}}
+
+{{define "uploaded"}}
+{{if .Added}}<p class="notice ok" role="status">{{t "{n} receipts added to this transaction." "n" .Added}}</p>{{end}}
+{{if .WrongKind}}<div class="notice" role="alert"><p>{{t "These are not photos or PDFs, and were not kept:"}}</p><ul>{{range .WrongKind}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
+{{if .TooBig}}<div class="notice" role="alert"><p>{{t "These were too big, or one too many for one upload, and were not kept. Add them on their own:"}}</p><ul>{{range .TooBig}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
+{{if .Cut}}<p class="notice" role="alert">{{t "The upload stopped part way: it was too big, or the connection dropped. What arrived whole is above; add the rest again."}}</p>{{end}}
+{{end}}

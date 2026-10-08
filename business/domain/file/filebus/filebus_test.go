@@ -45,7 +45,7 @@ func TestSaveAndReadBack(t *testing.T) {
 	b, dir := newBus(t)
 	me := types.NewID()
 
-	f, err := b.Save(t.Context(), time.Now(), me, `C:\Users\someone\Downloads\july "export".csv`, strings.NewReader("Date,Amount\n2026-07-01,1.00\n"), 1<<20)
+	f, err := b.Save(t.Context(), time.Now(), me, `C:\Users\someone\Downloads\july "export".csv`, strings.NewReader("Date,Amount\n2026-07-01,1.00\n"), 1<<20, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestSaveAndReadBack(t *testing.T) {
 	}
 
 	// The same content uploaded again is a second row and the same bytes.
-	again, _ := b.Save(t.Context(), time.Now(), types.NewID(), "copy.csv", strings.NewReader("Date,Amount\n2026-07-01,1.00\n"), 1<<20)
+	again, _ := b.Save(t.Context(), time.Now(), types.NewID(), "copy.csv", strings.NewReader("Date,Amount\n2026-07-01,1.00\n"), 1<<20, nil)
 	if again.ID == f.ID || again.SHA256 != f.SHA256 {
 		t.Errorf("a second upload: %+v", again)
 	}
@@ -83,7 +83,7 @@ func TestSaveAndReadBack(t *testing.T) {
 func TestTooBigKeepsNothing(t *testing.T) {
 	b, dir := newBus(t)
 
-	if _, err := b.Save(t.Context(), time.Now(), types.NewID(), "big.csv", strings.NewReader(strings.Repeat("x", 101)), 100); !errors.Is(err, filebus.ErrTooBig) {
+	if _, err := b.Save(t.Context(), time.Now(), types.NewID(), "big.csv", strings.NewReader(strings.Repeat("x", 101)), 100, nil); !errors.Is(err, filebus.ErrTooBig) {
 		t.Fatalf("err = %v", err)
 	}
 
@@ -91,7 +91,7 @@ func TestTooBigKeepsNothing(t *testing.T) {
 		t.Errorf("%d files left behind", len(entries))
 	}
 
-	if _, err := b.Save(t.Context(), time.Now(), types.NewID(), "exact.csv", strings.NewReader(strings.Repeat("x", 100)), 100); err != nil {
+	if _, err := b.Save(t.Context(), time.Now(), types.NewID(), "exact.csv", strings.NewReader(strings.Repeat("x", 100)), 100, nil); err != nil {
 		t.Errorf("exactly the limit: %v", err)
 	}
 }
@@ -106,5 +106,31 @@ func TestOpenRefusesANameThatIsNotAHash(t *testing.T) {
 		if _, err := store.Open(name); err == nil {
 			t.Errorf("Open(%q) succeeded", name)
 		}
+	}
+}
+
+func TestAcceptRefusesOtherKindsBeforeWriting(t *testing.T) {
+	b, dir := newBus(t)
+	photos := []string{filebus.JPEG, filebus.HEIC, filebus.PDF}
+
+	if _, err := b.Save(t.Context(), time.Now(), types.NewID(), "notes.txt", strings.NewReader("just words"), 1<<20, photos); !errors.Is(err, filebus.ErrType) {
+		t.Errorf("a text file: %v", err)
+	}
+
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Errorf("%d files kept from a refused upload", len(entries))
+	}
+
+	// An iPhone's photo: an ISO media file whose brand is heic.
+	heic := "\x00\x00\x00\x18ftypheic\x00\x00\x00\x00mif1heic"
+
+	f, err := b.Save(t.Context(), time.Now(), types.NewID(), "IMG_0001.HEIC", strings.NewReader(heic), 1<<20, photos)
+	if err != nil || f.ContentType != filebus.HEIC {
+		t.Errorf("a HEIC photo: %+v, %v", f, err)
+	}
+
+	f, err = b.Save(t.Context(), time.Now(), types.NewID(), "invoice.pdf", strings.NewReader("%PDF-1.7\n"), 1<<20, photos)
+	if err != nil || f.ContentType != filebus.PDF {
+		t.Errorf("a PDF: %+v, %v", f, err)
 	}
 }
