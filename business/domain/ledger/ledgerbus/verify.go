@@ -17,6 +17,13 @@ type Check struct {
 	// there, and what the statement said.
 	Line             int
 	Expected, Stated money.Amount
+
+	// Opening and Closing are the balance before the first row and after
+	// the last, as the file printed them, when it balanced row by row:
+	// the closing balance is what a person compares with the paper
+	// statement when reconciling, and a file that prints a balance on
+	// every row states it as surely as one that prints it once.
+	Opening, Closing money.Amount
 }
 
 // Failed reports a check that was made and did not hold. An unchecked
@@ -105,13 +112,16 @@ func balances(recs []importbus.Record) int {
 // no balance printed -- some banks print one a day -- is carried through.
 func chain(recs []importbus.Record, sign money.Amount) Check {
 	var (
-		running money.Amount
-		known   bool
+		running, before money.Amount
+		known           bool
+		opening         money.Amount
 	)
 
 	for _, r := range recs {
 		if known {
 			running += sign * r.Amount
+		} else {
+			before += sign * r.Amount
 		}
 
 		if !r.HasBalance {
@@ -122,8 +132,12 @@ func chain(recs []importbus.Record, sign money.Amount) Check {
 			return Check{Method: ByBalances, Line: r.Line, Expected: running, Stated: r.Balance}
 		}
 
+		if !known {
+			opening = r.Balance - before
+		}
+
 		running, known = r.Balance, true
 	}
 
-	return Check{Method: ByBalances, OK: true}
+	return Check{Method: ByBalances, OK: true, Opening: opening, Closing: running}
 }

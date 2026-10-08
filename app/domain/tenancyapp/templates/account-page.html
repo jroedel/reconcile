@@ -9,7 +9,7 @@
 
 <section class="card">
 <h2>{{t "Money"}}</h2>
-<p><a class="button" href="{{.Path}}/transactions">{{t "Transactions and statements"}}</a></p>
+<p><a class="button" href="{{.Path}}/transactions">{{t "Transactions and statements"}}</a> <a class="button quiet" href="{{.Path}}/months">{{t "Month by month"}}</a></p>
 {{if .CanBookkeep}}<p class="hint">{{t "Add a statement from that page, as a CSV or OFX file from your bank's website."}}</p>{{end}}
 {{if .Account.OrgID.Zero}}<p><a href="{{.Path}}/categories">{{t "This account's categories"}}</a></p>{{end}}
 </section>

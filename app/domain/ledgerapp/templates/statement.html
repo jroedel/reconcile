@@ -1,12 +1,13 @@
-{{define "title"}}{{.Data.Statement.FileName}}{{end}}
-{{define "content"}}{{$v := .Data}}{{$st := $v.Statement}}{{$cur := $v.Account.Currency}}
-<p class="crumbs"><a href="/accounts/{{$v.Account.ID}}/transactions">{{$v.Account.Name}}</a></p>
+{{define "title"}}{{.Data.Review.Statement.FileName}}{{end}}
+{{define "content"}}{{$v := .Data}}{{$rv := $v.Review}}{{$st := $rv.Statement}}{{$cur := $rv.Account.Currency}}{{$r := $st.Reconciliation}}
+<p class="crumbs"><a href="/accounts/{{$rv.Account.ID}}/transactions">{{$rv.Account.Name}}</a> · <a href="/accounts/{{$rv.Account.ID}}/months">{{t "Month by month"}}</a></p>
 <h1>{{t "Statement, {start} to {end}" "start" $st.Start "end" $st.End}}</h1>
 {{if eq $v.Done "imported"}}<p class="notice ok" role="status">{{t "Imported: {added} new transactions, and {already} that were here already." "added" $st.Added "already" $st.Already}}</p>{{end}}
-{{if $v.Waiting}}<p class="notice"><a href="/receipts">{{t "{n} receipts waiting for a match" "n" $v.Waiting}}</a></p>{{end}}
+{{template "done" $v.Done}}
+{{template "problem" $v.Form.Problem}}
 
 <section class="card">
-<p>{{template "method" (printf "%s" $st.Checked)}}</p>
+<p>{{template "method" (printf "%s" $st.Checked)}}{{if $st.Reconciled}} <span class="badge ok">{{t "Reconciled"}}</span>{{end}}</p>
 {{if eq (printf "%s" $st.Checked) "balances"}}<p>{{t "Every row's balance followed from the one before, so no row is missing from the file."}}</p>
 {{else if eq (printf "%s" $st.Checked) "totals"}}<p>{{t "The opening balance, {opening}, plus everything in the file came to the closing balance, {closing}." "opening" (money $st.Opening $cur) "closing" (money $st.Closing $cur)}}</p>
 {{else}}<p>{{t "There were no balances to check this statement against. Compare its total with the paper statement before you rely on it."}}</p>{{end}}
@@ -15,7 +16,64 @@
 <p><a class="button quiet" href="/statements/{{$st.ID}}/file">{{t "Download {name}" "name" $st.FileName}}</a></p>
 </section>
 
+<section class="card" id="reconcile">
+<h2>{{t "Reconcile"}}</h2>
+{{if $st.Reconciled}}
+<p>{{if $v.ReconciledBy}}{{t "{who} checked this statement against the one the bank sent, on {date}, for {start} to {end}." "who" $v.ReconciledBy "date" ($r.At.Format "2006-01-02") "start" $r.Start "end" $r.End}}{{else}}{{t "This statement was checked against the one the bank sent on {date}, for {start} to {end}." "date" ($r.At.Format "2006-01-02") "start" $r.Start "end" $r.End}}{{end}}</p>
+{{with $r.Note}}<blockquote>{{.}}</blockquote>{{end}}
+<p class="hint">{{t "Every transaction of the account from {start} to {end} is locked: its parts, categories and projects cannot change, and no statement can add to the period or take from it. Receipts can still be attached." "start" $r.Start "end" $r.End}}</p>
+{{range $rv.Overlapping}}<p class="hint">{{t "Another reconciled statement also covers {start} to {end}, and keeps those days locked whatever happens to this one." "start" .Start "end" .End}} <a href="/statements/{{.StatementID}}">{{t "See it"}}</a></p>{{end}}
 {{if $v.CanBookkeep}}
+<form method="post" action="/statements/{{$st.ID}}/reopen">
+  <div class="field">
+    <label for="reason">{{t "Why reopen it?"}}</label>
+    <textarea id="reason" name="reason" rows="2" maxlength="500" required>{{$v.Form.Reason}}</textarea>
+    <p class="hint">{{t "Reopening unlocks the period so that it can be corrected. The history keeps who reopened it and why; the accountant may ask."}}</p>
+  </div>
+  <button type="submit" class="quiet">{{t "Reopen"}}</button>
+</form>
+{{end}}
+{{else}}
+<p class="hint">{{t "Reconciling means saying that this statement agrees with the one the bank sent: the same transactions, and the same closing balance. A reconciled period is locked."}}</p>
+<p>{{t "From {start} to {end}: {n} transactions, money in {in}, money out {out}." "start" $st.Start "end" $st.End "n" (len $rv.Transactions) "in" (money $rv.In $cur) "out" (money $rv.Out $cur)}}</p>
+{{if $st.HasClosing}}<p>{{t "The closing balance, as the file has it: {closing}. It should be the one on the bank's statement." "closing" (money $st.Closing $cur)}}</p>{{end}}
+
+{{if $rv.Unsorted}}
+<p>{{t "{n} of them are not sorted into a category yet. You can reconcile now, but they cannot be sorted afterwards without reopening." "n" (len $rv.Unsorted)}}</p>
+<ul class="list">
+{{range $rv.Unsorted}}<li><a href="/transactions/{{.ID}}">{{.PostedOn}} · {{if .Description}}{{.Description}}{{else}}{{t "(no description)"}}{{end}}</a> <span class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $cur}}</span></li>
+{{end}}</ul>
+{{else if $rv.Transactions}}<p class="hint">{{t "Every transaction in the period is sorted."}}</p>{{end}}
+
+{{if $v.Receipts}}
+<p>{{t "These receipts are waiting for a match and may belong here. Receipts are welcome, never required." }}</p>
+<ul class="receipts">
+{{range $v.Receipts}}<li>{{template "receipt-line" .}}</li>
+{{end}}</ul>
+{{end}}
+
+{{if $v.CanBookkeep}}
+<form method="post" action="/statements/{{$st.ID}}/reconcile">
+  <p class="hint">{{t "The period is the one printed on the bank's statement. It starts as the days the file listed, and can be widened by up to a month either side, for days on which nothing happened."}}</p>
+  <div class="field">
+    <label for="from">{{t "From"}}</label>
+    <input id="from" name="from" type="date" value="{{$v.Form.From}}" required>
+  </div>
+  <div class="field">
+    <label for="to">{{t "To"}}</label>
+    <input id="to" name="to" type="date" value="{{$v.Form.To}}" required>
+  </div>
+  <div class="field">
+    <label for="note">{{t "Note (optional)"}}</label>
+    <textarea id="note" name="note" rows="2" maxlength="500">{{$v.Form.Note}}</textarea>
+  </div>
+  <button type="submit">{{t "Mark reconciled"}}</button>
+</form>
+{{end}}
+{{end}}
+</section>
+
+{{if and $v.CanBookkeep (not $st.Reconciled)}}
 <section class="card">
 <h2>{{t "Remove"}}</h2>
 <p class="hint">{{t "Removing the statement takes out the transactions it brought in, so that the file can be imported again with other columns. The history keeps a line saying so."}}</p>
@@ -24,4 +82,5 @@
 </form>
 </section>
 {{end}}
+{{if $v.Waiting}}<p class="hint"><a href="/receipts">{{t "{n} receipts waiting for a match" "n" $v.Waiting}}</a></p>{{end}}
 {{end}}

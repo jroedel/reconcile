@@ -216,7 +216,7 @@ func TestStatementsAreAsPrivateAsTheirAccount(t *testing.T) {
 	admin := newBrowser(t, h)
 	admin.post("/sign-in/first", url.Values{"email": {"admin@example.org"}, "secret": {secret}})
 
-	gets := []string{e.account + "/transactions", e.account + "/transactions?month=2026-07", preview, statement, statement + "/file"}
+	gets := []string{e.account + "/transactions", e.account + "/transactions?month=2026-07", e.account + "/months", preview, statement, statement + "/file"}
 
 	for name, b := range map[string]*browser{"a stranger": stranger, "the site administrator": admin} {
 		for _, path := range gets {
@@ -231,6 +231,14 @@ func TestStatementsAreAsPrivateAsTheirAccount(t *testing.T) {
 
 		if rec := b.post(statement+"/remove", nil); rec.Code != http.StatusNotFound {
 			t.Errorf("%s: remove = %d", name, rec.Code)
+		}
+
+		if rec := b.post(statement+"/reconcile", url.Values{"from": {"2026-07-01"}, "to": {"2026-07-31"}}); rec.Code != http.StatusNotFound {
+			t.Errorf("%s: reconcile = %d", name, rec.Code)
+		}
+
+		if rec := b.post(statement+"/reopen", url.Values{"reason": {"mine"}}); rec.Code != http.StatusNotFound {
+			t.Errorf("%s: reopen = %d", name, rec.Code)
 		}
 
 		if rec := b.upload(e.account+"/statements", "mine.csv", july); rec.Code != http.StatusNotFound {

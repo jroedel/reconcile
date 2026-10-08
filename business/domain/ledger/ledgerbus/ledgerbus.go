@@ -88,14 +88,16 @@ type Files interface {
 // Storer keeps statements, transactions and the CSV mappings.
 type Storer interface {
 	// Import stores a statement and those of its transactions not already
-	// in the account, and returns the statement with Added and Already
-	// counted. With commit false it does all of it and rolls back, so a
+	// in the account, and returns the statement with Added, Already and
+	// Locked counted. With commit false it does all of it and rolls back, so a
 	// preview's counts are the import's, by construction.
 	Import(ctx context.Context, st Statement, txs []Transaction, mapping *SavedMapping, ev eventbus.Event, commit bool) (Statement, error)
 
 	StatementByID(ctx context.Context, id types.ID) (Statement, error)
 	StatementWithFile(ctx context.Context, account types.ID, sha string) (Statement, bool, error)
 	Statements(ctx context.Context, account types.ID) ([]Statement, error)
+	// RemoveStatement deletes a statement and the transactions it brought
+	// in, or answers ErrLocked if any of them is in a reconciled period.
 	RemoveStatement(ctx context.Context, st Statement, ev eventbus.Event) (int, error)
 
 	Months(ctx context.Context, account types.ID) ([]Month, error)
@@ -119,6 +121,18 @@ type Storer interface {
 	// Matching is the transactions in any of the accounts for exactly the
 	// amount, either way round, posted between from and to inclusive.
 	Matching(ctx context.Context, accounts []types.ID, amount money.Amount, from, to types.Date) ([]Transaction, error)
+
+	// Reconcile stores a reconciliation and its history if the statement
+	// has none, and reports whether it did: one statement, so that two
+	// people marking at once cannot both.
+	Reconcile(ctx context.Context, r Reconciliation, ev eventbus.Event) (bool, error)
+
+	// Reopen deletes a statement's reconciliation and writes the history,
+	// and reports whether there was one.
+	Reopen(ctx context.Context, statementID types.ID, ev eventbus.Event) (bool, error)
+
+	// Reconciliations is an account's, by the start of their periods.
+	Reconciliations(ctx context.Context, account types.ID) ([]Reconciliation, error)
 }
 
 // SavedMapping is a CSV mapping kept for the next file with the same
@@ -188,7 +202,7 @@ type Draft struct {
 
 // Ready reports whether importing would go ahead.
 func (d Draft) Ready() bool {
-	return !d.Unmapped && !d.HasEarlier && !d.Check.Failed() && len(d.Result.Records) > 0
+	return !d.Unmapped && !d.HasEarlier && !d.Check.Failed() && len(d.Result.Records) > 0 && d.Statement.Locked == 0
 }
 
 // Prepare reads an uploaded file for an account. With opts nil it uses the
@@ -367,9 +381,13 @@ func (b *Business) statement(d Draft, actor types.ID, now time.Time) (Statement,
 		ImportedAt: now,
 	}
 
-	if d.Check.Method == ByTotals {
+	switch d.Check.Method {
+	case ByTotals:
 		st.Opening, st.HasOpening = d.Opening.Amount, true
 		st.Closing, st.HasClosing = d.Closing.Amount, true
+	case ByBalances:
+		st.Opening, st.HasOpening = d.Check.Opening, true
+		st.Closing, st.HasClosing = d.Check.Closing, true
 	}
 
 	txs := transactions(d.Account.ID, d.Result.Records)
@@ -418,6 +436,8 @@ func (b *Business) Import(ctx context.Context, now time.Time, actor, accountID, 
 		return Statement{}, ErrEmpty
 	case d.Check.Failed():
 		return Statement{}, ErrUnbalanced
+	case d.Statement.Locked > 0:
+		return Statement{}, ErrLocked
 	}
 
 	st, txs := b.statement(d, actor, now)
@@ -503,6 +523,12 @@ func (b *Business) RemoveStatement(ctx context.Context, now time.Time, actor, id
 
 	if !access.Can(tenancybus.Bookkeep) {
 		return Statement{}, ErrForbidden
+	}
+
+	// A reconciled statement is reopened first, with a reason; the store
+	// refuses the rest of what removing would unlock (Storer).
+	if st.Reconciled() {
+		return st, ErrLocked
 	}
 
 	ev := eventbus.New(now, actor, types.AccountScope(st.AccountID), StatementRemoved, EventDetail(st))

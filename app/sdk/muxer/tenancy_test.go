@@ -116,6 +116,7 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		e.org + "/categories", e.ownAccount + "/categories", e.account + "/categories",
 		e.project + "/book", e.ownProject + "/book",
 		e.account + "/transactions", e.ownAccount + "/transactions",
+		e.account + "/months", e.ownAccount + "/months",
 		e.account + "/receipts", e.project + "/receipts", e.ownAccount + "/receipts", e.ownProject + "/receipts",
 	}
 

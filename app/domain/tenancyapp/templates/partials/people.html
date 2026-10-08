@@ -78,6 +78,8 @@
 {{- else if eq .Action "grant.removed"}} {{t "took away the role of {who}" "who" .Detail.who}} — {{template "role" .Detail.role}}
 {{- else if eq .Action "grant.claimed"}} {{t "signed in and took up the role given to {email}" "email" .Detail.email}} — {{template "role" .Detail.role}}
 {{- else if eq .Action "statement.imported"}} {{t "imported {name}, {start} to {end}: {added} new transactions" "name" .Detail.name "start" .Detail.start "end" .Detail.end "added" .Detail.added}}
+{{- else if eq .Action "statement.reconciled"}} {{t "reconciled {name} for {start} to {end}" "name" .Detail.name "start" .Detail.start "end" .Detail.end}}
+{{- else if eq .Action "statement.reopened"}} {{t "reopened {name}, {start} to {end}, because: {reason}" "name" .Detail.name "start" .Detail.start "end" .Detail.end "reason" .Detail.reason}}
 {{- else if eq .Action "statement.removed"}} {{t "removed the statement {name}, {start} to {end}, and the transactions it brought in" "name" .Detail.name "start" .Detail.start "end" .Detail.end}}
 {{- else if eq .Action "category.added"}} {{t "added the category {name}" "name" .Detail.name}}
 {{- else if eq .Action "category.renamed"}} {{t "renamed the category {from} to {name}" "from" .Detail.from "name" .Detail.name}}
