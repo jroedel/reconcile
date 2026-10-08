@@ -39,27 +39,53 @@ type Translator struct {
 }
 
 // MayTranslate reports whether somebody may write and look over a
-// language's translations, and hold a key to do it through the API. The
-// site administrator, for now; translators the administrator names arrive
-// with the review screen (docs/translations.md, build order).
+// language's translations, and hold a key to do it through the API: the
+// site administrator, every language, and the translators the
+// administrator names, theirs (review.go). Nobody else -- anyone may sign
+// up here, and "every signed-in person" would let a stranger rewrite the
+// interface.
 func (b *Business) MayTranslate(ctx context.Context, who Translator, lang types.Lang) (bool, error) {
-	if !slices.Contains(types.Translated, lang) {
-		return false, nil
+	langs, err := b.Languages(ctx, who)
+	if err != nil {
+		return false, err
 	}
 
-	return who.SiteAdmin, nil
+	return slices.Contains(langs, lang), nil
 }
 
 // MayTranslateAny reports whether somebody may translate some language:
 // whether they may hold a key at all.
 func (b *Business) MayTranslateAny(ctx context.Context, who Translator) (bool, error) {
-	for _, lang := range types.Translated {
-		if ok, err := b.MayTranslate(ctx, who, lang); ok || err != nil {
-			return ok, err
+	langs, err := b.Languages(ctx, who)
+
+	return len(langs) > 0, err
+}
+
+// Languages is the languages somebody may translate, in the order the app
+// lists them.
+func (b *Business) Languages(ctx context.Context, who Translator) ([]types.Lang, error) {
+	if who.SiteAdmin {
+		return slices.Clone(types.Translated), nil
+	}
+
+	if who.ID.Zero() {
+		return nil, nil
+	}
+
+	granted, err := b.store.TranslatorLangs(ctx, who.ID)
+	if err != nil {
+		return nil, fmt.Errorf("reading somebody's languages: %w", err)
+	}
+
+	var out []types.Lang
+
+	for _, l := range types.Translated {
+		if slices.Contains(granted, l) {
+			out = append(out, l)
 		}
 	}
 
-	return false, nil
+	return out, nil
 }
 
 func (b *Business) mayTranslate(ctx context.Context, who Translator, lang types.Lang) error {

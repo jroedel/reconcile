@@ -10,11 +10,10 @@
 // Nothing has to be listed by hand, so nothing can be forgotten: a string is
 // waiting to be translated from the first time a binary carrying it starts.
 //
-// The translating itself is done mostly by Claude, through an API that
-// arrives later (docs/plan.md, build order step 9), and checked by a person.
-// That is why the status has three values rather than two: pending is nothing
-// yet, draft is a translation nobody has checked, approved is one somebody
-// has.
+// The translating itself is done mostly by Claude, through the API
+// (claude.go), and looked over afterwards by a person (review.go). That is
+// why the status has three values rather than two: pending is nothing yet,
+// draft is a translation nobody has checked, approved is one somebody has.
 //
 // # What a reader sees
 //
@@ -134,6 +133,30 @@ type Storer interface {
 	// List is a page of a language's translations with a status, or every
 	// status for "", in the order of their English, and how many in all.
 	List(ctx context.Context, lang types.Lang, status Status, limit, offset int) ([]Translation, int, error)
+
+	// Queue is a page of one review queue of a language's strings seen
+	// since since, in the order of their English, and how many in all.
+	Queue(ctx context.Context, lang types.Lang, since time.Time, q Queue, limit, offset int) ([]Translation, int, error)
+
+	// Counts is how many of a language's strings seen since since are in
+	// each review queue.
+	Counts(ctx context.Context, lang types.Lang, since time.Time) (Counts, error)
+
+	// SendBack makes a translation with text a draft again with a note,
+	// ErrNotFound if it has no text.
+	SendBack(ctx context.Context, src Source, lang types.Lang, note string, at time.Time) error
+
+	// TranslatorLangs is the languages somebody was made a translator of.
+	TranslatorLangs(ctx context.Context, userID types.ID) ([]types.Lang, error)
+
+	// AddTranslator records a grant, keeping one already there.
+	AddTranslator(ctx context.Context, g Grant) error
+
+	// RemoveTranslator takes a language from somebody.
+	RemoveTranslator(ctx context.Context, userID types.ID, lang types.Lang) error
+
+	// Translators is every grant.
+	Translators(ctx context.Context) ([]Grant, error)
 }
 
 // Business is the translations, and the catalogue every page reads from.

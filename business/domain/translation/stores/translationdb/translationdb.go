@@ -12,6 +12,11 @@
 //
 // ui_translations is one row per string per language other than English.
 //
+// translators is who the site administrator has made a translator, of which
+// language (docs/translations.md). No foreign key to users: that table is
+// userdb's, made after this one at startup, and nobody is ever deleted --
+// a person who should stop is taken off here, or stopped signing in.
+//
 // No CHECK on lang. Adding a language is meant to be one line in
 // business/types, and a CHECK listing today's languages would make it a table
 // rebuild on every database that exists (CLAUDE.md, "When there is a
@@ -45,6 +50,7 @@ var _ translationbus.Storer = (*Store)(nil)
 var Expected = sqldb.Expected{
 	"ui_strings":      {"context", "en", "first_seen", "last_seen", "pages"},
 	"ui_translations": {"context", "en", "lang", "text", "status", "updated_by", "updated_at", "origin", "note"},
+	"translators":     {"user_id", "lang", "granted_by", "granted_at"},
 }
 
 // Init creates the tables. Idempotent, run at every startup.
@@ -72,6 +78,14 @@ CREATE TABLE IF NOT EXISTS ui_translations (
 
     PRIMARY KEY (context, en, lang),
     FOREIGN KEY (context, en) REFERENCES ui_strings (context, en) ON DELETE CASCADE
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS translators (
+    user_id     TEXT    NOT NULL,
+    lang        TEXT    NOT NULL,
+    granted_by  TEXT    NOT NULL,
+    granted_at  INTEGER NOT NULL,
+    PRIMARY KEY (user_id, lang)
 ) STRICT;
 `
 
@@ -304,4 +318,165 @@ func (s *Store) List(ctx context.Context, lang types.Lang, status translationbus
 	out, err := scanAll(rows)
 
 	return out, total, err
+}
+
+// --- looking them over ------------------------------------------------------------
+
+// queues is each review queue as a condition on a translation.
+var queues = map[translationbus.Queue]string{
+	translationbus.ToCheck:   `t.status = 'draft' AND t.note = ''`,
+	translationbus.SentBack:  `t.status = 'draft' AND t.note <> ''`,
+	translationbus.Done:      `t.status = 'approved'`,
+	translationbus.Untouched: `t.status = 'pending'`,
+}
+
+// current is a language's translations of strings seen since a time.
+const current = `t.lang = ? AND s.last_seen >= ?`
+
+// Queue is a page of one review queue, in the order of their English.
+func (s *Store) Queue(ctx context.Context, lang types.Lang, since time.Time, q translationbus.Queue, limit, offset int) ([]translationbus.Translation, int, error) {
+	cond, ok := queues[q]
+	if !ok {
+		return nil, 0, fmt.Errorf("there is no review queue %q", q)
+	}
+
+	where := current + ` AND ` + cond
+	args := []any{string(lang), since.UnixMilli()}
+
+	var total int
+
+	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM ui_translations t JOIN ui_strings s ON s.context = t.context AND s.en = t.en
+WHERE `+where, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("counting a review queue: %w", err)
+	}
+
+	rows, err := s.db.QueryContext(ctx, `SELECT `+columns+` WHERE `+where+` ORDER BY t.en, t.context LIMIT ? OFFSET ?`,
+		append(args, limit, offset)...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("reading a review queue: %w", err)
+	}
+
+	out, err := scanAll(rows)
+
+	return out, total, err
+}
+
+// Counts is how many are in each review queue, in one pass.
+func (s *Store) Counts(ctx context.Context, lang types.Lang, since time.Time) (translationbus.Counts, error) {
+	var c translationbus.Counts
+
+	err := s.db.QueryRowContext(ctx, `
+SELECT
+    count(*) FILTER (WHERE `+queues[translationbus.Untouched]+`),
+    count(*) FILTER (WHERE `+queues[translationbus.ToCheck]+`),
+    count(*) FILTER (WHERE `+queues[translationbus.SentBack]+`),
+    count(*) FILTER (WHERE `+queues[translationbus.Done]+`)
+FROM ui_translations t JOIN ui_strings s ON s.context = t.context AND s.en = t.en
+WHERE `+current, string(lang), since.UnixMilli()).Scan(&c.Untouched, &c.ToCheck, &c.SentBack, &c.Done)
+	if err != nil {
+		return translationbus.Counts{}, fmt.Errorf("counting the review queues: %w", err)
+	}
+
+	return c, nil
+}
+
+// SendBack makes a translation a draft again with a reviewer's note, which
+// puts it first in Claude's next list (Pending). Its text stays, and stays
+// on the pages, until Claude sends another.
+func (s *Store) SendBack(ctx context.Context, src translationbus.Source, lang types.Lang, note string, at time.Time) error {
+	res, err := s.db.ExecContext(ctx, `
+UPDATE ui_translations SET status = 'draft', note = ?, updated_at = ?
+WHERE context = ? AND en = ? AND lang = ? AND status <> 'pending'`,
+		note, at.UnixMilli(), src.Context, src.EN, string(lang))
+	if err != nil {
+		return fmt.Errorf("sending a translation back: %w", err)
+	}
+
+	if n, err := res.RowsAffected(); err != nil || n != 1 {
+		return errors.Join(err, translationbus.ErrNotFound)
+	}
+
+	return nil
+}
+
+// --- translators ------------------------------------------------------------------
+
+// TranslatorLangs is the languages somebody was made a translator of.
+func (s *Store) TranslatorLangs(ctx context.Context, userID types.ID) ([]types.Lang, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT lang FROM translators WHERE user_id = ? ORDER BY lang`, userID.String())
+	if err != nil {
+		return nil, fmt.Errorf("reading somebody's languages: %w", err)
+	}
+	defer rows.Close()
+
+	var out []types.Lang
+
+	for rows.Next() {
+		var l string
+		if err := rows.Scan(&l); err != nil {
+			return nil, fmt.Errorf("reading a language: %w", err)
+		}
+
+		out = append(out, types.Lang(l))
+	}
+
+	return out, rows.Err()
+}
+
+// AddTranslator records a grant; one already there is kept as it was.
+func (s *Store) AddTranslator(ctx context.Context, g translationbus.Grant) error {
+	if _, err := s.db.ExecContext(ctx, `
+INSERT INTO translators (user_id, lang, granted_by, granted_at) VALUES (?, ?, ?, ?)
+ON CONFLICT (user_id, lang) DO NOTHING`,
+		g.UserID.String(), string(g.Lang), g.GrantedBy.String(), g.GrantedAt.UnixMilli()); err != nil {
+		return fmt.Errorf("making a translator: %w", err)
+	}
+
+	return nil
+}
+
+// RemoveTranslator takes one language from somebody; none there is no error.
+func (s *Store) RemoveTranslator(ctx context.Context, userID types.ID, lang types.Lang) error {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM translators WHERE user_id = ? AND lang = ?`, userID.String(), string(lang)); err != nil {
+		return fmt.Errorf("removing a translator: %w", err)
+	}
+
+	return nil
+}
+
+// Translators is every grant, oldest first.
+func (s *Store) Translators(ctx context.Context) ([]translationbus.Grant, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT user_id, lang, granted_by, granted_at FROM translators ORDER BY granted_at, user_id, lang`)
+	if err != nil {
+		return nil, fmt.Errorf("listing translators: %w", err)
+	}
+	defer rows.Close()
+
+	var out []translationbus.Grant
+
+	for rows.Next() {
+		var (
+			user, lang, by string
+			at             int64
+		)
+
+		if err := rows.Scan(&user, &lang, &by, &at); err != nil {
+			return nil, fmt.Errorf("reading a translator: %w", err)
+		}
+
+		g := translationbus.Grant{Lang: types.Lang(lang), GrantedAt: time.UnixMilli(at)}
+
+		var err error
+		if g.UserID, err = types.ParseID(user); err != nil {
+			return nil, fmt.Errorf("a translator names a bad user: %w", err)
+		}
+
+		if g.GrantedBy, err = types.ParseID(by); err != nil {
+			return nil, fmt.Errorf("a translator names a bad granter: %w", err)
+		}
+
+		out = append(out, g)
+	}
+
+	return out, rows.Err()
 }

@@ -9,7 +9,8 @@
 // under /api/v1 reads an organization, an account, a project, a statement, a
 // receipt or an export, and nothing will without a plan of its own, with
 // scopes. Who may use these endpoints at all is the translation domain's
-// rule (translationbus.MayTranslate): the site administrator, for now.
+// rule (translationbus.MayTranslate): the site administrator, and the
+// translators they name on the admin page, each for their languages.
 //
 // # The index is the route table
 //
