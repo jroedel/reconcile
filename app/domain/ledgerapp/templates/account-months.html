@@ -17,6 +17,23 @@
 {{if .Statements}}<p class="hint">{{range $i, $s := .Statements}}{{if $i}} · {{end}}<a href="/statements/{{$s.ID}}{{if not $s.Reconciled}}#reconcile{{end}}">{{t "{start} to {end}" "start" $s.Start "end" $s.End}}</a>{{if $s.Reconciled}} ✓{{end}}{{end}}</p>{{end}}
 </li>
 {{end}}</ul>
+{{if $v.CanExport}}
+<section class="card">
+<h2>{{t "For the accountant"}}</h2>
+<p class="hint">{{t "A zip holding a spreadsheet of every transaction in the months you choose, one row for each part, with the receipts and the statement files."}}</p>
+<form method="get" action="{{$v.Path}}/export">
+  <div class="field">
+    <label for="export-from">{{t "First month"}}</label>
+    <input id="export-from" name="from" type="month" value="{{$v.LastMonth}}" placeholder="2026-07" required>
+  </div>
+  <div class="field">
+    <label for="export-to">{{t "Last month"}}</label>
+    <input id="export-to" name="to" type="month" value="{{$v.LastMonth}}" placeholder="2026-07" required>
+  </div>
+  <button type="submit">{{t "Download"}}</button>
+</form>
+</section>
+{{end}}
 {{else}}
 <p class="hint">{{t "No statements yet. The months appear with the first one."}}</p>
 {{if $v.CanBookkeep}}<p><a class="button" href="{{$v.Path}}/transactions">{{t "Add a statement"}}</a></p>{{end}}

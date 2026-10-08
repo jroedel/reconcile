@@ -1,0 +1,17 @@
+{{define "title"}}{{if eq (printf "%v" .Data) "missing"}}{{t "Not found"}}{{else}}{{t "No download"}}{{end}}{{end}}
+{{define "content"}}{{$why := printf "%v" .Data}}
+{{if eq $why "missing"}}
+<h1>{{t "Not found"}}</h1>
+<p>{{t "There is nothing here, or nothing you have been given a role on. If somebody meant to share it with you, ask them to check which email address they used."}}</p>
+{{else if eq $why "forbidden"}}
+<h1>{{t "Not allowed"}}</h1>
+<p>{{t "Downloading the accountant's package needs the owner, bookkeeper or accountant role. An owner can give you one."}}</p>
+{{else if eq $why "period"}}
+<h1>{{t "No download"}}</h1>
+<p>{{t "Choose the first and the last month of the period, the first no later than the last, and try again."}}</p>
+{{else}}
+<h1>{{t "Something went wrong"}}</h1>
+<p>{{t "Something went wrong at our end. Please try again in a few minutes."}}</p>
+{{end}}
+<p><a href="/">{{t "Back to your organizations"}}</a></p>
+{{end}}

@@ -136,10 +136,12 @@ per content outside anything Apache serves), `importing` (reading a bank's
 CSV or OFX into records, knowing nothing of accounts), `category` (each
 organization's list, or a personal account's), `ledger` (statements,
 transactions and their splits: checking, deduplicating, storing, sorting,
-and a project's book) and `receipt` (the photos and PDFs that justify a
-charge, waiting in an account's or project's inbox until a person matches
-them). The pages over them are `homeapp`, `authapp`, `tenancyapp`,
-`ledgerapp`, `categoryapp`, `receiptapp` and `adminapp`. The rest is where
+and a project's book; and reconciling, which locks a period), `receipt`
+(the photos and PDFs that justify a charge, waiting in an account's or
+project's inbox until a person matches them) and `export` (the
+accountant's zip, read across the others and stored nowhere). The pages
+over them are `homeapp`, `authapp`, `tenancyapp`, `ledgerapp`,
+`categoryapp`, `receiptapp`, `exportapp` and `adminapp`. The rest is where
 the plan's domains go when they arrive.
 
 **Access is asked of tenancybus, every time.** A business method that reads
@@ -240,6 +242,8 @@ template that says it, not as the error's own text: authapp's handlers set
 `view.Problem = "bad-email"` and `templates/partials/problems.html` says it.
 Mail works the same way: `mail/<name>.txt` in an app defines "subject" and
 "body" with `t`, and `page.Renderer.Mail` writes it in the reader's language.
+So do words that land anywhere else, such as a spreadsheet's header row:
+`text/<name>.txt`, written by `page.Renderer.Text`.
 
 ## House style, in one paragraph
 

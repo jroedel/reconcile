@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -286,5 +287,27 @@ func TestAMessageNeedsASubjectAndABody(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("a message with no subject was accepted")
+	}
+}
+
+// A text is written in the reader's language, its strings are registered,
+// and nothing in it is escaped for HTML: it goes into a spreadsheet.
+func TestAText(t *testing.T) {
+	rn := renderer(t, fstest.MapFS{
+		"templates/p.html": file(`{{define "content"}}x{{end}}`),
+		"text/columns.txt": file("{{t \"Receipts\"}}\n{{t \"A & B\"}}\n"),
+	})
+
+	got, err := rn.Text(types.Spanish, "columns", nil)
+	if err != nil || got != "Recibos\nA & B\n" {
+		t.Errorf("the text: %q, %v", got, err)
+	}
+
+	if _, err := rn.Text(types.English, "nowhere", nil); err == nil {
+		t.Error("an unknown text was written")
+	}
+
+	if !slices.Contains(rn.Strings(), translationbus.Source{EN: "A & B"}) {
+		t.Error("a text's strings were not registered for translation")
 	}
 }

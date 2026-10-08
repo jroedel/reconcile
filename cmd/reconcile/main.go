@@ -20,6 +20,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/category/stores/categorydb"
 	"github.com/jroedel/reconcile/business/domain/event/eventbus"
 	"github.com/jroedel/reconcile/business/domain/event/stores/eventdb"
+	"github.com/jroedel/reconcile/business/domain/export/exportbus"
 	"github.com/jroedel/reconcile/business/domain/file/filebus"
 	"github.com/jroedel/reconcile/business/domain/file/stores/filedb"
 	"github.com/jroedel/reconcile/business/domain/file/stores/filefs"
@@ -145,6 +146,7 @@ func run() error {
 	categories := categorybus.NewBusiness(log, categorydb.NewStore(db), tenancy)
 	ledger := ledgerbus.NewBusiness(log, ledgerdb.NewStore(db), tenancy, files, categories)
 	receipts := receiptbus.NewBusiness(log, receiptdb.NewStore(db), tenancy, ledger, files)
+	export := exportbus.NewBusiness(log, tenancy, ledger, receipts, categories, files)
 
 	go prune(ctx, log, users)
 
@@ -160,6 +162,7 @@ func run() error {
 		Ledger:     ledger,
 		Categories: categories,
 		Receipts:   receipts,
+		Export:     export,
 		BaseURL:    cfg.Server.BaseURL,
 		Mail:       sender,
 		Bootstrap:  cfg.Auth.BootstrapSecret,
