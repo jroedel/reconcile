@@ -101,12 +101,23 @@ build: ## Build the binary for this machine
 	@$(GO) build -o $(APP) $(MAIN)
 
 .PHONY: run
-run: build ## Build and run against ./config.toml
-	@if [ ! -f config.toml ]; then \
-		echo "there is no config.toml; cp config.example.toml config.toml and edit it" >&2; \
+run: build config.toml ## Build and run against ./config.toml, made from secrets.env if it is missing
+	@./$(APP) -config config.toml
+
+# config.toml is made once, from secrets.env, when it is not there: a fresh
+# clone plus secrets.env from Bitwarden is a machine that runs. It is never
+# remade over one that exists, which may hold a developer's own edits; delete
+# it to start again. Written to a temporary name and moved, so a render that
+# fails leaves nothing that looks like a config. 0600 because it can hold a
+# relay's password.
+config.toml:
+	@if [ ! -f secrets.env ]; then \
+		echo "there is no config.toml and no secrets.env to make one from." >&2; \
+		echo "copy secrets.env out of Bitwarden, or: cp config.example.toml config.toml" >&2; \
 		exit 1; \
 	fi
-	@./$(APP) -config config.toml
+	@umask 077 && scripts/secrets render local > $@.new && mv $@.new $@ || { rm -f $@.new; exit 1; }
+	@echo "wrote config.toml from secrets.env (scripts/secrets render local)"
 
 # The server has no Go toolchain and receives one file, so a build that quietly
 # links this machine's glibc is a deploy that dies on the host with

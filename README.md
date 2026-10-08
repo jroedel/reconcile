@@ -12,13 +12,18 @@ month, and hand the accountant a package.
 
 Go 1.26, no other toolchain.
 
+Put `secrets.env` from Bitwarden in the clone, and:
+
 ```sh
-cp config.example.toml config.toml
-make run            # serves on 127.0.0.1:8461
+make run            # serves on 127.0.0.1:8461; makes config.toml from secrets.env the first time
 make test           # unit tests, lint, shell tests
 make hooks          # the pre-commit guard that keeps statements out of git
 make help           # every target
 ```
+
+Sign-in codes are written to the log on a developer's machine: the local
+config has no mail relay, and never production's. Without a `secrets.env`,
+`cp config.example.toml config.toml` first.
 
 ## Deploying
 
