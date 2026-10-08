@@ -69,7 +69,7 @@ var upload = translationbus.Source{EN: "Upload receipts"}
 func TestRegisterOpensAPendingTranslationInEveryOtherLanguage(t *testing.T) {
 	bus, db, _ := setup(t)
 
-	if err := bus.Register(t.Context(), []translationbus.Source{upload, upload}); err != nil {
+	if err := bus.Register(t.Context(), translationbus.Uses(upload, upload)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -91,7 +91,7 @@ func TestRegisterOpensAPendingTranslationInEveryOtherLanguage(t *testing.T) {
 func TestRegisterAgainKeepsTranslationsAndMovesLastSeen(t *testing.T) {
 	bus, db, now := setup(t)
 
-	if err := bus.Register(t.Context(), []translationbus.Source{upload}); err != nil {
+	if err := bus.Register(t.Context(), translationbus.Uses(upload)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -99,7 +99,7 @@ func TestRegisterAgainKeepsTranslationsAndMovesLastSeen(t *testing.T) {
 
 	*now = now.Add(24 * time.Hour)
 
-	if err := bus.Register(t.Context(), []translationbus.Source{upload}); err != nil {
+	if err := bus.Register(t.Context(), translationbus.Uses(upload)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -119,7 +119,7 @@ func TestTranslate(t *testing.T) {
 	month := translationbus.Source{Context: "month-end", EN: "Close"}
 	waiting := translationbus.Source{EN: "Waiting for a match"}
 
-	if err := bus.Register(t.Context(), []translationbus.Source{upload, verb, month, waiting}); err != nil {
+	if err := bus.Register(t.Context(), translationbus.Uses(upload, verb, month, waiting)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -160,7 +160,7 @@ func TestTranslate(t *testing.T) {
 func TestRegisterRefusesAStringWithNoEnglish(t *testing.T) {
 	bus, _, _ := setup(t)
 
-	if err := bus.Register(t.Context(), []translationbus.Source{{Context: "verb", EN: "  "}}); err == nil {
+	if err := bus.Register(t.Context(), translationbus.Uses(translationbus.Source{Context: "verb", EN: "  "})); err == nil {
 		t.Fatal("a string with no English was registered")
 	}
 }

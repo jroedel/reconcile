@@ -48,3 +48,25 @@ func Policy() web.PolicyFor {
 		}
 	}
 }
+
+// AllowFormTo lets the page about to be written send its form on to origin as
+// well as to this site. Lifted from stewards.
+//
+// For the one page that needs it: where a translator agrees to let a program
+// sign in (oauthapp). Its form posts here, and the answer is a redirect back
+// to the program -- to claude.ai -- and Chrome applies form-action to where
+// a form's redirects lead as well as to where it posts. With 'self' alone the
+// translator presses "Allow" and nothing happens. Widened for that page and
+// that one origin, which the handler has checked against the program's own
+// metadata document, rather than for every page.
+func AllowFormTo(h http.Header, origin string) {
+	directives := strings.Split(h.Get("Content-Security-Policy"), ";")
+
+	for i, d := range directives {
+		if name, _, _ := strings.Cut(strings.TrimSpace(d), " "); name == "form-action" {
+			directives[i] = " " + strings.TrimSpace(d) + " " + origin
+		}
+	}
+
+	h.Set("Content-Security-Policy", strings.TrimSpace(strings.Join(directives, ";")))
+}

@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+#
+# reconcile-api METHOD PATH [curl options...]
+#
+# Calls the site's translation API as the person whose key is in
+# RECONCILE_API_KEY, at the site RECONCILE_URL names. This is what a
+# translator's own Claude uses to fill the Spanish and Portuguese; see
+# .claude/skills/reconcile-api/SKILL.md and docs/translations.md.
+#
+#   scripts/reconcile-api GET /api/v1                                   the index: start here
+#   scripts/reconcile-api GET '/api/v1/translations/pending?lang=es'
+#   scripts/reconcile-api PUT /api/v1/translations --json @batch.json
+#
+# Both come from the person's environment, set before Claude Code started,
+# and never from a file in or near this repository (CLAUDE.md, "One
+# exception: translations"). There is no default site: the repository is
+# public, and the address of the one that runs it belongs in secrets.env,
+# which nothing here reads.
+#
+# Only the translation endpoints and the index. The API has nothing else
+# today; the script refuses anything else anyway, so that a later endpoint
+# is a decision to add here rather than something an agent reaches because
+# it happened to exist.
+#
+# The key is handed to curl on a file descriptor, never on its command line.
+# A command line is readable by every process on the machine (ps), and it is
+# what lands in shell history and in a Claude transcript. The variable's name
+# is what appears in a command, never its value.
+#
+# Exits non-zero when the answer is an error, with the answer's JSON printed,
+# so that a batch stops at the first refusal and says why.
+set -euo pipefail
+
+die() { printf 'reconcile-api: %s\n' "$*" >&2; exit 2; }
+
+[ $# -ge 2 ] || die "usage: reconcile-api METHOD PATH [curl options...]. Start with: reconcile-api GET /api/v1"
+
+method="$1" path="$2"
+shift 2
+
+case "$method" in
+GET | PUT) ;;
+*) die "$method is not a method the translation API takes; the index (GET /api/v1) lists them" ;;
+esac
+
+case "${path%%\?*}" in
+/api/v1 | /api/v1/ | /api/v1/translations | /api/v1/translations/pending) ;;
+*) die "$path is not one of the translation endpoints. This calls those and the index, and nothing else" ;;
+esac
+
+[ -n "${RECONCILE_URL:-}" ] || die "RECONCILE_URL is not set. Ask the person to set it to the site's address in their environment, and start Claude Code again"
+
+base="${RECONCILE_URL%/}"
+
+case "$base" in
+https://* | http://localhost* | http://127.0.0.1*) ;;
+*) die "RECONCILE_URL must start with https:// (or be a server on this machine); a key is not sent in the clear" ;;
+esac
+
+curl_opts=(--silent --show-error --fail-with-body --request "$method")
+
+if [ -z "${RECONCILE_API_KEY:-}" ]; then
+	if [ "${path%/}" != /api/v1 ]; then
+		die "RECONCILE_API_KEY is not set. A translator makes a key at $base/account/keys and sets it in their environment; it is never written into a file here"
+	fi
+
+	exec curl "${curl_opts[@]}" "$@" "$base$path"
+fi
+
+# The process substitution is on this line and nowhere earlier: bash closes
+# its descriptor when the statement that made it ends, so one made into a
+# variable first would be gone before curl could read it.
+exec curl "${curl_opts[@]}" --header @<(printf 'Authorization: Bearer %s\n' "$RECONCILE_API_KEY") "$@" "$base$path"

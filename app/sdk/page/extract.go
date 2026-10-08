@@ -20,13 +20,23 @@ import (
 // placeholder's name must be a literal string. {{t .Message}} cannot be
 // registered, so it is a startup error rather than a string that is never
 // translated.
-func extract(sets map[string][]*parse.Tree) ([]translationbus.Source, error) {
-	found := map[translationbus.Source]bool{}
+//
+// Each string is returned with the template files it is written in -- its
+// tree's ParseName, so a string in the layout or a partial is the layout's
+// or the partial's, and not every page's that includes it. That is the
+// "where" a translator reads to know whether "Close" is a button.
+func extract(sets map[string][]*parse.Tree) ([]translationbus.Use, error) {
+	found := &finds{in: map[translationbus.Source]map[string]bool{}}
 
 	for _, name := range slices.Sorted(maps.Keys(sets)) {
 		for _, tree := range sets[name] {
 			if tree == nil || tree.Root == nil {
 				continue
+			}
+
+			found.file = tree.ParseName
+			if found.file == "" {
+				found.file = name
 			}
 
 			if err := walk(tree.Root, found); err != nil {
@@ -35,8 +45,12 @@ func extract(sets map[string][]*parse.Tree) ([]translationbus.Source, error) {
 		}
 	}
 
-	out := slices.Collect(maps.Keys(found))
-	slices.SortFunc(out, func(a, b translationbus.Source) int {
+	out := make([]translationbus.Use, 0, len(found.in))
+	for src, files := range found.in {
+		out = append(out, translationbus.Use{Source: src, Pages: slices.Sorted(maps.Keys(files))})
+	}
+
+	slices.SortFunc(out, func(a, b translationbus.Use) int {
 		if a.EN != b.EN {
 			if a.EN < b.EN {
 				return -1
@@ -59,7 +73,7 @@ func extract(sets map[string][]*parse.Tree) ([]translationbus.Source, error) {
 	return out, nil
 }
 
-func walk(n parse.Node, found map[translationbus.Source]bool) error {
+func walk(n parse.Node, found *finds) error {
 	switch n := n.(type) {
 	case *parse.ListNode:
 		if n == nil {
@@ -96,7 +110,7 @@ func walk(n parse.Node, found map[translationbus.Source]bool) error {
 	return nil
 }
 
-func branch(b *parse.BranchNode, found map[translationbus.Source]bool) error {
+func branch(b *parse.BranchNode, found *finds) error {
 	for _, n := range []parse.Node{b.Pipe, b.List, b.ElseList} {
 		if err := walk(n, found); err != nil {
 			return err
@@ -108,7 +122,7 @@ func branch(b *parse.BranchNode, found map[translationbus.Source]bool) error {
 
 // command records a t or tc call, and walks into the arguments of anything
 // else: {{if eq (t "Yes") .X}} hides a call inside a parenthesised pipe.
-func command(cmd *parse.CommandNode, found map[translationbus.Source]bool) error {
+func command(cmd *parse.CommandNode, found *finds) error {
 	if len(cmd.Args) > 0 {
 		if id, ok := cmd.Args[0].(*parse.IdentifierNode); ok && (id.Ident == "t" || id.Ident == "tc") {
 			src, err := call(id.Ident, cmd.Args[1:])
@@ -116,7 +130,7 @@ func command(cmd *parse.CommandNode, found map[translationbus.Source]bool) error
 				return err
 			}
 
-			found[src] = true
+			found.add(src)
 		}
 	}
 
@@ -174,4 +188,19 @@ func call(fn string, args []parse.Node) (translationbus.Source, error) {
 	}
 
 	return src, nil
+}
+
+// finds is the strings found so far, each with the files it is in, and the
+// file being read.
+type finds struct {
+	file string
+	in   map[translationbus.Source]map[string]bool
+}
+
+func (f *finds) add(src translationbus.Source) {
+	if f.in[src] == nil {
+		f.in[src] = map[string]bool{}
+	}
+
+	f.in[src][f.file] = true
 }

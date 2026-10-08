@@ -141,8 +141,10 @@ and a project's book; and reconciling, which locks a period), `receipt`
 project's inbox until a person matches them) and `export` (the
 accountant's zip, read across the others and stored nowhere). The pages
 over them are `homeapp`, `authapp`, `tenancyapp`, `ledgerapp`,
-`categoryapp`, `receiptapp`, `exportapp` and `adminapp`. The rest is where
-the plan's domains go when they arrive.
+`categoryapp`, `receiptapp`, `exportapp` and `adminapp`; a program's ways
+in are `apiapp` (`/api/v1`, translations only), `mcpapp` (the same as tools
+on `/mcp`) and `oauthapp` (how Claude on claude.ai gets a key). The rest is
+where the plan's domains go when they arrive.
 
 **Access is asked of tenancybus, every time.** A business method that reads
 or changes something in an organization takes the actor and answers
@@ -186,6 +188,17 @@ A question about *behaviour* starts in `business/domain/…bus`. A question abou
   credential or real record goes into a tracked file, a test fixture, a
   commit message or a PR description. They belong in `secrets.env`. Fixtures
   are invented, and hosts in tests are under `.invalid`.
+
+**One exception: translations.** An agent may call the public `/api/v1`
+translation endpoints, and only those, when a person asks it to, with the
+key in `RECONCILE_API_KEY` and the site in `RECONCILE_URL` — set by that
+person in their environment, never written to a file. What it writes is
+live at once; it never overwrites a translation a person has approved or
+corrected, because that is the person's word on it. `scripts/reconcile-api`
+is the way, and `.claude/skills/reconcile-api` says how to do it well
+(`docs/translations.md`). That is a translator using the site, not an agent
+operating the server: never as a test, never while developing, and never to
+check a change.
 
 `.claude/settings.json` denies these commands, so the rule holds even when it
 is forgotten. Do not work around a denial — a denied command is the answer.

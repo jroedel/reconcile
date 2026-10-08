@@ -225,6 +225,28 @@ type Storer interface {
 	UseEmailChange(ctx context.Context, id types.ID, at time.Time) (bool, error)
 	CancelEmailChanges(ctx context.Context, userID types.ID, at time.Time) error
 
+	// CreateAPIKey records a key unless the person already has limit live
+	// ones: the count and the insert in one statement.
+	CreateAPIKey(ctx context.Context, k APIKey, limit int) (bool, error)
+	APIKeyByID(ctx context.Context, id types.ID) (APIKey, error)
+	APIKeys(ctx context.Context, userID types.ID, now time.Time) ([]APIKey, error)
+	DeleteAPIKey(ctx context.Context, userID, id types.ID) error
+
+	// ReplaceAPIKey records a key given to a program through OAuth in place
+	// of any the person gave the same program before, keeping the limit as
+	// CreateAPIKey does.
+	ReplaceAPIKey(ctx context.Context, k APIKey, limit int) (bool, error)
+
+	// TouchAPIKey records a use, only where the last one is before
+	// notAfter.
+	TouchAPIKey(ctx context.Context, id types.ID, at, notAfter time.Time) error
+
+	// CreateGrant records an OAuth code unless the person already has limit
+	// unspent ones; UseGrant spends one. Both claims.
+	CreateGrant(ctx context.Context, g Grant, limit int) (bool, error)
+	GrantByID(ctx context.Context, id types.ID) (Grant, error)
+	UseGrant(ctx context.Context, id types.ID, at time.Time) (bool, error)
+
 	PruneExpired(ctx context.Context, before time.Time) error
 }
 

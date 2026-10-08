@@ -40,7 +40,7 @@ re-fitted to reconcile's tables rather than copied.
 |---|---|---|
 | API keys: `<prefix>_<id>.<secret>`, sha256 of the secret, constant-time compare, 90 days, 5 live per person, name, `last_used_at` hourly | `business/domain/user/userbus/apikey.go`, `credential.go`; `userdb` `api_keys` | Prefix `rcn_` |
 | Bearer middleware that never reads the cookie, `RequireKey` with `WWW-Authenticate` | `app/sdk/mid/apikey.go` | |
-| Keys screen: make (secret shown once), list, revoke | `app/domain/stewardapp/keys.go` | Goes on the profile page |
+| Keys screen: make (secret shown once), list, revoke | `app/domain/stewardapp/keys.go` | `/account/keys`, linked from the account page for those who translate; a 404 to anybody else |
 | Endpoints declared once as `Endpoint` structs that mount the routes, build the `GET /api/v1` index and name the MCP tools | `app/domain/apiapp` | |
 | MCP over streamable HTTP, tools generated from the index, calls replayed in-process with the caller's bearer | `app/domain/mcpapp` | Official SDK `github.com/modelcontextprotocol/go-sdk`, the one new dependency |
 | OAuth 2.1, S256 PKCE, authorization code only, Client ID Metadata Documents fetched only from Anthropic's hosts, the token an ordinary key with `client` set | `app/domain/oauthapp`, `foundation/oauth`, `userdb` `oauth_grants` | |
@@ -178,7 +178,7 @@ and Portuguese as soon as possible:
 1. **Claude's way in.**
    - The schema changes and their old-schema test: `pages` from the
      extraction, and `origin` and `note`.
-   - API keys and the profile screen, for the administrator.
+   - API keys and their screen, `/account/keys`, for the administrator.
    - `/api/v1` and its three endpoints.
    - The MCP server and OAuth.
    - The skill, `scripts/reconcile-api`, the MCP guide, and the CLAUDE.md

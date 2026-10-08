@@ -70,6 +70,14 @@
 {{end}}
 </section>
 
+{{if .Translates}}
+<section class="card">
+<h2>{{t "API keys"}}</h2>
+<p>{{t "A key lets a program, such as your own Claude, fill in this site's translations as you."}}</p>
+<p><a href="/account/keys">{{t "Your API keys"}}</a></p>
+</section>
+{{end}}
+
 <section class="card">
 <h2>{{t "Signing out"}}</h2>
 <form method="post" action="/sign-out" class="inline">

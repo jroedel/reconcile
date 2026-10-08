@@ -16,5 +16,7 @@
 {{- else if eq . "address-taken"}}{{t "Another account already signs in with that address."}}
 {{- else if eq . "email-stale"}}{{t "This code was asked for on another device, or more than fifteen minutes ago. Ask for a new one below."}}
 {{- else if eq . "email-code-wrong"}}{{t "That code did not work. Check it against the newest email, or start again."}}
+{{- else if eq . "key-name"}}{{t "Give the key a name of at most {max} characters, such as “laptop”." "max" 60}}
+{{- else if eq . "too-many-keys"}}{{t "You have as many keys as you may. Revoke one you no longer use, then make another."}}
 {{- else}}{{t "Something went wrong at our end. Please try again in a few minutes."}}
 {{- end}}</p>{{end}}{{end}}

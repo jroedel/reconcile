@@ -164,6 +164,9 @@ func run() error {
 		Receipts:   receipts,
 		Export:     export,
 		BaseURL:    cfg.Server.BaseURL,
+
+		Translations: translations,
+
 		Mail:       sender,
 		Bootstrap:  cfg.Auth.BootstrapSecret,
 		TrustProxy: cfg.Server.TrustProxy,
