@@ -93,6 +93,10 @@ type Config struct {
 	// with it or moves to it. Nil claims nothing.
 	Grants Claimer
 
+	// Translators says who may hold an API key (keys.go). Nil is nobody,
+	// and the keys screen is a 404 to everyone.
+	Translators Translators
+
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
 }
@@ -192,6 +196,8 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	mux.Handle("POST /account/email", guard(limited(a.requestEmailChange)))
 	mux.Handle("POST /account/email/confirm", guard(limited(a.confirmEmailChange)))
 	mux.Handle("POST /account/email/cancel", guard(http.HandlerFunc(a.cancelEmailChange)))
+
+	mountKeys(mux, a, guard)
 }
 
 // --- asking for a code ---------------------------------------------------------
@@ -548,6 +554,10 @@ type accountView struct {
 	// NewEmail is what was typed into the change form, kept when it is
 	// refused.
 	NewEmail string
+
+	// Translates is whether the user may hold an API key, which is whether
+	// the page links to the keys screen.
+	Translates bool
 }
 
 // accountFor builds the page. One function, so that the four places that
@@ -567,6 +577,12 @@ func (a app) accountFor(ctx context.Context, u userbus.User) accountView {
 		a.cfg.Log.Error("the backup codes could not be counted", "user_id", u.ID.String(), "error", err)
 	} else {
 		view.Left = left
+	}
+
+	if may, err := a.translates(ctx, u); err != nil {
+		a.cfg.Log.Error("whether somebody translates could not be read", "user_id", u.ID.String(), "error", err)
+	} else {
+		view.Translates = may
 	}
 
 	return view

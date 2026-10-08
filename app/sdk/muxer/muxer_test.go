@@ -111,6 +111,8 @@ func newSite(t *testing.T, want sqldb.Expected, configure func(*Config)) (http.H
 		Export:     exportbus.NewBusiness(log, tenancy, ledger, receipts, categories, files),
 		BaseURL:    base,
 		Mail:       sent,
+
+		Translations: translations,
 	}
 
 	if configure != nil {

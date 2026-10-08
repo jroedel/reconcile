@@ -13,11 +13,14 @@ import (
 	"net/http"
 
 	"github.com/jroedel/reconcile/app/domain/adminapp"
+	"github.com/jroedel/reconcile/app/domain/apiapp"
 	"github.com/jroedel/reconcile/app/domain/authapp"
 	"github.com/jroedel/reconcile/app/domain/categoryapp"
 	"github.com/jroedel/reconcile/app/domain/exportapp"
 	"github.com/jroedel/reconcile/app/domain/homeapp"
 	"github.com/jroedel/reconcile/app/domain/ledgerapp"
+	"github.com/jroedel/reconcile/app/domain/mcpapp"
+	"github.com/jroedel/reconcile/app/domain/oauthapp"
 	"github.com/jroedel/reconcile/app/domain/receiptapp"
 	"github.com/jroedel/reconcile/app/domain/tenancyapp"
 	"github.com/jroedel/reconcile/app/sdk/health"
@@ -30,8 +33,10 @@ import (
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
+	"github.com/jroedel/reconcile/business/domain/translation/translationbus"
 	"github.com/jroedel/reconcile/business/domain/user/userbus"
 	"github.com/jroedel/reconcile/foundation/mail"
+	"github.com/jroedel/reconcile/foundation/oauth"
 	"github.com/jroedel/reconcile/foundation/sqldb"
 	"github.com/jroedel/reconcile/foundation/web"
 )
@@ -40,7 +45,7 @@ import (
 // renderer rather than this package, because the strings it reads out of
 // these are registered for translation before anything is served.
 func Templates() []fs.FS {
-	return []fs.FS{homeapp.Templates, authapp.Templates, tenancyapp.Templates, ledgerapp.Templates, categoryapp.Templates, receiptapp.Templates, exportapp.Templates, adminapp.Templates}
+	return []fs.FS{homeapp.Templates, authapp.Templates, tenancyapp.Templates, ledgerapp.Templates, categoryapp.Templates, receiptapp.Templates, exportapp.Templates, adminapp.Templates, oauthapp.Templates}
 }
 
 // Config is everything the routes need, gathered by main and passed in.
@@ -58,6 +63,14 @@ type Config struct {
 	Categories *categorybus.Business
 	Receipts   *receiptbus.Business
 	Export     *exportbus.Business
+
+	// Translations is the interface's strings, which the API fills.
+	Translations *translationbus.Business
+
+	// OAuthClients reads a program's metadata document; nil reads it over
+	// the network. A test hands in its own, since the hosts it trusts are
+	// not ones a test can reach.
+	OAuthClients oauthapp.Clients
 
 	// BaseURL is the public origin. Empty means sign-in is off: its routes
 	// are not mounted, because a code sent from a site that cannot say where
@@ -78,10 +91,16 @@ type Config struct {
 // rather than a second MaxBody inside it (web.MaxBody).
 const maxBody = 64 << 10
 
+// maxJSON is the most a request to the API or /mcp may send: a full batch of
+// translations (translationbus.MaxBatch) with the English beside each one,
+// which at a few hundred bytes a string is past maxBody.
+const maxJSON = 1 << 20
+
 // New builds the handler.
 func New(cfg Config) (http.Handler, error) {
 	if cfg.Log == nil || cfg.DB == nil || cfg.Render == nil || cfg.Users == nil || cfg.Tenancy == nil || cfg.History == nil ||
-		cfg.Files == nil || cfg.Ledger == nil || cfg.Categories == nil || cfg.Receipts == nil || cfg.Export == nil {
+		cfg.Files == nil || cfg.Ledger == nil || cfg.Categories == nil || cfg.Receipts == nil || cfg.Export == nil ||
+		cfg.Translations == nil {
 		return nil, errors.New("the muxer needs a logger, a database, a renderer, and every domain's business")
 	}
 
@@ -108,6 +127,8 @@ func New(cfg Config) (http.Handler, error) {
 			Bootstrap:  cfg.Bootstrap,
 			TrustProxy: cfg.TrustProxy,
 			Grants:     cfg.Tenancy,
+
+			Translators: cfg.Translations,
 		}, guard)
 
 		tenancyapp.Routes(mux, tenancyapp.Config{
@@ -160,6 +181,34 @@ func New(cfg Config) (http.Handler, error) {
 			Names:  cfg.Tenancy,
 			Render: cfg.Render,
 		}, guard)
+
+		// How Claude on claude.ai gets a key: a translator agrees on a page
+		// of ours, and the key comes back through the token endpoint
+		// instead of through their clipboard. Behind the same guard as the
+		// screens, since agreeing is a signed-in person's.
+		clients := cfg.OAuthClients
+		if clients == nil {
+			clients = oauth.NewFetcher(nil)
+		}
+
+		oauthapp.Routes(mux, oauthapp.Config{
+			Log:         cfg.Log,
+			Render:      cfg.Render,
+			Users:       cfg.Users,
+			Translators: cfg.Translations,
+			Clients:     clients,
+			BaseURL:     cfg.BaseURL,
+		}, guard)
+	}
+
+	// The API on a mux of its own, so that nothing under /api is ever
+	// reached through the cookie's chain or the cookie through the API's: a
+	// page somebody is signed in to cannot be made to call it, and a key
+	// cannot open a page. Mounted only with sign-in on, like the screens,
+	// since a key is made on one. Translations only (apiapp).
+	api := http.NewServeMux()
+	if cfg.BaseURL != "" {
+		apiapp.Routes(api, apiapp.Config{Log: cfg.Log, Translations: cfg.Translations, BaseURL: cfg.BaseURL})
 	}
 
 	// Who is signed in, then the language, which may be theirs (mid.Lang).
@@ -167,6 +216,18 @@ func New(cfg Config) (http.Handler, error) {
 		mid.Authenticate(cfg.Log, cfg.Users),
 		mid.Lang(),
 	)
+	apiInner := web.Wrap(api, mid.APIKey(cfg.Log, cfg.Users))
+
+	// The API again, as an MCP server for Claude on claude.ai: each tool
+	// call is a request to the site, so it is handled exactly as the same
+	// request from a program would be. site is set below, before anything
+	// can call it.
+	var site, mcp http.Handler
+	if cfg.BaseURL != "" {
+		m := mcpapp.New(mcpapp.Config{Log: cfg.Log, Keys: cfg.Users, BaseURL: cfg.BaseURL, Site: func() http.Handler { return site }})
+		m.Routes(mux)
+		mcp = m.Handler()
+	}
 
 	// How big and what shape a write may be is a fork rather than a line,
 	// so that an upload gets a branch of its own and never passes through
@@ -176,6 +237,13 @@ func New(cfg Config) (http.Handler, error) {
 	// server's 30 seconds to arrive: a phone on one bar is slow.
 	shape := http.NewServeMux()
 	shape.Handle("/", web.Wrap(inner, web.MaxBody(maxBody), web.FormEncodedOnly()))
+
+	// And who is asking is decided per branch: a session cookie for the
+	// pages, an API key for the API and /mcp, never both.
+	shape.Handle("/api/", web.Wrap(apiInner, web.MaxBody(maxJSON), web.JSONOnly()))
+	if mcp != nil {
+		shape.Handle(mcpapp.Path, web.Wrap(mcp, web.MaxBody(maxJSON), web.JSONOnly()))
+	}
 	shape.Handle(ledgerapp.UploadPattern, web.Wrap(inner,
 		web.Deadline(receiptapp.UploadTime), web.MaxBody(ledgerapp.MaxUpload), web.MultipartOnly()))
 
@@ -194,11 +262,13 @@ func New(cfg Config) (http.Handler, error) {
 	// Outermost first: the id, then the request line, then the headers, so
 	// a panic is logged with the id and answered with the policy on it. A
 	// write from another site is refused before anything reads a cookie.
-	return web.Wrap(shape,
+	site = web.Wrap(shape,
 		web.RequestID(),
 		web.Logging(cfg.Log),
 		web.SecureHeaders(page.Policy()),
 		web.Panics(cfg.Log),
 		web.SameOriginOnly(cfg.BaseURL),
-	), nil
+	)
+
+	return site, nil
 }

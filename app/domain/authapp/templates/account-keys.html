@@ -1,0 +1,48 @@
+{{define "title"}}{{t "API keys"}}{{end}}
+{{define "content"}}{{with .Data}}
+<p class="crumbs"><a href="/account">{{t "Your account"}}</a></p>
+<h1>{{t "API keys"}}</h1>
+<p>{{t "A key lets a program, such as your own Claude, read and write this site's translations as you. It reaches nothing else: no organization, account, statement, receipt or export."}}</p>
+
+{{if eq .Done "revoked"}}<p class="notice ok" role="status">{{t "Key revoked. Anything still using it is refused from now on."}}</p>{{end}}
+{{template "problem" .Problem}}
+
+{{with .NewKey}}
+<section class="card" role="status">
+  <h2>{{t "Your new key"}}</h2>
+  <p>{{t "Copy it now. It is not shown again; if you lose it, revoke it and make another."}}</p>
+  <p><code class="key">{{.}}</code></p>
+  <p class="hint">{{t "Keep it out of any file that is shared or committed. In a terminal, put it in RECONCILE_API_KEY, and this site's address in RECONCILE_URL."}}</p>
+  <p class="hint">{{t "The API starts here, with a list of everything it takes:"}} <code>{{$.Data.Index}}</code></p>
+</section>
+{{end}}
+
+<section class="card">
+<h2>{{t "Your keys"}}</h2>
+{{if .Keys}}
+<ul class="list">
+{{range .Keys}}<li>
+  <strong>{{.Name}}</strong>{{if .Program}} · {{t "connected from Claude"}}{{end}}
+  <br><span class="hint">{{if .LastUse}}{{t "Made {made} · ends {ends} · last used {used}" "made" .Created "ends" .Expires "used" .LastUse}}{{else}}{{t "Made {made} · ends {ends} · not used yet" "made" .Created "ends" .Expires}}{{end}}</span>
+  <form method="post" action="/account/keys/{{.ID}}/revoke" class="inline">
+    <button type="submit" class="quiet">{{t "Revoke"}}</button>
+  </form>
+</li>
+{{end}}</ul>
+{{else}}
+<p>{{t "You have no keys."}}</p>
+{{end}}
+</section>
+
+<section class="card">
+<h2>{{t "Make a key"}}</h2>
+<form method="post" action="/account/keys">
+  <div class="field">
+    <label for="name">{{t "What it is for"}}</label>
+    <input id="name" name="name" type="text" value="{{.Name}}" aria-describedby="name-hint" maxlength="60" autocomplete="off" required>
+    <p class="hint" id="name-hint">{{t "The computer or program that will hold it, such as “laptop”, so you know which to revoke. A key lasts 90 days; you can have {max}." "max" .Max}}</p>
+  </div>
+  <button type="submit">{{t "Make a key"}}</button>
+</form>
+</section>
+{{end}}{{end}}

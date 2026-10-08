@@ -45,6 +45,8 @@ var Expected = sqldb.Expected{
 	"backup_codes":  {"id", "user_id", "hash", "created_at", "used_at"},
 	"sessions":      {"id", "user_id", "hash", "created_at", "expires_at"},
 	"bootstrap":     {"id", "claimed_at"},
+	"api_keys":      {"id", "user_id", "name", "hash", "created_at", "expires_at", "last_used_at", "client"},
+	"oauth_grants":  {"id", "user_id", "hash", "client_id", "client_name", "redirect_uri", "challenge", "created_at", "expires_at", "used_at"},
 }
 
 // Init creates the tables. Idempotent, run at every startup.
@@ -137,6 +139,43 @@ CREATE TABLE IF NOT EXISTS bootstrap (
     id          INTEGER PRIMARY KEY CHECK (id = 1),
     claimed_at  INTEGER NOT NULL
 ) STRICT;
+
+-- A program acting as a person; see userbus/apikey.go. A table of its own
+-- rather than a kind of session, because a key has a name and a last use,
+-- and is listed and revoked by its owner, none of which a session is.
+-- client is the OAuth client_id it was given to, or '' for one made on the
+-- profile page.
+CREATE TABLE IF NOT EXISTS api_keys (
+    id            TEXT    PRIMARY KEY,
+    user_id       TEXT    NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    name          TEXT    NOT NULL,
+    hash          BLOB    NOT NULL,
+    created_at    INTEGER NOT NULL,
+    expires_at    INTEGER NOT NULL,
+    last_used_at  INTEGER,
+    client        TEXT    NOT NULL DEFAULT ''
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS api_keys_user ON api_keys (user_id, expires_at);
+
+-- The code a person's agreeing hands to a program signing in through OAuth
+-- (userbus/oauth.go), traded once for a key. It is a sign-in code in all but
+-- who carries it, and is kept the same way: the hash, never the secret, and
+-- used_at as the claim.
+CREATE TABLE IF NOT EXISTS oauth_grants (
+    id            TEXT    PRIMARY KEY,
+    user_id       TEXT    NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    hash          BLOB    NOT NULL,
+    client_id     TEXT    NOT NULL,
+    client_name   TEXT    NOT NULL,
+    redirect_uri  TEXT    NOT NULL,
+    challenge     TEXT    NOT NULL,
+    created_at    INTEGER NOT NULL,
+    expires_at    INTEGER NOT NULL,
+    used_at       INTEGER
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS oauth_grants_user ON oauth_grants (user_id, expires_at);
 `
 
 	if _, err := db.ExecContext(ctx, schema); err != nil {
@@ -559,6 +598,8 @@ func (s *Store) PruneExpired(ctx context.Context, before time.Time) error {
 		`DELETE FROM signin_codes WHERE expires_at < ?`,
 		`DELETE FROM email_changes WHERE expires_at < ?`,
 		`DELETE FROM sessions WHERE expires_at < ?`,
+		`DELETE FROM api_keys WHERE expires_at < ?`,
+		`DELETE FROM oauth_grants WHERE expires_at < ?`,
 	} {
 		if _, err := s.db.ExecContext(ctx, q, msOf(before)); err != nil {
 			return fmt.Errorf("removing expired credentials: %w", err)
@@ -566,6 +607,229 @@ func (s *Store) PruneExpired(ctx context.Context, before time.Time) error {
 	}
 
 	return nil
+}
+
+// ------------------------------------------------------------------ API keys
+
+// CreateAPIKey records a key unless the person already has limit live ones:
+// the count and the insert in one statement, as for links.
+func (s *Store) CreateAPIKey(ctx context.Context, k userbus.APIKey, limit int) (bool, error) {
+	const q = `
+INSERT INTO api_keys (id, user_id, name, hash, created_at, expires_at)
+SELECT ?, ?, ?, ?, ?, ?
+WHERE (SELECT count(*) FROM api_keys WHERE user_id = ? AND expires_at > ?) < ?`
+
+	res, err := s.db.ExecContext(ctx, q,
+		k.ID.String(), k.UserID.String(), k.Name, k.Hash, msOf(k.CreatedAt), msOf(k.ExpiresAt),
+		k.UserID.String(), msOf(k.CreatedAt), limit)
+	if err != nil {
+		return false, fmt.Errorf("inserting the API key: %w", err)
+	}
+
+	return affected(res)
+}
+
+// ReplaceAPIKey records a key given to a program through OAuth, removing any
+// key the person gave the same program before, and keeps the limit as
+// CreateAPIKey does. In one transaction, so that a refusal at the limit
+// leaves the old key where it was: a person who cannot connect again must
+// not also lose the connection they had.
+func (s *Store) ReplaceAPIKey(ctx context.Context, k userbus.APIKey, limit int) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("starting to replace the API key: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM api_keys WHERE user_id = ? AND client = ?`, k.UserID.String(), k.Client); err != nil {
+		return false, fmt.Errorf("removing the earlier API key: %w", err)
+	}
+
+	const q = `
+INSERT INTO api_keys (id, user_id, name, hash, created_at, expires_at, client)
+SELECT ?, ?, ?, ?, ?, ?, ?
+WHERE (SELECT count(*) FROM api_keys WHERE user_id = ? AND expires_at > ?) < ?`
+
+	res, err := tx.ExecContext(ctx, q,
+		k.ID.String(), k.UserID.String(), k.Name, k.Hash, msOf(k.CreatedAt), msOf(k.ExpiresAt), k.Client,
+		k.UserID.String(), msOf(k.CreatedAt), limit)
+	if err != nil {
+		return false, fmt.Errorf("inserting the API key: %w", err)
+	}
+
+	made, err := affected(res)
+	if err != nil || !made {
+		return false, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("replacing the API key: %w", err)
+	}
+
+	return true, nil
+}
+
+const apiKeyColumns = `id, user_id, name, hash, created_at, expires_at, last_used_at, client`
+
+// APIKeyByID finds a key by identifier.
+func (s *Store) APIKeyByID(ctx context.Context, id types.ID) (userbus.APIKey, error) {
+	k, err := scanAPIKey(s.db.QueryRowContext(ctx, `SELECT `+apiKeyColumns+` FROM api_keys WHERE id = ?`, id.String()))
+	if errors.Is(err, sql.ErrNoRows) {
+		return userbus.APIKey{}, userbus.ErrNotFound
+	}
+
+	return k, err
+}
+
+// APIKeys is a person's unexpired keys, newest first.
+func (s *Store) APIKeys(ctx context.Context, userID types.ID, now time.Time) ([]userbus.APIKey, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+apiKeyColumns+` FROM api_keys WHERE user_id = ? AND expires_at > ? ORDER BY created_at DESC, id`,
+		userID.String(), msOf(now))
+	if err != nil {
+		return nil, fmt.Errorf("listing API keys: %w", err)
+	}
+	defer rows.Close()
+
+	var keys []userbus.APIKey
+	for rows.Next() {
+		k, err := scanAPIKey(rows)
+		if err != nil {
+			return nil, err
+		}
+		keys = append(keys, k)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("listing API keys: %w", err)
+	}
+
+	return keys, nil
+}
+
+// DeleteAPIKey removes a key, only if it is the person's own.
+func (s *Store) DeleteAPIKey(ctx context.Context, userID, id types.ID) error {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM api_keys WHERE id = ? AND user_id = ?`, id.String(), userID.String())
+	if err != nil {
+		return fmt.Errorf("deleting the API key: %w", err)
+	}
+
+	ok, err := affected(res)
+
+	switch {
+	case err != nil:
+		return err
+	case !ok:
+		return userbus.ErrNotFound
+	}
+
+	return nil
+}
+
+// TouchAPIKey records a use where the last one is older than notAfter.
+func (s *Store) TouchAPIKey(ctx context.Context, id types.ID, at, notAfter time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE api_keys SET last_used_at = ? WHERE id = ? AND (last_used_at IS NULL OR last_used_at < ?)`,
+		msOf(at), id.String(), msOf(notAfter))
+	if err != nil {
+		return fmt.Errorf("recording the API key's use: %w", err)
+	}
+
+	return nil
+}
+
+func scanAPIKey(row rowScanner) (userbus.APIKey, error) {
+	var (
+		k                userbus.APIKey
+		rawID, rawUser   string
+		created, expires int64
+		used             sql.NullInt64
+	)
+
+	if err := row.Scan(&rawID, &rawUser, &k.Name, &k.Hash, &created, &expires, &used, &k.Client); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return userbus.APIKey{}, err
+		}
+
+		return userbus.APIKey{}, fmt.Errorf("reading an API key: %w", err)
+	}
+
+	var err error
+	if k.ID, err = types.ParseID(rawID); err != nil {
+		return userbus.APIKey{}, fmt.Errorf("a stored API key has a bad identifier: %w", err)
+	}
+
+	if k.UserID, err = types.ParseID(rawUser); err != nil {
+		return userbus.APIKey{}, fmt.Errorf("a stored API key names a bad account: %w", err)
+	}
+
+	k.CreatedAt, k.ExpiresAt, k.LastUsedAt = timeOf(created), timeOf(expires), timeOfNull(used)
+
+	return k, nil
+}
+
+// ------------------------------------------------------------------ OAuth grants
+
+// CreateGrant records a code unless the person already has limit live
+// ones: the count and the insert in one statement, as for links.
+func (s *Store) CreateGrant(ctx context.Context, g userbus.Grant, limit int) (bool, error) {
+	const q = `
+INSERT INTO oauth_grants (id, user_id, hash, client_id, client_name, redirect_uri, challenge, created_at, expires_at)
+SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+WHERE (SELECT count(*) FROM oauth_grants WHERE user_id = ? AND expires_at > ? AND used_at IS NULL) < ?`
+
+	res, err := s.db.ExecContext(ctx, q,
+		g.ID.String(), g.UserID.String(), g.Hash, g.ClientID, g.ClientName, g.RedirectURI, g.Challenge, msOf(g.CreatedAt), msOf(g.ExpiresAt),
+		g.UserID.String(), msOf(g.CreatedAt), limit)
+	if err != nil {
+		return false, fmt.Errorf("inserting the OAuth grant: %w", err)
+	}
+
+	return affected(res)
+}
+
+// GrantByID finds a code by identifier.
+func (s *Store) GrantByID(ctx context.Context, id types.ID) (userbus.Grant, error) {
+	var (
+		g                userbus.Grant
+		rawID, rawUser   string
+		created, expires int64
+		used             sql.NullInt64
+	)
+
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, user_id, hash, client_id, client_name, redirect_uri, challenge, created_at, expires_at, used_at FROM oauth_grants WHERE id = ?`,
+		id.String()).Scan(&rawID, &rawUser, &g.Hash, &g.ClientID, &g.ClientName, &g.RedirectURI, &g.Challenge, &created, &expires, &used)
+
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return userbus.Grant{}, userbus.ErrNotFound
+	case err != nil:
+		return userbus.Grant{}, fmt.Errorf("reading the OAuth grant: %w", err)
+	}
+
+	if g.ID, err = types.ParseID(rawID); err != nil {
+		return userbus.Grant{}, fmt.Errorf("a stored OAuth grant has a bad identifier: %w", err)
+	}
+
+	if g.UserID, err = types.ParseID(rawUser); err != nil {
+		return userbus.Grant{}, fmt.Errorf("a stored OAuth grant names a bad account: %w", err)
+	}
+
+	g.CreatedAt, g.ExpiresAt, g.UsedAt = timeOf(created), timeOf(expires), timeOfNull(used)
+
+	return g, nil
+}
+
+// UseGrant spends a code, reporting false if it was already spent.
+func (s *Store) UseGrant(ctx context.Context, id types.ID, at time.Time) (bool, error) {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE oauth_grants SET used_at = ? WHERE id = ? AND used_at IS NULL`, msOf(at), id.String())
+	if err != nil {
+		return false, fmt.Errorf("spending the OAuth grant: %w", err)
+	}
+
+	return affected(res)
 }
 
 type rowScanner interface {

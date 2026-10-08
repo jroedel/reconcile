@@ -73,7 +73,7 @@ type Renderer struct {
 
 	// strings is every {{t}} and {{tc}} in every page and message, read once
 	// at startup.
-	strings []translationbus.Source
+	strings []translationbus.Use
 
 	// The stylesheet is served under a path holding a hash of its content, so
 	// it can be cached for ever and still change the moment it is edited.
@@ -291,8 +291,9 @@ func NewRenderer(log *slog.Logger, tr Translator, own ...fs.FS) (*Renderer, erro
 	return rn, nil
 }
 
-// Strings is every string the pages translate, for translationbus.Register.
-func (rn *Renderer) Strings() []translationbus.Source { return rn.strings }
+// Strings is every string the pages translate, with the files it is in,
+// for translationbus.Register.
+func (rn *Renderer) Strings() []translationbus.Use { return rn.strings }
 
 // StylesheetPath is where the stylesheet is served, including its hash.
 func (rn *Renderer) StylesheetPath() string { return rn.cssPath }

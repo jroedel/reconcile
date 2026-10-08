@@ -53,6 +53,23 @@ type Source struct {
 	EN      string
 }
 
+// Use is a string the running binary says, and the template files it is
+// written in.
+type Use struct {
+	Source
+	Pages []string
+}
+
+// Uses is sources with no files, for tests and callers that know none.
+func Uses(sources ...Source) []Use {
+	out := make([]Use, len(sources))
+	for i, s := range sources {
+		out[i] = Use{Source: s}
+	}
+
+	return out
+}
+
 // Status is how far a translation has got.
 type Status string
 
@@ -62,29 +79,72 @@ const (
 	Approved Status = "approved"
 )
 
+// Origin is who wrote a translation's text.
+type Origin string
+
+const (
+	// ByClaude is a translation written through the API.
+	ByClaude Origin = "claude"
+
+	// ByPerson is one a person wrote or corrected on the review screen.
+	ByPerson Origin = "person"
+)
+
 // Translation is one string in one language.
 type Translation struct {
 	Source
 	Lang      types.Lang
 	Text      string
 	Status    Status
+	Origin    Origin
+	UpdatedBy types.ID
+
+	// Note is a reviewer's reason for sending it back, or "".
+	Note string
+
+	// Pages is the template files the string is written in.
+	Pages []string
+
 	UpdatedAt time.Time
 }
 
 // Storer is what this package needs from storage.
 type Storer interface {
-	// Register records every source and opens a pending translation for
-	// each of them in each of langs, keeping whatever is already there.
-	Register(ctx context.Context, sources []Source, langs []types.Lang, now time.Time) error
+	// Register records every string and the files it is in, and opens a
+	// pending translation for each of them in each of langs, keeping
+	// whatever is already there.
+	Register(ctx context.Context, uses []Use, langs []types.Lang, now time.Time) error
 
 	// Translated is every translation that has text: drafts and approved.
 	Translated(ctx context.Context) ([]Translation, error)
+
+	// Pending is up to limit translations of a language with no text, or
+	// sent back with a note, of strings seen since since: the sent-back
+	// first. And how many there are in all.
+	Pending(ctx context.Context, lang types.Lang, since time.Time, limit int) ([]Translation, int, error)
+
+	// Get is one translation, ErrNotFound if the string or the language
+	// has none.
+	Get(ctx context.Context, src Source, lang types.Lang) (Translation, error)
+
+	// Put writes a translation's text, status, origin and who, and clears
+	// its note.
+	Put(ctx context.Context, t Translation) error
+
+	// List is a page of a language's translations with a status, or every
+	// status for "", in the order of their English, and how many in all.
+	List(ctx context.Context, lang types.Lang, status Status, limit, offset int) ([]Translation, int, error)
 }
 
 // Business is the translations, and the catalogue every page reads from.
 type Business struct {
 	store Storer
 	now   func() time.Time
+
+	// registered is when this binary registered its strings: a string not
+	// seen since is one it no longer says, and nobody is asked to
+	// translate it (Pending).
+	registered atomic.Int64
 
 	// The catalogue is read on every string of every page, and replaced
 	// whole when translations change -- so an atomic pointer to a map that
@@ -109,30 +169,43 @@ func NewBusiness(store Storer, now func() time.Time) *Business {
 }
 
 // Register records the strings the running binary uses. Duplicates are
-// folded, and a source with no English is refused: it is a template that
-// translates nothing, and a bug.
-func (b *Business) Register(ctx context.Context, sources []Source) error {
-	seen := map[Source]bool{}
-	unique := make([]Source, 0, len(sources))
+// folded, their files together, and a source with no English is refused: it
+// is a template that translates nothing, and a bug.
+func (b *Business) Register(ctx context.Context, uses []Use) error {
+	at := map[Source]int{}
+	unique := make([]Use, 0, len(uses))
 
-	for _, s := range sources {
-		if strings.TrimSpace(s.EN) == "" {
+	for _, u := range uses {
+		if strings.TrimSpace(u.EN) == "" {
 			return errors.New("a string to translate has no English text")
 		}
 
-		if !seen[s] {
-			seen[s] = true
-			unique = append(unique, s)
+		i, seen := at[u.Source]
+		if !seen {
+			at[u.Source] = len(unique)
+			unique = append(unique, Use{Source: u.Source})
+			i = len(unique) - 1
 		}
+
+		unique[i].Pages = append(unique[i].Pages, u.Pages...)
 	}
 
-	slices.SortFunc(unique, func(a, b Source) int {
+	for i := range unique {
+		slices.Sort(unique[i].Pages)
+		unique[i].Pages = slices.Compact(unique[i].Pages)
+	}
+
+	slices.SortFunc(unique, func(a, b Use) int {
 		return strings.Compare(a.Context+"\x00"+a.EN, b.Context+"\x00"+b.EN)
 	})
 
-	if err := b.store.Register(ctx, unique, types.Translated, b.now()); err != nil {
+	now := b.now()
+
+	if err := b.store.Register(ctx, unique, types.Translated, now); err != nil {
 		return fmt.Errorf("registering the strings to translate: %w", err)
 	}
+
+	b.registered.Store(now.UnixMilli())
 
 	return nil
 }

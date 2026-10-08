@@ -178,6 +178,14 @@ input.code {
 	padding-left: 2rem;
 }
 
+/* An API key is copied rather than typed, and is longer than a phone is
+ * wide: it breaks anywhere rather than pushing the page sideways. */
+code.key {
+	font-size: 1rem;
+	word-break: break-all;
+	user-select: all;
+}
+
 .aside { margin-top: 2rem; color: var(--muted); }
 .aside p { margin-bottom: 0.5rem; }
 

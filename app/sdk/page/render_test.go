@@ -184,8 +184,16 @@ func TestRenderUnknownPage(t *testing.T) {
 
 func TestStringsAreReadFromEveryTemplate(t *testing.T) {
 	got := map[translationbus.Source]bool{}
+	files := map[translationbus.Source][]string{}
+
 	for _, s := range renderer(t, pages).Strings() {
-		got[s] = true
+		got[s.Source] = true
+		files[s.Source] = s.Pages
+	}
+
+	// A string is the file's it is written in.
+	if f := files[translationbus.Source{EN: "Receipts"}]; len(f) != 1 || f[0] != "receipts.html" {
+		t.Errorf("the files of Receipts: %v", f)
 	}
 
 	for _, want := range []translationbus.Source{
@@ -272,7 +280,7 @@ func TestMailInALanguage(t *testing.T) {
 
 	got := map[translationbus.Source]bool{}
 	for _, s := range rn.Strings() {
-		got[s] = true
+		got[s.Source] = true
 	}
 
 	if !got[translationbus.Source{EN: "Your code is {code}."}] {
@@ -307,7 +315,7 @@ func TestAText(t *testing.T) {
 		t.Error("an unknown text was written")
 	}
 
-	if !slices.Contains(rn.Strings(), translationbus.Source{EN: "A & B"}) {
+	if !slices.ContainsFunc(rn.Strings(), func(u translationbus.Use) bool { return u.Source == translationbus.Source{EN: "A & B"} }) {
 		t.Error("a text's strings were not registered for translation")
 	}
 }
