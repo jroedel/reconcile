@@ -1,7 +1,7 @@
 {{define "title"}}{{.Data.Review.Statement.FileName}}{{end}}
-{{define "content"}}{{$v := .Data}}{{$rv := $v.Review}}{{$st := $rv.Statement}}{{$cur := $rv.Account.Currency}}{{$r := $st.Reconciliation}}
+{{define "content"}}{{$v := .Data}}{{$rv := $v.Review}}{{$st := $rv.Statement}}{{$cur := $rv.Account.Currency}}{{$r := $st.Reconciliation}}{{$hand := eq (printf "%s" $st.Format) "hand"}}
 <p class="crumbs"><a href="/accounts/{{$rv.Account.ID}}/transactions">{{$rv.Account.Name}}</a> · <a href="/accounts/{{$rv.Account.ID}}/months">{{t "Month by month"}}</a></p>
-<h1>{{t "Statement, {start} to {end}" "start" $st.Start "end" $st.End}}</h1>
+<h1>{{if $hand}}{{t "Entered by hand, {date}" "date" $st.Start}}{{else}}{{t "Statement, {start} to {end}" "start" $st.Start "end" $st.End}}{{end}}</h1>
 {{if eq $v.Done "imported"}}<p class="notice ok" role="status">{{t "Imported: {added} new transactions, and {already} that were here already." "added" $st.Added "already" $st.Already}}</p>{{end}}
 {{template "done" $v.Done}}
 {{template "problem" $v.Form.Problem}}
@@ -9,6 +9,8 @@
 <section class="card">
 <p>{{template "method" (printf "%s" $st.Checked)}}{{if $st.Reconciled}} <span class="badge ok">{{t "Reconciled"}}</span>{{end}}</p>
 {{if eq (printf "%s" $st.Checked) "balances"}}<p>{{t "Every row's balance followed from the one before, so no row is missing from the file."}}</p>
+{{else if eq (printf "%s" $st.Checked) "sum"}}<p>{{t "The rows added up to the total the document states."}}</p>
+{{else if $hand}}<p>{{t "This transaction was typed in by hand. The document it was entered from is kept with it, and goes to the accountant with the statements."}}</p>
 {{else if eq (printf "%s" $st.Checked) "totals"}}<p>{{t "The opening balance, {opening}, plus everything in the file came to the closing balance, {closing}." "opening" (money $st.Opening $cur) "closing" (money $st.Closing $cur)}}</p>
 {{else}}<p>{{t "There were no balances to check this statement against. Compare its total with the paper statement before you rely on it."}}</p>{{end}}
 <p>{{t "{added} transactions came in with it, and {already} it listed were here already." "added" $st.Added "already" $st.Already}}</p>
@@ -17,6 +19,7 @@
 {{with $v.Export}}<a class="button quiet" href="{{.}}">{{t "Download this period for the accountant"}}</a>{{end}}</p>
 </section>
 
+{{if not $hand}}
 <section class="card" id="reconcile">
 <h2>{{t "Reconcile"}}</h2>
 {{if $st.Reconciled}}
@@ -73,6 +76,7 @@
 {{end}}
 {{end}}
 </section>
+{{end}}
 
 {{if and $v.CanBookkeep (not $st.Reconciled)}}
 <section class="card">

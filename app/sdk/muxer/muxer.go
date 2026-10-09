@@ -280,8 +280,10 @@ func New(cfg Config) (http.Handler, error) {
 	if mcp != nil {
 		shape.Handle(mcpapp.Path, web.Wrap(mcp, web.MaxBody(maxJSON), web.JSONOnly()))
 	}
-	shape.Handle(ledgerapp.UploadPattern, web.Wrap(inner,
-		web.Deadline(receiptapp.UploadTime), web.MaxBody(ledgerapp.MaxUpload), web.MultipartOnly()))
+	for _, pattern := range ledgerapp.UploadPatterns {
+		shape.Handle(pattern, web.Wrap(inner,
+			web.Deadline(receiptapp.UploadTime), web.MaxBody(ledgerapp.MaxUpload), web.MultipartOnly()))
+	}
 
 	for _, pattern := range receiptapp.UploadPatterns {
 		shape.Handle(pattern, web.Wrap(inner,

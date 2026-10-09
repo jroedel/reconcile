@@ -15,6 +15,13 @@
 {{- else if eq . "unmapped"}}{{t "Choose which column holds the date, and which holds the amount or the money in and out."}}
 {{- else if eq . "empty"}}{{t "No transactions could be read with these columns. Check them against the file's rows."}}
 {{- else if eq . "unbalanced"}}{{t "The statement does not balance, so nothing was imported. See what was found below."}}
+{{- else if eq . "entry-date"}}{{t "The entry needs a date."}}
+{{- else if eq . "entry-description"}}{{t "The entry needs a description, of up to 200 characters."}}
+{{- else if eq . "entry-amount"}}{{t "The entry's amount must be a number, such as 12.50, and not zero. Choose money out or in for its direction."}}
+{{- else if eq . "entry-file"}}{{t "Choose the document that shows the transaction: a photo or a PDF."}}
+{{- else if eq . "entry-file-type"}}{{t "The document must be a photo or a PDF."}}
+{{- else if eq . "entry-already"}}{{t "A transaction with that date, description and amount is in this account already. If this is another one, describe it so that the two can be told apart."}}
+{{- else if eq . "entry-locked"}}{{t "That day is in a reconciled period, so nothing can be entered on it. Reopen the statement that covers it first."}}
 {{- else if eq . "unstable"}}{{t "This file could not be imported safely: reading it a second time did not give the same transactions. Nothing was imported, and the problem has been recorded for the developers. Meanwhile, try the same statement downloaded in another format."}}
 {{- else if eq . "same-file"}}{{t "This file was imported into this account already."}}
 {{- else if eq . "opening"}}{{t "The opening balance must be an amount, such as 1234.56, or left empty."}}
@@ -45,6 +52,7 @@
 
 {{define "done"}}{{if .}}<p class="notice ok" role="status">
 {{- if eq . "sorted"}}{{t "Saved."}}
+{{- else if eq . "entered"}}{{t "Entered. Its document is kept with it."}}
 {{- else if eq . "sorted-rule"}}{{t "Saved, and charges like it will be sorted the same way as their statements arrive."}}
 {{- else if eq . "removed"}}{{t "The statement and the transactions it brought in were removed. The file can be imported again."}}
 {{- else if eq . "reconciled"}}{{t "Reconciled. The transactions in its period are locked."}}
@@ -68,6 +76,7 @@
 {{- if eq . "balances"}}<span class="badge">{{t "balanced row by row"}}</span>
 {{- else if eq . "totals"}}<span class="badge">{{t "balanced in total"}}</span>
 {{- else if eq . "sum"}}<span class="badge">{{t "adds up to its stated total"}}</span>
+{{- else if eq . "hand"}}<span class="badge">{{t "entered by hand"}}</span>
 {{- else}}<span class="badge">{{t "not checked"}}</span>{{end}}{{end}}
 
 {{/* cover is how a month of an account stands (ledgerbus.Cover), in words

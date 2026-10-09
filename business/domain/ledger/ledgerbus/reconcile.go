@@ -196,6 +196,10 @@ func (b *Business) Reconcile(ctx context.Context, now time.Time, actor, id types
 		return st, ErrReconciled
 	}
 
+	if st.Format == Hand {
+		return st, ErrHand
+	}
+
 	if from.Zero() {
 		from = st.Start
 	}
@@ -359,6 +363,10 @@ func (b *Business) Coverage(ctx context.Context, actor, accountID types.ID, toda
 	if err != nil {
 		return nil, err
 	}
+
+	// An entry by hand covers its one day for nobody: the bank's statement
+	// for that month is still what is missing or not.
+	statements = slices.DeleteFunc(statements, func(st Statement) bool { return st.Format == Hand })
 
 	months, err := b.store.Months(ctx, accountID)
 	if err != nil {

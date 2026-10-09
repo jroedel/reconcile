@@ -50,10 +50,11 @@ var files embed.FS
 // Templates is this app's pages, for page.NewRenderer.
 var Templates fs.FS = files
 
-// UploadPattern is the one route that takes a file. The muxer gives it a
-// branch of its own, with a body limit to fit (MaxUpload) and multipart
-// only, instead of the 64 KB every form has.
-const UploadPattern = "POST /accounts/{id}/statements"
+// UploadPatterns are the routes that take a file: a statement, and an
+// entry by hand with its document. The muxer gives them a branch of their
+// own, with a body limit to fit (MaxUpload) and multipart only, instead of
+// the 64 KB every form has.
+var UploadPatterns = []string{"POST /accounts/{id}/statements", "POST /accounts/{id}/entries"}
 
 // MaxUpload is the most an upload's body may be: the file, and room for
 // the multipart wrapping around it.
@@ -107,7 +108,8 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	handle := func(pattern string, h http.HandlerFunc) { mux.Handle(pattern, guard(h)) }
 
 	handle("GET /accounts/{id}/transactions", a.transactions)
-	handle(UploadPattern, a.upload)
+	handle(UploadPatterns[0], a.upload)
+	handle(UploadPatterns[1], a.enter)
 	handle("GET /accounts/{id}/imports/{file}", a.preview)
 	handle("POST /accounts/{id}/imports/{file}", a.importFile)
 	handle("GET /statements/{id}", a.statement)

@@ -279,7 +279,14 @@ ON CONFLICT (account_id, fingerprint) DO UPDATE SET mapping = excluded.mapping, 
 		}
 	}
 
-	ev.Detail = ledgerbus.EventDetail(st)
+	// The statement's counts, under what the caller said of it: an entry
+	// by hand names its description and amount.
+	detail := ledgerbus.EventDetail(st)
+	for k, v := range ev.Detail {
+		detail[k] = v
+	}
+
+	ev.Detail = detail
 	if err := eventdb.Insert(ctx, tx, ev); err != nil {
 		return ledgerbus.Statement{}, err
 	}
