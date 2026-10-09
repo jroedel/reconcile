@@ -15,6 +15,12 @@ the statement, and handed to the accountant. A **project** (such as a World
 Youth Day pilgrimage) gathers income and expense splits from one or more
 accounts, so anyone can see whether it is coming out even.
 
+**The mission** (README.md, 2026-10-08): understand the money between the
+accountant's reports and talk with the accountant better; never replace the
+bookkeeping software or the accountant. Every part of every charge is one of
+four kinds -- income, expense, transfer, pass-through -- and only income and
+expenses are operations. See "Kinds of money" below.
+
 It is general-purpose and public, but used mostly by Schoenstatt entities and
 friends. Jeff is the site administrator, but **no one has access to every
 account by default**. Anyone can sign up and create organizations and
@@ -78,6 +84,30 @@ never local data or configs (eumaeus' fixtures are invented and safe).
 All IDs are `types.ID`. Money is `money.Amount` (cents, signed: money in is
 positive). Times are Unix milliseconds. Every table is `STRICT`.
 
+### Kinds of money (decided 2026-10-08)
+
+Two lenses, kept apart. **Cash** is what the bank says: money in and money
+out of an account, the statement, reconciling. **Operations** is what the
+money was, and it is a property of each part (split), through its category:
+
+| Kind | What it is | In the totals |
+|---|---|---|
+| `income` | Money that came to the organization | Income, signed: a donation returned is negative income |
+| `expense` | Money the organization spent | Expenses, signed: a refund is a negative expense, never income |
+| `transfer` | Money moving between the organization's own accounts (the card paid from checking) | Neither. An organization's transfers should net to zero; a gap is a leg not imported, or money in transit |
+| `passthrough` | Money that went through but was never the organization's (a personal charge and its repayment; a collection forwarded to the diocese) | Neither. Each pass-through category should come back to zero; a balance is somebody who still owes it, or a collection not yet forwarded |
+
+- **The kind is not the sign.** A part's kind is what it was; its sign is
+  only which way the money moved.
+- **The kind is on the category**, an explicit column, so sorting a part is
+  still one choice, from a list grouped by kind. Reports read the column,
+  never a category's name. A category made before kinds has none ("not said
+  yet") until its owner chooses one; parts in it stay outside income and
+  expenses until then.
+- **A new list starts with** "Transfers between our accounts" (transfer) and
+  "Personal, repaid" (pass-through), renamable like any other.
+- Reconciling stays a cash check. The kinds never change a balance.
+
 **Identity**
 - `users(id, email UNIQUE, name, lang, site_admin, enabled, created_at, updated_at)`. The email can change, and everything references `id`.
 - `signin_codes`, `sessions`, `backup_codes`: as in mass-intentions.
@@ -106,7 +136,7 @@ positive). Times are Unix milliseconds. Every table is `STRICT`.
 - `statements(id, account_id, file_id, format[csv|ofx], period_start, period_end, opening NULL, closing NULL, checked[balances|totals|none], added, already, imported_by, imported_at)`. There is no "failed": a statement that does not balance is never stored. `added` and `already` are what the import found, kept because the second is not recoverable afterwards.
 - `transactions(id, account_id, statement_id, posted_on, description, amount, balance_after NULL, external_id, hash, occurrence)`. Unique on `(account_id, external_id)` where external_id is set; non-unique on `hash`.
 - `splits(id, transaction_id, position, amount, category_id NULL, project_id NULL, memo)`. The business layer enforces that the parts sum to the transaction, each the same way round as it and none zero. A new transaction gets one split for the full amount, and `ledgerdb.Init` gives one to any transaction without. A split goes with its transaction when a statement is removed. Putting money into a project takes Bookkeep on the account *and* on the project; a split already in a project stays there for a bookkeeper of the account who cannot see the project. Money into or out of a project is a line in the project's history (`split.added`, `split.removed`); re-sorting categories is not written into the account's, which it would flood.
-- `categories(id, org_id NULL, account_id NULL, name, created_by, created_at, archived_at)`. Exactly one owner, either an org or a personal account; an account in an org has no list of its own. Names are unique within a list, whatever their case. Archived, never deleted.
+- `categories(id, org_id NULL, account_id NULL, name, kind, created_by, created_at, archived_at)`. `kind` is income, expense, transfer or passthrough, or '' for one made before kinds (above). Exactly one owner, either an org or a personal account; an account in an org has no list of its own. Names are unique within a list, whatever their case. Archived, never deleted.
 - `csv_mappings(account_id, fingerprint, mapping, updated_by, updated_at)`. Once mapped, the same header is read with the same columns; the preview is still shown, because it is where the balance check is seen.
 
 **Receipts and files**
@@ -198,6 +228,7 @@ Owners, bookkeepers and accountants can download it (the Export permission). It 
 8. **Reconcile and export.** In two pull requests: first the month-by-month page, the statement reconcile screen, and locking and reopening (audited); then the export zip (`exportbus`, `exportapp`).
 9. **Later, separately planned:**
    - The translations API, an MCP tool for Claude, and a review screen; then ES/PT go live (planned in `docs/translations.md`)
+   - **Kinds of money** (above), before the sorting rules, which build on them: `categories.kind`; the category list grouped by kind and the split editor's choice too; the project book's income, expenses and net, with transfers and pass-through on lines of their own; an operations line beside the month list's cash; the balances that should come back to zero (each pass-through category, an organization's transfers); a "Kind" column in the accountant's package
    - PDF statements
    - Budgets per project and category
    - Categorization rules and suggestions (eumaeus `categorizebus`)
