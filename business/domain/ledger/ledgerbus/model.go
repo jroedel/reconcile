@@ -15,7 +15,7 @@ import (
 // Format is what kind of file a statement was read from.
 type Format string
 
-// The formats read.
+// The formats read. Hand (hand.go) is not read but typed.
 const (
 	CSV Format = "csv"
 	OFX Format = "ofx"
