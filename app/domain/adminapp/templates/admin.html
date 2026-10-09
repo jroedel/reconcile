@@ -26,6 +26,7 @@
 <section class="card" id="translators">
 <h2>{{t "Translators"}}</h2>
 <p>{{t "A translator looks over the Spanish or Portuguese on every page, and may connect Claude to write it. You do both for every language already."}}</p>
+<p><a href="/translations">{{t "Look over the translations"}}</a> · <a href="/account/keys">{{t "Your API keys"}}</a></p>
 {{if eq .Problem "translator-email"}}<p class="notice" role="alert">{{t "That does not look like an email address. Check for a typo."}}</p>
 {{else if eq .Problem "translator-unknown"}}<p class="notice" role="alert">{{t "Nobody has signed up with that address. Ask them to sign up first, then add them here."}}</p>
 {{else if eq .Problem "translator-lang"}}<p class="notice" role="alert">{{t "Choose Spanish or Portuguese."}}</p>{{end}}
