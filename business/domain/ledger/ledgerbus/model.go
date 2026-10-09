@@ -84,6 +84,24 @@ type Statement struct {
 	// ByRule is how many of the transactions it brought in a sorting rule
 	// sorted. Counted on import and in the preview; not kept.
 	ByRule int
+
+	// Doubts is the rows the count rule set aside as probably here already
+	// (Doubt), with any a person imported all the same. Those set aside are
+	// counted in Already. Counted on import and in the preview; not kept.
+	Doubts []Doubt
+}
+
+// SetAside is how many of its rows the count rule left out.
+func (s Statement) SetAside() int {
+	n := 0
+
+	for _, d := range s.Doubts {
+		if !d.Imported {
+			n++
+		}
+	}
+
+	return n
 }
 
 // Transaction is one line of an account's history, as a statement reported
@@ -110,6 +128,28 @@ type Transaction struct {
 	// Splits are its parts, at least one, adding up to Amount. Filled in
 	// where a page needs them.
 	Splits []Split
+
+	// Insist is set, on a row of a file being imported, when a person chose
+	// to import it although the count rule set it aside (Doubt). Never
+	// stored.
+	Insist bool
+}
+
+// Doubt is a row of a file being imported that the count rule took for one
+// the account already has under another wording (docs/duplicates.md): on a
+// day the file and earlier statements both cover, importing every new row
+// of its amount would leave more charges of that amount than either lists.
+type Doubt struct {
+	// Index is the row's place among the file's rows, which Options.Import
+	// names to import it anyway.
+	Index int
+
+	// Row is the row as the file has it; Twin the stored one it was taken
+	// for.
+	Row, Twin Transaction
+
+	// Imported is whether it was imported all the same (Transaction.Insist).
+	Imported bool
 }
 
 // Sorted reports whether every part has a category.

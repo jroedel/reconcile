@@ -184,6 +184,8 @@ func problem(err error) string {
 		return "unbalanced"
 	case errors.Is(err, ledgerbus.ErrSameFile):
 		return "same-file"
+	case errors.Is(err, ledgerbus.ErrUnstable):
+		return "unstable"
 	case errors.Is(err, ledgerbus.ErrLocked):
 		return "locked"
 	case errors.Is(err, filebus.ErrTooBig):
@@ -576,7 +578,8 @@ func problemOf(err error) string {
 	switch {
 	case errors.Is(err, ledgerbus.ErrUnreadable), errors.Is(err, ledgerbus.ErrPDFUnavailable),
 		errors.Is(err, ledgerbus.ErrPDFScan), errors.Is(err, ledgerbus.ErrPDFPassword),
-		errors.Is(err, ledgerbus.ErrPDFUnreadable), errors.Is(err, ledgerbus.ErrPDFNoRows):
+		errors.Is(err, ledgerbus.ErrPDFUnreadable), errors.Is(err, ledgerbus.ErrPDFNoRows),
+		errors.Is(err, ledgerbus.ErrUnstable):
 		return problem(err)
 	}
 
@@ -660,6 +663,13 @@ func options(r *http.Request) (ledgerbus.Options, string) {
 	// One box for both: a CSV's mapping turns its amounts round, and a
 	// PDF's are turned round as a whole.
 	opts := ledgerbus.Options{Mapping: m, Invert: m.Invert}
+
+	// The rows the count rule set aside that are to be imported anyway.
+	for _, v := range f["include"] {
+		if i, err := strconv.Atoi(v); err == nil {
+			opts.Import = append(opts.Import, i)
+		}
+	}
 
 	var bad string
 

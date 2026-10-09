@@ -3,6 +3,7 @@ package ledgerbus_test
 import (
 	"bytes"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -215,5 +216,24 @@ func TestTruncated(t *testing.T) {
 		if got := ledgerbus.Truncated(c.a, c.b); got != c.want {
 			t.Errorf("Truncated(%q, %q) = %v", c.a, c.b, got)
 		}
+	}
+}
+
+// A printed page imported twice adds nothing the second time.
+func TestAPrintedPageTwice(t *testing.T) {
+	needPoppler(t)
+
+	w := newWorld(t)
+	me := w.user("treasurer@example.org")
+	acct := w.account(me, "card")
+
+	pdf := printout("$1,246.56")
+	w.add(me, acct, "activity.pdf", pdf)
+
+	// Printed again: a comment after the end changes the bytes and nothing
+	// a reader sees.
+	again := w.add(me, acct, "activity-again.pdf", append(slices.Clone(pdf), []byte("% printed again\n")...))
+	if again.Added != 0 || again.SetAside() != 0 || again.Already != 4 {
+		t.Errorf("added %d, set aside %d, already %d", again.Added, again.SetAside(), again.Already)
 	}
 }

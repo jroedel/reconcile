@@ -15,6 +15,7 @@
 {{- else if eq . "unmapped"}}{{t "Choose which column holds the date, and which holds the amount or the money in and out."}}
 {{- else if eq . "empty"}}{{t "No transactions could be read with these columns. Check them against the file's rows."}}
 {{- else if eq . "unbalanced"}}{{t "The statement does not balance, so nothing was imported. See what was found below."}}
+{{- else if eq . "unstable"}}{{t "This file could not be imported safely: reading it a second time did not give the same transactions. Nothing was imported, and the problem has been recorded for the developers. Meanwhile, try the same statement downloaded in another format."}}
 {{- else if eq . "same-file"}}{{t "This file was imported into this account already."}}
 {{- else if eq . "opening"}}{{t "The opening balance must be an amount, such as 1234.56, or left empty."}}
 {{- else if eq . "closing"}}{{t "The closing balance must be an amount, such as 1234.56, or left empty."}}
