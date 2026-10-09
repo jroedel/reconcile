@@ -10,6 +10,7 @@ import (
 
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
+	"github.com/jroedel/reconcile/business/domain/rule/rulebus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/types"
 )
@@ -38,7 +39,17 @@ type transactionView struct {
 	Done     string
 	Uploaded uploaded
 
+	sortForm
+}
+
+// sortForm is the parts form as typed, and what was wrong with it.
+type sortForm struct {
 	Rows []partRow
+
+	// Always is the "always sort charges like this the same way" box, and
+	// Match the text it would look for: the payee, prefilled.
+	Always bool
+	Match  string
 
 	// Problem is a code, and Part the row it is about, counting from one;
 	// zero for the parts together.
@@ -74,10 +85,10 @@ func rowsOf(t ledgerbus.Transaction) []partRow {
 }
 
 func (a app) transaction(w http.ResponseWriter, r *http.Request) {
-	a.transactionPage(w, r, http.StatusOK, nil, "", 0)
+	a.transactionPage(w, r, http.StatusOK, sortForm{})
 }
 
-func (a app) transactionPage(w http.ResponseWriter, r *http.Request, status int, rows []partRow, problem string, part int) {
+func (a app) transactionPage(w http.ResponseWriter, r *http.Request, status int, f sortForm) {
 	me, ok := actor(w, r)
 	if !ok {
 		return
@@ -95,8 +106,12 @@ func (a app) transactionPage(w http.ResponseWriter, r *http.Request, status int,
 		return
 	}
 
-	if rows == nil {
-		rows = rowsOf(e.Transaction)
+	if f.Rows == nil {
+		f.Rows = rowsOf(e.Transaction)
+	}
+
+	if f.Match == "" {
+		f.Match = rulebus.Payee(e.Transaction.Description)
 	}
 
 	view := transactionView{
@@ -104,9 +119,7 @@ func (a app) transactionPage(w http.ResponseWriter, r *http.Request, status int,
 		CanSort:     e.CanSort(),
 		CanReceipts: e.Access.Can(tenancybus.Receipts),
 		Back:        monthOf(e.Transaction),
-		Rows:        rows,
-		Problem:     problem,
-		Part:        part,
+		sortForm:    f,
 		Done:        r.URL.Query().Get("done"),
 		Uploaded:    uploadedFrom(r.URL.Query()),
 	}
@@ -193,14 +206,23 @@ func (a app) sortTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows := postedRows(r)
+	f := sortForm{
+		Rows:   postedRows(r),
+		Always: r.PostForm.Get("always") == "1",
+		Match:  strings.TrimSpace(r.PostForm.Get("match")),
+	}
+
+	again := func(status int, problem string, part int) {
+		f.Problem, f.Part = problem, part
+		a.transactionPage(w, r, status, f)
+	}
 
 	if r.PostForm.Get("action") == "add" {
-		if len(rows) < ledgerbus.MaxParts {
-			rows = append(rows, partRow{})
+		if len(f.Rows) < ledgerbus.MaxParts {
+			f.Rows = append(f.Rows, partRow{})
 		}
 
-		a.transactionPage(w, r, http.StatusOK, rows, "", 0)
+		again(http.StatusOK, "", 0)
 
 		return
 	}
@@ -213,28 +235,59 @@ func (a app) sortTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	parts, bad := partsOf(rows, e.Transaction)
+	parts, bad := partsOf(f.Rows, e.Transaction)
 	if bad > 0 {
-		a.transactionPage(w, r, http.StatusUnprocessableEntity, rows, "amount", bad)
+		again(http.StatusUnprocessableEntity, "amount", bad)
 
 		return
 	}
 
 	t, err := a.cfg.Ledger.SetSplits(r.Context(), a.cfg.Now(), me.ID, id, parts)
 	if errors.Is(err, ledgerbus.ErrLocked) {
-		a.transactionPage(w, r, http.StatusConflict, rows, "locked", 0)
+		again(http.StatusConflict, "locked", 0)
 
 		return
 	}
 
 	if invalid, ok := errors.AsType[ledgerbus.Invalid](err); ok {
-		a.transactionPage(w, r, http.StatusUnprocessableEntity, rows, invalid.Field, invalid.Index+1)
+		again(http.StatusUnprocessableEntity, invalid.Field, invalid.Index+1)
 
 		return
 	}
 
 	if err != nil {
 		a.failed(w, r, err)
+
+		return
+	}
+
+	// The rule after the parts, so that a rule that will not do costs the
+	// person nothing they chose: the parts are saved, and the page says the
+	// rule was not and why. Only for one part; a split charge is not one
+	// that the next month's will be like.
+	if f.Always && len(parts) == 1 {
+		direction := rulebus.In
+		if t.Amount < 0 {
+			direction = rulebus.Out
+		}
+
+		_, err := a.cfg.Rules.Save(r.Context(), a.cfg.Now(), me.ID, t.AccountID, rulebus.Fields{
+			Match: f.Match, Direction: direction, CategoryID: parts[0].CategoryID, ProjectID: parts[0].ProjectID,
+		})
+		if invalid, ok := errors.AsType[rulebus.Invalid](err); ok {
+			f.Rows = rowsOf(t)
+			again(http.StatusUnprocessableEntity, "rule-"+invalid.Field, 0)
+
+			return
+		}
+
+		if err != nil {
+			a.failed(w, r, err)
+
+			return
+		}
+
+		back(w, r, monthOf(t), "sorted-rule")
 
 		return
 	}

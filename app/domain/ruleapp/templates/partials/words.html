@@ -1,0 +1,73 @@
+{{/*
+  The words the rules page shares: its form's fields, what went wrong, what
+  just happened, and why a rule sorts nothing.
+*/}}
+{{define "rule-fields"}}{{$v := .View}}{{$id := .ID}}{{$cat := .CategoryID}}{{$proj := .ProjectID}}{{$dir := .Direction}}
+<div class="field">
+  <label for="match-{{$id}}">{{t "Transactions whose description has"}}</label>
+  <input id="match-{{$id}}" name="match" type="text" required minlength="3" maxlength="100" value="{{.Match}}">
+</div>
+<div class="field">
+  <label for="direction-{{$id}}">{{t "Which way"}}</label>
+  <select id="direction-{{$id}}" name="direction">
+    {{range $v.Directions}}<option value="{{.}}"{{if eq . $dir}} selected{{end}}>{{template "direction" .}}</option>{{end}}
+  </select>
+</div>
+<div class="field">
+  <label for="category-{{$id}}">{{t "Category"}}</label>
+  <select id="category-{{$id}}" name="category">
+    <option value="">{{t "(none)"}}</option>
+    {{range $v.Groups}}<optgroup label="{{template "kind" .Kind}}">
+    {{range .Categories}}<option value="{{.ID}}"{{if eq .ID.String $cat}} selected{{end}}>{{.Name}}</option>{{end}}
+    </optgroup>{{end}}
+  </select>
+</div>
+{{if $v.Projects}}
+<div class="field">
+  <label for="project-{{$id}}">{{t "Project"}}</label>
+  <select id="project-{{$id}}" name="project">
+    <option value="">{{t "(none)"}}</option>
+    {{range $v.Projects}}<option value="{{.ID}}"{{if eq .ID.String $proj}} selected{{end}}>{{.Name}}</option>{{end}}
+  </select>
+  <p class="hint">{{t "A rule with a project stops sorting when the project ends or is archived."}}</p>
+</div>
+{{end}}
+{{end}}
+
+{{define "direction"}}
+{{- if eq . "out"}}{{t "Money out"}}
+{{- else if eq . "in"}}{{t "Money in"}}
+{{- else}}{{t "Money in or out"}}{{end}}{{end}}
+
+{{define "rule-problem"}}
+{{- if eq . "category"}}{{t "Sorts nothing: its category is archived."}}
+{{- else if eq . "project"}}{{t "Sorts nothing for you: its project is archived, or you do not keep its books."}}
+{{- else if eq . "ended"}}{{t "Its project has ended, so it sorts only charges from before the end."}}
+{{- else if eq . "not-started"}}{{t "Its project has not started, so it sorts only charges from its start."}}
+{{- end}}{{end}}
+
+{{define "problem"}}{{if .}}<p class="notice" role="alert">
+{{- if eq . "match"}}{{t "Give the text to look for, 3 to 100 characters."}}
+{{- else if eq . "direction"}}{{t "Choose money out, money in, or either."}}
+{{- else if eq . "choice"}}{{t "Choose a category, a project, or both."}}
+{{- else if eq . "category"}}{{t "That category is archived or not on this account's list. Choose another."}}
+{{- else if eq . "project"}}{{t "A rule can only put money into a project you keep the books of."}}
+{{- else if eq . "duplicate"}}{{t "Somebody made a rule with that text at the same moment. Look at it below and change it if needed."}}
+{{- else}}{{t "Something went wrong at our end. Please try again in a few minutes."}}
+{{- end}}</p>{{end}}{{end}}
+
+{{define "done"}}{{if .Done}}<p class="notice ok" role="status">
+{{- if eq .Done "made"}}{{t "The rule is made. It sorts transactions from the next statement on; to sort those already here, use “Sort what is not sorted yet”."}}
+{{- else if eq .Done "changed"}}{{t "The rule is changed. What it sorted already stays as it is."}}
+{{- else if eq .Done "removed"}}{{t "The rule is removed. What it sorted stays sorted, and still says a rule did it until somebody saves it."}}
+{{- else if eq .Done "applied"}}{{t "Sorted {n} transactions." "n" .Sorted}}
+{{- end}}</p>{{end}}{{end}}
+
+{{/* kind is a kind of money's name (categorybus.Kind), the same words as
+     the category list's. */}}
+{{define "kind"}}
+{{- if eq . "expense"}}{{t "Expenses"}}
+{{- else if eq . "income"}}{{t "Income"}}
+{{- else if eq . "transfer"}}{{t "Transfers between our accounts"}}
+{{- else if eq . "passthrough"}}{{t "Pass-through"}}
+{{- else}}{{t "Kind not said yet"}}{{end}}{{end}}

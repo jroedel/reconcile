@@ -133,3 +133,81 @@ VALUES (?, ?, ?, '2026-07-01', 'CORNER GROCERY', ?, ?, 1)`,
 		t.Errorf("the schema after Init: %v", err)
 	}
 }
+
+// splitsBeforeRules is the splits table as the release before sorting rules
+// made it, written out for the same reason as step5Schema.
+const splitsBeforeRules = `
+CREATE TABLE IF NOT EXISTS splits (
+    id             TEXT    PRIMARY KEY,
+    transaction_id TEXT    NOT NULL REFERENCES transactions (id) ON DELETE CASCADE,
+    position       INTEGER NOT NULL,
+    amount         INTEGER NOT NULL,
+    category_id    TEXT    REFERENCES categories (id),
+    project_id     TEXT    REFERENCES projects (id),
+    memo           TEXT    NOT NULL DEFAULT ''
+) STRICT;
+`
+
+// A database from before sorting rules gains splits.rule_id, and a part
+// already there reads as one no rule sorted.
+func TestInitGivesOldPartsNoRule(t *testing.T) {
+	db, err := sqldb.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() { db.Close() })
+
+	ctx := t.Context()
+
+	for _, init := range []func(context.Context, *sql.DB) error{userdb.Init, eventdb.Init, tenancydb.Init, filedb.Init, categorydb.Init} {
+		if err := init(ctx, db); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.ExecContext(ctx, step5Schema+splitsBeforeRules); err != nil {
+		t.Fatal(err)
+	}
+
+	id := types.NewID()
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO transactions (id, account_id, statement_id, posted_on, description, amount, hash, occurrence)
+VALUES (?, ?, ?, '2026-07-01', 'CORNER GROCERY', -100, ?, 1)`,
+		id.String(), types.NewID().String(), types.NewID().String(), id.String()); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO splits (id, transaction_id, position, amount, memo) VALUES (?, ?, 0, -100, 'bread')`,
+		types.NewID().String(), id.String()); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys = ON`); err != nil {
+		t.Fatal(err)
+	}
+
+	for range 2 {
+		if err := ledgerdb.Init(ctx, db); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tx, err := ledgerdb.NewStore(db).TransactionByID(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(tx.Splits) != 1 || tx.Splits[0].Memo != "bread" || !tx.Splits[0].RuleID.Zero() || tx.ByRule() {
+		t.Errorf("the part: %+v", tx.Splits)
+	}
+
+	if err := sqldb.CheckSchema(ctx, db, ledgerdb.Expected); err != nil {
+		t.Errorf("the schema after Init: %v", err)
+	}
+}

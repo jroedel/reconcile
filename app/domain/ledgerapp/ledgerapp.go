@@ -36,6 +36,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/importing/sources/csvsource"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
+	"github.com/jroedel/reconcile/business/domain/rule/rulebus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/user/userbus"
 	"github.com/jroedel/reconcile/business/types"
@@ -81,7 +82,11 @@ type Config struct {
 
 	// Receipts are shown on a transaction, a month and a project's book.
 	Receipts *receiptbus.Business
-	Render   Renderer
+
+	// Rules is where the transaction page's "always sort charges like
+	// this" box writes.
+	Rules  *rulebus.Business
+	Render Renderer
 
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
@@ -204,8 +209,10 @@ type transactionsView struct {
 	Statements []ledgerbus.Statement
 
 	// Unsorted shows only the month's transactions with a part that has
-	// no category: the treasurer's to-do list.
+	// no category: the treasurer's to-do list. ByRule shows only those a
+	// sorting rule sorted, for checking what a statement brought.
 	Unsorted bool
+	ByRule   bool
 
 	// Names of the categories and projects the shown parts point at.
 	Categories map[types.ID]string
@@ -276,8 +283,13 @@ func (a app) transactionsPage(w http.ResponseWriter, r *http.Request, status int
 		}
 	}
 
-	if view.Unsorted = r.URL.Query().Get("unsorted") == "1"; view.Unsorted {
+	switch q := r.URL.Query(); {
+	case q.Get("unsorted") == "1":
+		view.Unsorted = true
 		view.Shown = slices.DeleteFunc(view.Shown, ledgerbus.Transaction.Sorted)
+	case q.Get("byrule") == "1":
+		view.ByRule = true
+		view.Shown = slices.DeleteFunc(view.Shown, func(t ledgerbus.Transaction) bool { return !t.ByRule() })
 	}
 
 	if err := a.names(r, account, &view); err != nil {

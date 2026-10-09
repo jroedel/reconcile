@@ -38,7 +38,7 @@ var Expected = sqldb.Expected{
 	"transactions": {"id", "account_id", "statement_id", "posted_on", "description", "amount", "balance",
 		"external_id", "hash", "occurrence"},
 	"csv_mappings": {"account_id", "fingerprint", "mapping", "updated_by", "updated_at"},
-	"splits":       {"id", "transaction_id", "position", "amount", "category_id", "project_id", "memo"},
+	"splits":       {"id", "transaction_id", "position", "amount", "category_id", "project_id", "memo", "rule_id"},
 	"reconciliations": {"statement_id", "account_id", "period_start", "period_end", "note",
 		"reconciled_by", "reconciled_at"},
 }
@@ -192,7 +192,11 @@ WHERE NOT EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id)`); err !
 		return fmt.Errorf("giving every transaction its part: %w", err)
 	}
 
-	return nil
+	// The sorting rule that sorted a part (docs/sorting.md), a later
+	// column beside the CREATE; NULL for a part a person sorted or nobody
+	// has. Not a foreign key: removing a rule leaves what it sorted as it
+	// is, still saying a rule did it, until a person saves the transaction.
+	return sqldb.AddColumn(ctx, db, "splits", "rule_id", "TEXT")
 }
 
 // --- importing ----------------------------------------------------------------
@@ -211,7 +215,7 @@ WHERE NOT EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id)`); err !
 //   - With no identifier and the same hash already in the account: already
 //     here.
 //   - Otherwise it is new.
-func (s *Store) Import(ctx context.Context, st ledgerbus.Statement, txs []ledgerbus.Transaction, mapping *ledgerbus.SavedMapping, ev eventbus.Event, commit bool) (ledgerbus.Statement, error) {
+func (s *Store) Import(ctx context.Context, st ledgerbus.Statement, txs []ledgerbus.Transaction, also map[types.ID][]eventbus.Event, mapping *ledgerbus.SavedMapping, ev eventbus.Event, commit bool) (ledgerbus.Statement, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return ledgerbus.Statement{}, fmt.Errorf("starting the import: %w", err)
@@ -227,7 +231,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		return ledgerbus.Statement{}, fmt.Errorf("storing the statement: %w", err)
 	}
 
-	st.Added, st.Already = 0, 0
+	st.Added, st.Already, st.ByRule = 0, 0, 0
 
 	for _, t := range txs {
 		known, err := already(ctx, tx, t)
@@ -251,6 +255,18 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 
 		if err := insertSplits(ctx, tx, t.Splits); err != nil {
 			return ledgerbus.Statement{}, err
+		}
+
+		// The project history of what a rule put into a project: only for
+		// a transaction that was new, so here.
+		for _, e := range also[t.ID] {
+			if err := eventdb.Insert(ctx, tx, e); err != nil {
+				return ledgerbus.Statement{}, err
+			}
+		}
+
+		if t.ByRule() {
+			st.ByRule++
 		}
 
 		st.Added++
@@ -509,7 +525,8 @@ SELECT substr(posted_on, 1, 7), count(*),
        coalesce(sum(CASE WHEN amount > 0 THEN amount END), 0),
        coalesce(sum(CASE WHEN amount < 0 THEN amount END), 0),
        min(posted_on),
-       sum(EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id AND s.category_id IS NULL))
+       sum(EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id AND s.category_id IS NULL)),
+       sum(EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id AND s.rule_id IS NOT NULL))
 FROM transactions t WHERE account_id = ?
 GROUP BY 1 ORDER BY 1 DESC`, account.String())
 	if err != nil {
@@ -526,7 +543,7 @@ GROUP BY 1 ORDER BY 1 DESC`, account.String())
 			earliest string
 		)
 
-		if err := rows.Scan(&m.Month, &m.Count, &in, &outs, &earliest, &m.Unsorted); err != nil {
+		if err := rows.Scan(&m.Month, &m.Count, &in, &outs, &earliest, &m.Unsorted, &m.ByRule); err != nil {
 			return nil, fmt.Errorf("reading the months: %w", err)
 		}
 
@@ -765,7 +782,7 @@ func (s *Store) transactions(ctx context.Context, q string, args ...any) ([]ledg
 
 // --- splits -----------------------------------------------------------------
 
-const splitColumns = `id, transaction_id, position, amount, category_id, project_id, memo`
+const splitColumns = `id, transaction_id, position, amount, category_id, project_id, memo, rule_id`
 
 // splits reads the parts matching a condition, by transaction, in order.
 func (s *Store) splits(ctx context.Context, where string, args ...any) (map[types.ID][]ledgerbus.Split, error) {
@@ -795,13 +812,14 @@ func scanSplit(row scanner, extra ...any) (ledgerbus.Split, error) {
 		id, tx            string
 		amount            int64
 		category, project sql.NullString
+		rule              sql.NullString
 	)
 
-	if err := row.Scan(append([]any{&id, &tx, &sp.Position, &amount, &category, &project, &sp.Memo}, extra...)...); err != nil {
+	if err := row.Scan(append([]any{&id, &tx, &sp.Position, &amount, &category, &project, &sp.Memo, &rule}, extra...)...); err != nil {
 		return sp, fmt.Errorf("reading a part: %w", err)
 	}
 
-	var e [4]error
+	var e [5]error
 	sp.ID, e[0] = types.ParseID(id)
 	sp.TransactionID, e[1] = types.ParseID(tx)
 
@@ -811,6 +829,10 @@ func scanSplit(row scanner, extra ...any) (ledgerbus.Split, error) {
 
 	if project.Valid {
 		sp.ProjectID, e[3] = types.ParseID(project.String)
+	}
+
+	if rule.Valid {
+		sp.RuleID, e[4] = types.ParseID(rule.String)
 	}
 
 	if err := errors.Join(e[:]...); err != nil {
@@ -824,9 +846,9 @@ func scanSplit(row scanner, extra ...any) (ledgerbus.Split, error) {
 
 func insertSplits(ctx context.Context, tx *sql.Tx, splits []ledgerbus.Split) error {
 	for _, sp := range splits {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO splits (`+splitColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		if _, err := tx.ExecContext(ctx, `INSERT INTO splits (`+splitColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 			sp.ID.String(), sp.TransactionID.String(), sp.Position, int64(sp.Amount),
-			nullID(sp.CategoryID), nullID(sp.ProjectID), sp.Memo); err != nil {
+			nullID(sp.CategoryID), nullID(sp.ProjectID), sp.Memo, nullID(sp.RuleID)); err != nil {
 			return fmt.Errorf("storing a part: %w", err)
 		}
 	}
@@ -872,7 +894,7 @@ func (s *Store) ReplaceSplits(ctx context.Context, transactionID types.ID, split
 // nothing more about its account than the name and currency.
 func (s *Store) ProjectLines(ctx context.Context, projectID types.ID) ([]ledgerbus.ProjectLine, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT s.id, s.transaction_id, s.position, s.amount, s.category_id, s.project_id, s.memo,
+SELECT s.id, s.transaction_id, s.position, s.amount, s.category_id, s.project_id, s.memo, s.rule_id,
        t.posted_on, t.description, a.id, a.name, a.currency, coalesce(c.name, ''), coalesce(c.kind, '')
 FROM splits s
 JOIN transactions t ON t.id = s.transaction_id

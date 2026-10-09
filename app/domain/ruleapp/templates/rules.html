@@ -1,0 +1,57 @@
+{{define "title"}}{{t "Sorting rules"}} · {{.Data.Book.Account.Name}}{{end}}
+{{define "content"}}{{$v := .Data}}{{$b := $v.Book}}
+<p class="crumbs"><a href="{{$v.Path}}">{{$b.Account.Name}}</a> · <a href="{{$v.Path}}/transactions">{{t "Transactions"}}</a></p>
+<h1>{{t "Sorting rules"}}</h1>
+<p class="hint">{{t "A rule sorts each new transaction whose description has its text as the statement arrives, and marks it so you can check it. The longest text wins. A rule never changes what a person has sorted."}}</p>
+{{template "done" $v}}
+{{template "problem" $v.Problem}}
+
+{{if $b.Waiting}}
+<section class="card">
+<p>{{t "{n} transactions not sorted yet meet a rule." "n" $b.Waiting}}</p>
+<form method="post" action="{{$v.Path}}/rules/apply"><button type="submit">{{t "Sort what is not sorted yet"}}</button></form>
+<p class="hint">{{t "Only transactions in one part with nothing chosen, outside reconciled periods."}}</p>
+</section>
+{{end}}
+
+{{if $b.Torn}}
+<section class="card">
+<h2>{{t "Rules that disagree"}}</h2>
+<p class="hint">{{t "Each of these meets two rules whose text is as long as each other's and that sort it differently, so neither does. Make one rule's text longer, or sort them by hand."}}</p>
+<ul class="list">
+{{range $b.Torn}}<li><a href="/transactions/{{.Transaction.ID}}">{{.Transaction.PostedOn}} · {{.Transaction.Description}}</a>
+<br><span class="hint">{{range $i, $r := .Rules}}{{if $i}} · {{end}}“{{$r.Match}}”{{end}}</span></li>
+{{end}}</ul>
+</section>
+{{end}}
+
+<section class="card">
+<h2>{{t "This account's rules"}}</h2>
+{{if $b.Rules}}
+<ul class="list">
+{{range $b.Rules}}{{$r := .Rule}}<li>
+<strong>“{{$r.Match}}”</strong> · {{template "direction" $r.Direction}}
+<br>{{if not $r.CategoryID.Zero}}{{index $v.CategoryNames $r.CategoryID}}{{end}}{{if and (not $r.CategoryID.Zero) (not $r.ProjectID.Zero)}} · {{end}}{{if not $r.ProjectID.Zero}}{{with index $v.ProjectNames $r.ProjectID}}{{.}}{{else}}{{t "a project you have no role on"}}{{end}}{{end}}
+<br><span class="hint">{{t "Sorted {n} that nobody has changed since." "n" .Parts}}{{if .Waiting}} {{t "Would sort {n} not sorted yet." "n" .Waiting}}{{end}}</span>
+{{with .Problem}}<br><span class="badge warn">{{template "rule-problem" .}}</span>{{end}}
+<details><summary>{{t "Change it"}}</summary>
+<form method="post" action="/rules/{{$r.ID}}">
+{{template "rule-fields" (dict "ID" $r.ID.String "Match" $r.Match "Direction" $r.Direction "CategoryID" $r.CategoryID.String "ProjectID" $r.ProjectID.String "View" $v)}}
+<button type="submit">{{t "Save"}}</button>
+<p class="hint">{{t "What it sorted already stays as it is."}}</p>
+</form>
+</details>
+<form method="post" action="/rules/{{$r.ID}}/remove" class="inline"><button type="submit" class="link">{{t "Remove"}}</button></form>
+</li>
+{{end}}</ul>
+{{else}}<p class="hint">{{t "No rules yet. The quickest way to make one is the box under a transaction's category: “Always sort charges like this the same way”."}}</p>{{end}}
+</section>
+
+<section class="card">
+<h2>{{t "Make a rule"}}</h2>
+<form method="post" action="{{$v.Path}}/rules">
+{{template "rule-fields" (dict "ID" "new" "Match" $v.Form.Match "Direction" $v.Form.Direction "CategoryID" $v.Form.CategoryID "ProjectID" $v.Form.ProjectID "View" $v)}}
+<button type="submit">{{t "Make the rule"}}</button>
+</form>
+</section>
+{{end}}

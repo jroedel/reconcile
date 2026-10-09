@@ -109,7 +109,8 @@
     <input id="closing" name="closing" type="text" inputmode="decimal" value="{{$v.Closing}}">
   </div>
 {{end}}
-{{if $d.Statement.ID.String}}<p>{{t "{new} new transactions, and {already} that are here already and will be left as they are." "new" $d.Statement.Added "already" $d.Statement.Already}}</p>{{end}}
+{{if $d.Statement.ID.String}}<p>{{t "{new} new transactions, and {already} that are here already and will be left as they are." "new" $d.Statement.Added "already" $d.Statement.Already}}</p>
+{{if $d.Statement.ByRule}}<p class="hint">{{t "The account's sorting rules will sort {n} of the new ones. They are marked, so you can check them." "n" $d.Statement.ByRule}}</p>{{end}}{{end}}
 {{if $d.Statement.Locked}}<p class="notice" role="alert">{{t "{n} of the new transactions fall in a period that has been reconciled, so this statement cannot be imported. If the bank really changed that period, reopen its statement first, on the month-by-month page." "n" $d.Statement.Locked}} <a href="/accounts/{{$d.Account.ID}}/months">{{t "Month by month"}}</a></p>{{end}}
 </section>
 {{end}}

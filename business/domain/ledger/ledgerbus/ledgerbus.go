@@ -91,7 +91,7 @@ type Storer interface {
 	// in the account, and returns the statement with Added, Already and
 	// Locked counted. With commit false it does all of it and rolls back, so a
 	// preview's counts are the import's, by construction.
-	Import(ctx context.Context, st Statement, txs []Transaction, mapping *SavedMapping, ev eventbus.Event, commit bool) (Statement, error)
+	Import(ctx context.Context, st Statement, txs []Transaction, also map[types.ID][]eventbus.Event, mapping *SavedMapping, ev eventbus.Event, commit bool) (Statement, error)
 
 	StatementByID(ctx context.Context, id types.ID) (Statement, error)
 	StatementWithFile(ctx context.Context, account types.ID, sha string) (Statement, bool, error)
@@ -137,6 +137,17 @@ type Storer interface {
 
 	// Reconciliations is an account's, by the start of their periods.
 	Reconciliations(ctx context.Context, account types.ID) ([]Reconciliation, error)
+
+	// Blank is the account's transactions a sorting rule may still sort:
+	// one part, nothing chosen, outside a reconciled period.
+	Blank(ctx context.Context, account types.ID) ([]Transaction, error)
+
+	// SortByRule writes the parts rules sorted, each only if it is still
+	// blank, and ev if any was; it returns how many were.
+	SortByRule(ctx context.Context, sorted []SortedPart, ev eventbus.Event) (int, error)
+
+	// RuleCounts is how many parts each of the account's rules sorted.
+	RuleCounts(ctx context.Context, account types.ID) (map[types.ID]int, error)
 }
 
 // SavedMapping is a CSV mapping kept for the next file with the same
@@ -155,11 +166,12 @@ type Business struct {
 	accounts   Accounts
 	files      Files
 	categories Categories
+	rules      Rules
 }
 
 // NewBusiness constructs one.
-func NewBusiness(log *slog.Logger, store Storer, accounts Accounts, files Files, categories Categories) *Business {
-	return &Business{log: log, store: store, accounts: accounts, files: files, categories: categories}
+func NewBusiness(log *slog.Logger, store Storer, accounts Accounts, files Files, categories Categories, rules Rules) *Business {
+	return &Business{log: log, store: store, accounts: accounts, files: files, categories: categories, rules: rules}
 }
 
 // --- reading a file ---------------------------------------------------------
@@ -259,10 +271,16 @@ func (b *Business) Prepare(ctx context.Context, actor, accountID, fileID types.I
 		return d, nil
 	}
 
-	// The counts come from doing the import and rolling it back.
-	st, txs := b.statement(d, actor, time.Now())
+	// The counts come from doing the import and rolling it back, with the
+	// rules applied, so that the preview can say how many they would sort.
+	now := time.Now()
+	st, txs := b.statement(d, actor, now)
 
-	if d.Statement, err = b.store.Import(ctx, st, txs, nil, eventbus.Event{}, false); err != nil {
+	if _, err := b.sortNew(ctx, now, actor, account, txs); err != nil {
+		return Draft{}, err
+	}
+
+	if d.Statement, err = b.store.Import(ctx, st, txs, nil, nil, eventbus.Event{}, false); err != nil {
 		return Draft{}, err
 	}
 
@@ -446,6 +464,11 @@ func (b *Business) Import(ctx context.Context, now time.Time, actor, accountID, 
 
 	st, txs := b.statement(d, actor, now)
 
+	also, err := b.sortNew(ctx, now, actor, d.Account, txs)
+	if err != nil {
+		return Statement{}, err
+	}
+
 	var saved *SavedMapping
 	if d.Format == CSV {
 		saved = &SavedMapping{Fingerprint: d.Inspection.Fingerprint, Mapping: d.Mapping, By: actor, At: now}
@@ -453,13 +476,13 @@ func (b *Business) Import(ctx context.Context, now time.Time, actor, accountID, 
 
 	ev := eventbus.New(now, actor, d.Account.Scope(), StatementImported, nil)
 
-	st, err = b.store.Import(ctx, st, txs, saved, ev, true)
+	st, err = b.store.Import(ctx, st, txs, also, saved, ev, true)
 	if err != nil {
 		return Statement{}, err
 	}
 
 	b.log.Info("a statement was imported", "account_id", accountID.String(), "statement_id", st.ID.String(),
-		"added", st.Added, "already", st.Already, "checked", string(st.Checked))
+		"added", st.Added, "already", st.Already, "by_rule", st.ByRule, "checked", string(st.Checked))
 
 	return st, nil
 }
@@ -473,6 +496,7 @@ func EventDetail(st Statement) map[string]string {
 		"end":     st.End.String(),
 		"added":   strconv.Itoa(st.Added),
 		"already": strconv.Itoa(st.Already),
+		"byrule":  strconv.Itoa(st.ByRule),
 	}
 }
 

@@ -22,6 +22,7 @@ import (
 	"github.com/jroedel/reconcile/app/domain/mcpapp"
 	"github.com/jroedel/reconcile/app/domain/oauthapp"
 	"github.com/jroedel/reconcile/app/domain/receiptapp"
+	"github.com/jroedel/reconcile/app/domain/ruleapp"
 	"github.com/jroedel/reconcile/app/domain/tenancyapp"
 	"github.com/jroedel/reconcile/app/domain/translationapp"
 	"github.com/jroedel/reconcile/app/sdk/health"
@@ -33,6 +34,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/file/filebus"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
+	"github.com/jroedel/reconcile/business/domain/rule/rulebus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/translation/translationbus"
 	"github.com/jroedel/reconcile/business/domain/user/userbus"
@@ -46,7 +48,7 @@ import (
 // renderer rather than this package, because the strings it reads out of
 // these are registered for translation before anything is served.
 func Templates() []fs.FS {
-	return []fs.FS{homeapp.Templates, authapp.Templates, tenancyapp.Templates, ledgerapp.Templates, categoryapp.Templates, receiptapp.Templates, exportapp.Templates, adminapp.Templates, oauthapp.Templates, translationapp.Templates}
+	return []fs.FS{homeapp.Templates, authapp.Templates, tenancyapp.Templates, ledgerapp.Templates, categoryapp.Templates, receiptapp.Templates, ruleapp.Templates, exportapp.Templates, adminapp.Templates, oauthapp.Templates, translationapp.Templates}
 }
 
 // Config is everything the routes need, gathered by main and passed in.
@@ -62,6 +64,7 @@ type Config struct {
 	Ledger   *ledgerbus.Business
 
 	Categories *categorybus.Business
+	Rules      *rulebus.Business
 	Receipts   *receiptbus.Business
 	Export     *exportbus.Business
 
@@ -100,7 +103,7 @@ const maxJSON = 1 << 20
 // New builds the handler.
 func New(cfg Config) (http.Handler, error) {
 	if cfg.Log == nil || cfg.DB == nil || cfg.Render == nil || cfg.Users == nil || cfg.Tenancy == nil || cfg.History == nil ||
-		cfg.Files == nil || cfg.Ledger == nil || cfg.Categories == nil || cfg.Receipts == nil || cfg.Export == nil ||
+		cfg.Files == nil || cfg.Ledger == nil || cfg.Categories == nil || cfg.Rules == nil || cfg.Receipts == nil || cfg.Export == nil ||
 		cfg.Translations == nil {
 		return nil, errors.New("the muxer needs a logger, a database, a renderer, and every domain's business")
 	}
@@ -154,6 +157,16 @@ func New(cfg Config) (http.Handler, error) {
 
 			Categories: cfg.Categories,
 			Receipts:   cfg.Receipts,
+			Rules:      cfg.Rules,
+		}, guard)
+
+		ruleapp.Routes(mux, ruleapp.Config{
+			Log:        cfg.Log,
+			Rules:      cfg.Rules,
+			Ledger:     cfg.Ledger,
+			Categories: cfg.Categories,
+			Tenancy:    cfg.Tenancy,
+			Render:     cfg.Render,
 		}, guard)
 
 		receiptapp.Routes(mux, receiptapp.Config{

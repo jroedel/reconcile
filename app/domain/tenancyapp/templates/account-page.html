@@ -12,6 +12,7 @@
 <p><a class="button" href="{{.Path}}/transactions">{{t "Transactions and statements"}}</a> <a class="button quiet" href="{{.Path}}/months">{{t "Month by month"}}</a></p>
 {{if .CanBookkeep}}<p class="hint">{{t "Add a statement from that page, as a CSV or OFX file from your bank's website."}}</p>{{end}}
 {{if .Account.OrgID.Zero}}<p><a href="{{.Path}}/categories">{{t "This account's categories"}}</a></p>{{end}}
+{{if .CanBookkeep}}<p><a href="{{.Path}}/rules">{{t "Sorting rules"}}</a> <span class="hint">{{t "Sort next month's charges the way you sorted this month's."}}</span></p>{{end}}
 </section>
 
 <section class="card">

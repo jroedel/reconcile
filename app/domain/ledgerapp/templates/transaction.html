@@ -4,6 +4,8 @@
 <h1>{{if $t.Description}}{{$t.Description}}{{else}}{{t "A transaction with no description"}}{{end}}</h1>
 <p>{{$t.PostedOn}} · <span class="money {{if lt $t.Amount 0}}out{{else}}in{{end}}">{{money $t.Amount $cur}}</span></p>
 {{template "parts-problem" $v}}
+{{template "done" $v.Done}}
+{{if $t.ByRule}}<p class="hint"><span class="badge">{{t "sorted by rule"}}</span> {{t "A sorting rule chose this. Saving it, changed or not, says a person has checked it."}}</p>{{end}}
 {{if $e.Lock.Made}}<p class="notice">{{t "This transaction is in a reconciled period, {start} to {end}, so its parts cannot change. Receipts can still be attached." "start" $e.Lock.Start "end" $e.Lock.End}} <a href="/statements/{{$e.Lock.StatementID}}#reconcile">{{t "See the statement"}}</a></p>{{end}}
 {{if eq $v.Done "receipts"}}{{template "uploaded" $v.Uploaded}}{{end}}
 
@@ -69,7 +71,18 @@
   </div>
 </fieldset>
 {{end}}
-{{if gt (len $v.Rows) 1}}<p class="hint">{{t "The parts must add up to {total}. To take a part out, empty all of its fields." "total" (money $t.Amount.Abs $cur)}}</p>{{end}}
+{{if gt (len $v.Rows) 1}}<p class="hint">{{t "The parts must add up to {total}. To take a part out, empty all of its fields." "total" (money $t.Amount.Abs $cur)}}</p>
+{{else}}
+<div class="card always">
+  <label class="choice"><input type="checkbox" name="always" value="1"{{if $v.Always}} checked{{end}}> {{t "Always sort charges like this the same way"}}</label>
+  <div class="field">
+    <label for="match">{{t "Charges whose description has"}}</label>
+    <input id="match" name="match" type="text" maxlength="100" value="{{$v.Match}}">
+    <p class="hint">{{if $v.Out}}{{t "Money out only. Charges with this text are sorted as their statement arrives, and marked so you can check them."}}{{else}}{{t "Money in only. Deposits with this text are sorted as their statement arrives, and marked so you can check them."}}{{end}}
+    <a href="/accounts/{{$e.Account.ID}}/rules">{{t "This account's rules"}}</a></p>
+  </div>
+</div>
+{{end}}
 <div class="actions">
   <button type="submit" name="action" value="save">{{t "Save"}}</button>
   <button type="submit" name="action" value="add" class="quiet">{{t "Split into another part"}}</button>

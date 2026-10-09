@@ -73,6 +73,10 @@ type Statement struct {
 	// Locked is how many of the transactions importing it would add fall
 	// in a period already reconciled. Counted with Added, and refused.
 	Locked int
+
+	// ByRule is how many of the transactions it brought in a sorting rule
+	// sorted. Counted on import and in the preview; not kept.
+	ByRule int
 }
 
 // Transaction is one line of an account's history, as a statement reported
@@ -125,6 +129,22 @@ type Split struct {
 	CategoryID    types.ID // zero: not sorted yet
 	ProjectID     types.ID // zero: in no project
 	Memo          string
+
+	// RuleID is the sorting rule that sorted it, zero for a part a person
+	// sorted or nobody has (docs/sorting.md). Saving the transaction's
+	// parts clears it: then a person has said.
+	RuleID types.ID
+}
+
+// ByRule reports whether a rule sorted any of the transaction's parts.
+func (t Transaction) ByRule() bool {
+	for _, s := range t.Splits {
+		if !s.RuleID.Zero() {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Month is one month of an account's transactions, summed.
@@ -137,6 +157,10 @@ type Month struct {
 	// Unsorted is how many of its transactions have a part with no
 	// category.
 	Unsorted int
+
+	// ByRule is how many of them a sorting rule sorted that nobody has
+	// saved since: the ones to check.
+	ByRule int
 
 	// Operations is the month's parts by kind, beside the cash.
 	Operations Operations

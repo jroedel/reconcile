@@ -140,13 +140,15 @@ CSV or OFX into records, knowing nothing of accounts), `category` (each
 organization's list, or a personal account's, each category one of the four
 kinds of money), `ledger` (statements,
 transactions and their splits: checking, deduplicating, storing, sorting,
-and a project's book; and reconciling, which locks a period), `receipt`
+and a project's book; reconciling, which locks a period; and applying
+sorting rules), `rule` (an account's sorting rules: text to look for and
+what a charge that has it is sorted into), `receipt`
 (the photos and PDFs that justify a charge, waiting in an account's or
 project's inbox until a person matches them) and `export` (the
 accountant's zip, read across the others and stored nowhere). The pages
 over them are `homeapp`, `authapp`, `tenancyapp`, `ledgerapp`,
-`categoryapp`, `receiptapp`, `exportapp`, `adminapp` and `translationapp`
-(the review screen); a program's ways
+`categoryapp`, `ruleapp`, `receiptapp`, `exportapp`, `adminapp` and
+`translationapp` (the review screen); a program's ways
 in are `apiapp` (`/api/v1`, translations only), `mcpapp` (the same as tools
 on `/mcp`) and `oauthapp` (how Claude on claude.ai gets a key). The rest is
 where the plan's domains go when they arrive.
