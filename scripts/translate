@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+#
+# translate [claude options...]
+#
+# Starts Claude Code for translating the site (docs/translations.md), with
+# RECONCILE_URL and RECONCILE_API_KEY set from where a person already keeps
+# them, so that neither is typed again or kept twice:
+#
+#   - the site is https:// and APP_HOST from secrets.env, the one place the
+#     public address is written down (scripts/secrets builds it the same
+#     way for config.toml);
+#   - the key is the first line of ~/.config/reconcile/api-key, a file of
+#     the person's own outside the repository, readable by them alone.
+#     RECONCILE_KEY_FILE names another.
+#
+# For a person at a terminal, as `make translate`. An agent never runs it and
+# never reads either file (CLAUDE.md, "One exception: translations";
+# .claude/settings.json denies both): it is how the person hands Claude the
+# two values, and Claude meets them only as the environment it was started
+# in.
+#
+# Only APP_HOST is taken from secrets.env. The file is parsed in a subshell
+# and the one value printed out of it, so the deploy key, the mail password
+# and the rest never become part of Claude's environment.
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SECRETS_ENV="${SECRETS_ENV:-$REPO_DIR/secrets.env}"
+KEY_FILE="${RECONCILE_KEY_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/reconcile/api-key}"
+
+die() { printf 'translate: %s\n' "$*" >&2; exit 1; }
+
+[ -f "$SECRETS_ENV" ] || die "there is no $SECRETS_ENV to read the site's address (APP_HOST) from"
+
+host="$(
+	# shellcheck source=env.sh
+	. "$REPO_DIR/scripts/env.sh"
+	parse_env "$SECRETS_ENV"
+	printf '%s' "${APP_HOST:-}"
+)"
+
+[ -n "$host" ] || die "$SECRETS_ENV has no APP_HOST, the site's public address"
+
+site="https://$host"
+
+# The first time: make the file, empty and private, and say what goes in it.
+if [ ! -e "$KEY_FILE" ]; then
+	mkdir -p "$(dirname "$KEY_FILE")"
+	chmod 700 "$(dirname "$KEY_FILE")"
+	(umask 077 && : > "$KEY_FILE")
+
+	die "made $KEY_FILE for your API key. Make one at $site/account/keys, paste it into that file as its only line, and run this again"
+fi
+
+# As ssh does with a private key: a key others can read is refused rather
+# than used, because by then it is not only yours.
+if [ -n "$(find "$KEY_FILE" \( -perm -g=r -o -perm -o=r \) -print)" ]; then
+	die "$KEY_FILE can be read by others. Run: chmod 600 '$KEY_FILE'"
+fi
+
+key="$(grep -m1 -v '^[[:space:]]*\(#\|$\)' "$KEY_FILE" | tr -d '[:space:]' || true)"
+
+case "$key" in
+'') die "$KEY_FILE is empty. Make a key at $site/account/keys and paste it in as the file's only line" ;;
+rcn_*) ;;
+*) die "$KEY_FILE does not hold an API key: one starts rcn_. Make one at $site/account/keys" ;;
+esac
+
+export RECONCILE_URL="$site" RECONCILE_API_KEY="$key"
+
+exec "${CLAUDE:-claude}" "$@"

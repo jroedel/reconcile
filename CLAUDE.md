@@ -200,8 +200,12 @@ A question about *behaviour* starts in `business/domain/…bus`. A question abou
 
 **One exception: translations.** An agent may call the public `/api/v1`
 translation endpoints, and only those, when a person asks it to, with the
-key in `RECONCILE_API_KEY` and the site in `RECONCILE_URL` — set by that
-person in their environment, never written to a file. What it writes is
+key in `RECONCILE_API_KEY` and the site in `RECONCILE_URL` — the
+environment the person started Claude Code in, with `make translate`
+(`scripts/translate`): it takes the site from `secrets.env`'s `APP_HOST`
+and the key from `~/.config/reconcile/api-key`, a file of the person's
+outside the repository. An agent never runs it and never reads either
+file, and never writes the key or the site's address anywhere. What it writes is
 live at once; it never overwrites a translation a person has approved or
 corrected, because that is the person's word on it. `scripts/reconcile-api`
 is the way, and `.claude/skills/reconcile-api` says how to do it well

@@ -180,7 +180,13 @@ A new rule beside section 6:
 > **One exception: translations.** An agent may call the public `/api/v1`
 > translation endpoints, and only those, when a person asks it to, with the
 > key in `RECONCILE_API_KEY` and the site in `RECONCILE_URL` — set by that
-> person in their environment, never written to a file. What it writes is
+> person in their environment, never written to a file.
+
+(Since amended: the person starts Claude Code with `make translate`, which
+takes the site from `secrets.env`'s `APP_HOST` and the key from
+`~/.config/reconcile/api-key`, their own file outside the repository, so
+that neither is typed in again or kept twice. CLAUDE.md has the rule as
+it stands.) What it writes is
 > live at once; it never overwrites a translation a person has approved or
 > corrected, because that is the person's word on it.
 
