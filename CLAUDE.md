@@ -126,7 +126,7 @@ app/sdk/                            the plumbing under them: muxer, page, mid
 business/domain/<x>/<x>bus/         the rules. This is where behaviour is.
 business/domain/<x>/stores/<x>db/   storage, per domain
 business/types/                     small value types: ID, Email, money.Amount
-foundation/                         no domain knowledge: web, sqldb, logger
+foundation/                         no domain knowledge: web, sqldb, logger, imaging
 deploy/                             how it reaches the server. Run by CI, not by agents
 scripts/                            how this is built and checked
 ```

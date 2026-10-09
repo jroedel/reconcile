@@ -41,7 +41,7 @@
 </form>
 {{end}}
 
-{{define "thumb"}}{{with index .Files 0}}{{if or (eq .ContentType "image/jpeg") (eq .ContentType "image/png") (eq .ContentType "image/webp")}}<img class="thumb" src="/receipts/{{$.ID}}/files/0" alt="" loading="lazy">{{else}}<span class="thumb doc">{{if eq .ContentType "application/pdf"}}PDF{{else}}{{t "Photo"}}{{end}}</span>{{end}}{{end}}{{end}}
+{{define "thumb"}}{{with index .Files 0}}{{if or (eq .ContentType "image/jpeg") (eq .ContentType "image/png") (eq .ContentType "image/webp")}}<img class="thumb" src="/receipts/{{$.ID}}/files/0{{if ne .ContentType "image/webp"}}/small{{end}}" alt="" loading="lazy">{{else}}<span class="thumb doc">{{if eq .ContentType "application/pdf"}}PDF{{else}}{{t "Photo"}}{{end}}</span>{{end}}{{end}}{{end}}
 
 {{define "receipt-line"}}
 <a href="/receipts/{{.ID}}" class="receipt-line">{{template "thumb" .}}
