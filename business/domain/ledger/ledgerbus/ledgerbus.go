@@ -65,6 +65,12 @@ var (
 
 	// ErrSameFile is a file already imported into this account.
 	ErrSameFile = errors.New("that file was already imported here")
+
+	// ErrUnstable is a file that importing a second time, inside the
+	// preview's rollback, would have changed again: some rule of the
+	// import depends on something it should not (docs/duplicates.md). It is
+	// the developers' to fix, and nothing is imported until they do.
+	ErrUnstable = errors.New("importing the file twice did not give the same answer")
 )
 
 // The actions this domain writes into the history.
@@ -203,6 +209,10 @@ type Options struct {
 	// as a positive amount it is owed. Without Options it is on for a card
 	// account and off for any other. A CSV's is its Mapping's.
 	Invert bool
+
+	// Import is the rows, by their place among the file's rows, to import
+	// although the count rule sets them aside (Doubt).
+	Import []int
 }
 
 // Draft is a file read for an account and not yet imported: everything the
@@ -297,12 +307,18 @@ func (b *Business) Prepare(ctx context.Context, actor, accountID, fileID types.I
 	// rules applied, so that the preview can say how many they would sort.
 	now := time.Now()
 	st, txs := b.statement(d, actor, now)
+	insist(txs, opts)
 
 	if _, err := b.sortNew(ctx, now, actor, account, txs); err != nil {
 		return Draft{}, err
 	}
 
 	if d.Statement, err = b.store.Import(ctx, st, txs, nil, nil, eventbus.Event{}, false); err != nil {
+		if errors.Is(err, ErrUnstable) {
+			b.log.Error("a statement was refused: importing it twice did not give the same answer",
+				"account_id", accountID.String(), "file_id", fileID.String(), "error", err)
+		}
+
 		return Draft{}, err
 	}
 
@@ -546,6 +562,7 @@ func (b *Business) Import(ctx context.Context, now time.Time, actor, accountID, 
 	}
 
 	st, txs := b.statement(d, actor, now)
+	insist(txs, &opts)
 
 	also, err := b.sortNew(ctx, now, actor, d.Account, txs)
 	if err != nil {
@@ -570,16 +587,31 @@ func (b *Business) Import(ctx context.Context, now time.Time, actor, accountID, 
 	return st, nil
 }
 
+// insist marks the rows a person chose to import although the count rule
+// set them aside.
+func insist(txs []Transaction, opts *Options) {
+	if opts == nil {
+		return
+	}
+
+	for _, i := range opts.Import {
+		if i >= 0 && i < len(txs) {
+			txs[i].Insist = true
+		}
+	}
+}
+
 // EventDetail is what the history says about a statement. The store fills
 // it in on import, because only the store knows the counts.
 func EventDetail(st Statement) map[string]string {
 	return map[string]string{
-		"name":    st.FileName,
-		"start":   st.Start.String(),
-		"end":     st.End.String(),
-		"added":   strconv.Itoa(st.Added),
-		"already": strconv.Itoa(st.Already),
-		"byrule":  strconv.Itoa(st.ByRule),
+		"name":     st.FileName,
+		"start":    st.Start.String(),
+		"end":      st.End.String(),
+		"added":    strconv.Itoa(st.Added),
+		"already":  strconv.Itoa(st.Already),
+		"byrule":   strconv.Itoa(st.ByRule),
+		"setaside": strconv.Itoa(st.SetAside()),
 	}
 }
 

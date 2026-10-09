@@ -123,6 +123,12 @@
   </div>
 {{end}}
 {{if $d.Statement.ID.String}}<p>{{t "{new} new transactions, and {already} that are here already and will be left as they are." "new" $d.Statement.Added "already" $d.Statement.Already}}</p>
+{{with $d.Statement.Doubts}}
+<h3>{{t "Probably here already"}}</h3>
+<p class="hint">{{t "These fall on days the account's earlier statements cover, which already have as many charges of the same amounts. They look like the same charges worded another way, so they are left out. Tick any that is really another charge."}}</p>
+<ul class="list">{{range .}}<li><label class="choice"><input type="checkbox" name="include" value="{{.Index}}"{{if .Imported}} checked{{end}}> {{t "Import it anyway: {amount} on {date}, “{this}” in this file, where the account has “{that}”." "amount" (money .Row.Amount $cur) "date" .Row.PostedOn "this" .Row.Description "that" .Twin.Description}}</label></li>
+{{end}}</ul>
+{{end}}
 {{if $d.Statement.ByRule}}<p class="hint">{{t "The account's sorting rules will sort {n} of the new ones. They are marked, so you can check them." "n" $d.Statement.ByRule}}</p>{{end}}{{end}}
 {{if $d.Statement.Locked}}<p class="notice" role="alert">{{t "{n} of the new transactions fall in a period that has been reconciled, so this statement cannot be imported. If the bank really changed that period, reopen its statement first, on the month-by-month page." "n" $d.Statement.Locked}} <a href="/accounts/{{$d.Account.ID}}/months">{{t "Month by month"}}</a></p>{{end}}
 </section>

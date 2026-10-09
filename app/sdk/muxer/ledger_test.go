@@ -181,6 +181,41 @@ func TestImportingAPrintedPDF(t *testing.T) {
 	wantBody(t, e.owner.get(e.account+"/transactions?month=2026-08"), "Bake sale deposit", "$310.00", "-$12.40")
 }
 
+// One charge worded two ways in two files is left out of the second as
+// probably here already, and can be imported anyway (docs/duplicates.md).
+func TestTheSameChargeWordedTwoWays(t *testing.T) {
+	h, sent := newSite(t, sqldb.Infrastructure, nil)
+	e := newEstate(t, h, sent)
+
+	imported(t, e.owner, e.account, "checking-july.csv", july)
+
+	plain := func(action string, include ...string) url.Values {
+		return url.Values{
+			"date": {"Date"}, "description": {"Description"}, "columns": {"one"}, "amount": {"Amount"},
+			"separator": {","}, "skip": {"0"}, "action": {action}, "include": include,
+		}
+	}
+
+	other := "Date,Description,Amount\n" +
+		"2026-07-03,SQ *COFFEE CART #12,-3.50\n" +
+		"2026-07-03,SQ *COFFEE CART #12,-3.50\n" +
+		"2026-07-30,BANK FEE,-5.00\n"
+
+	preview := uploaded(t, e.owner, e.account, "export.csv", other)
+	wantBody(t, e.owner.post(preview, plain("preview")), "Probably here already",
+		"in this file, where the account has “COFFEE CART”", `name="include" value="0"`, `name="include" value="1"`,
+		"1 new transactions, and 2 that are here already")
+
+	// One of the two coffees is said to be another charge.
+	rec := e.owner.post(preview, plain("import", "1"))
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("import: %d\n%s", rec.Code, rec.Body.String())
+	}
+
+	wantBody(t, e.owner.get(e.account+"/transactions?month=2026-07"), "SQ *COFFEE CART #12", "BANK FEE")
+	wantBody(t, e.owner.get(e.account), "1 left out as probably here already")
+}
+
 // A statement with a row missing says which line broke, and imports
 // nothing.
 func TestAStatementThatDoesNotBalance(t *testing.T) {

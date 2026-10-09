@@ -37,8 +37,9 @@ var Expected = sqldb.Expected{
 		"checked", "added", "already", "imported_by", "imported_at"},
 	"transactions": {"id", "account_id", "statement_id", "posted_on", "description", "amount", "balance",
 		"external_id", "hash", "occurrence"},
-	"csv_mappings": {"account_id", "fingerprint", "mapping", "updated_by", "updated_at"},
-	"splits":       {"id", "transaction_id", "position", "amount", "category_id", "project_id", "memo", "rule_id"},
+	"csv_mappings":        {"account_id", "fingerprint", "mapping", "updated_by", "updated_at"},
+	"splits":              {"id", "transaction_id", "position", "amount", "category_id", "project_id", "memo", "rule_id"},
+	"transaction_aliases": {"account_id", "hash", "transaction_id", "created_at"},
 	"reconciliations": {"statement_id", "account_id", "period_start", "period_end", "note",
 		"reconciled_by", "reconciled_at"},
 }
@@ -109,7 +110,11 @@ CREATE TABLE IF NOT EXISTS csv_mappings (
 		return err
 	}
 
-	return initReconciliations(ctx, db)
+	if err := initReconciliations(ctx, db); err != nil {
+		return err
+	}
+
+	return initAliases(ctx, db)
 }
 
 // initReconciliations creates the table of statements a person has checked
@@ -202,24 +207,32 @@ WHERE NOT EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id)`); err !
 // --- importing ----------------------------------------------------------------
 
 // Import stores a statement and the transactions not already in the
-// account, one at a time inside one transaction, so that two identical rows
-// in one file, or a FITID a bank repeated, are seen by the second as
-// already here -- in the preview exactly as in the import.
+// account, in one transaction -- in the preview exactly as in the import.
 //
-// The rule for each row, from eumaeus:
+// Each row is first matched on its own, by the rules from eumaeus:
 //
-//   - With a bank identifier already in the account: already here.
-//   - With a bank identifier, and a row with the same content hash and no
-//     identifier: already here, and that row is given the identifier. It
-//     came from a CSV of the same period; from now on the match is exact.
-//   - With no identifier and the same hash already in the account: already
-//     here.
+//   - With a bank identifier already in the account, or repeated earlier in
+//     the same file: already here.
+//   - With a bank identifier, and a row with the same content hash (or the
+//     same wording remembered as another name for it) and no identifier:
+//     already here, and that row is given the identifier. It came from a
+//     CSV of the same period; from now on the match is exact.
+//   - With no identifier and the same hash, or a remembered wording, already
+//     in the account: already here.
 //   - On the same day for the same amount as a row of another statement
 //     whose description is this one's cut short, or this one is that one's
 //     (ledgerbus.Truncated): already here, and given to it the identifier
 //     if it has one. A bank's printed page cuts descriptions short, and the
 //     statement that follows it does not.
-//   - Otherwise it is new.
+//
+// What is left is new by every exact rule, and the count rule then looks at
+// those together (doubts.go): one charge worded two ways in two files is
+// set aside rather than stored twice.
+//
+// With commit false all of it is done and rolled back, and then done a
+// second time inside the same transaction, which must add nothing and set
+// nothing aside (ErrUnstable). That is the import checking it is
+// idempotent on the very file in front of it.
 func (s *Store) Import(ctx context.Context, st ledgerbus.Statement, txs []ledgerbus.Transaction, also map[types.ID][]eventbus.Event, mapping *ledgerbus.SavedMapping, ev eventbus.Event, commit bool) (ledgerbus.Statement, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -227,66 +240,23 @@ func (s *Store) Import(ctx context.Context, st ledgerbus.Statement, txs []ledger
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.ExecContext(ctx, `
-INSERT INTO statements (id, account_id, file_id, format, period_start, period_end, opening, closing, checked, imported_by, imported_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		st.ID.String(), st.AccountID.String(), st.FileID.String(), string(st.Format), st.Start.String(), st.End.String(),
-		nullAmount(st.Opening, st.HasOpening), nullAmount(st.Closing, st.HasClosing), string(st.Checked),
-		st.ImportedBy.String(), st.ImportedAt.UnixMilli()); err != nil {
-		return ledgerbus.Statement{}, fmt.Errorf("storing the statement: %w", err)
+	st, err = importRows(ctx, tx, st, txs, also)
+	if err != nil {
+		return ledgerbus.Statement{}, err
 	}
 
-	st.Added, st.Already, st.ByRule = 0, 0, 0
+	if !commit {
+		st2, txs2 := secondPass(st, txs)
 
-	for _, t := range txs {
-		known, err := already(ctx, tx, t)
+		again, err := importRows(ctx, tx, st2, txs2, nil)
 		if err != nil {
 			return ledgerbus.Statement{}, err
 		}
 
-		if known {
-			st.Already++
-
-			continue
+		if again.Added != 0 || again.SetAside() != 0 {
+			return ledgerbus.Statement{}, fmt.Errorf("%w: the second time it added %d and set aside %d", ledgerbus.ErrUnstable, again.Added, again.SetAside())
 		}
 
-		if _, err := tx.ExecContext(ctx, `
-INSERT INTO transactions (id, account_id, statement_id, posted_on, description, amount, balance, external_id, hash, occurrence)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			t.ID.String(), t.AccountID.String(), st.ID.String(), t.PostedOn.String(), t.Description, int64(t.Amount),
-			nullAmount(t.Balance, t.HasBalance), t.ExternalID, t.Hash, t.Occurrence); err != nil {
-			return ledgerbus.Statement{}, fmt.Errorf("storing a transaction: %w", err)
-		}
-
-		if err := insertSplits(ctx, tx, t.Splits); err != nil {
-			return ledgerbus.Statement{}, err
-		}
-
-		// The project history of what a rule put into a project: only for
-		// a transaction that was new, so here.
-		for _, e := range also[t.ID] {
-			if err := eventdb.Insert(ctx, tx, e); err != nil {
-				return ledgerbus.Statement{}, err
-			}
-		}
-
-		if t.ByRule() {
-			st.ByRule++
-		}
-
-		st.Added++
-	}
-
-	// What it added inside a reconciled period, counted here because
-	// only here is it known which rows were new. The business refuses an
-	// import that counts any (ledgerbus.ErrLocked); the preview shows the
-	// number.
-	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM transactions t WHERE t.statement_id = ? AND `+lockedWhere,
-		st.ID.String()).Scan(&st.Locked); err != nil {
-		return ledgerbus.Statement{}, fmt.Errorf("checking the reconciled periods: %w", err)
-	}
-
-	if !commit {
 		return st, nil
 	}
 
@@ -321,6 +291,119 @@ ON CONFLICT (account_id, fingerprint) DO UPDATE SET mapping = excluded.mapping, 
 	return st, nil
 }
 
+// importRows stores the statement and its new rows inside tx, and counts
+// them.
+func importRows(ctx context.Context, tx *sql.Tx, st ledgerbus.Statement, txs []ledgerbus.Transaction, also map[types.ID][]eventbus.Event) (ledgerbus.Statement, error) {
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO statements (id, account_id, file_id, format, period_start, period_end, opening, closing, checked, imported_by, imported_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		st.ID.String(), st.AccountID.String(), st.FileID.String(), string(st.Format), st.Start.String(), st.End.String(),
+		nullAmount(st.Opening, st.HasOpening), nullAmount(st.Closing, st.HasClosing), string(st.Checked),
+		st.ImportedBy.String(), st.ImportedAt.UnixMilli()); err != nil {
+		return ledgerbus.Statement{}, fmt.Errorf("storing the statement: %w", err)
+	}
+
+	st.Added, st.Already, st.ByRule, st.Doubts = 0, 0, 0, nil
+
+	// Each row on its own, in the file's order. Nothing is inserted yet:
+	// the count rule needs the rows of other statements as they were.
+	var fresh []int
+
+	seen := map[string]bool{}
+
+	for i, t := range txs {
+		known := t.ExternalID != "" && seen[t.ExternalID]
+		seen[t.ExternalID] = true
+
+		if !known {
+			var err error
+			if known, err = already(ctx, tx, t); err != nil {
+				return ledgerbus.Statement{}, err
+			}
+		}
+
+		if known {
+			st.Already++
+
+			continue
+		}
+
+		fresh = append(fresh, i)
+	}
+
+	doubts, err := countRule(ctx, tx, st.ID, txs, fresh)
+	if err != nil {
+		return ledgerbus.Statement{}, err
+	}
+
+	aside := map[int]bool{}
+	for _, d := range doubts {
+		aside[d.Index] = !d.Imported
+	}
+
+	for _, i := range fresh {
+		t := txs[i]
+
+		if aside[i] {
+			continue
+		}
+
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO transactions (id, account_id, statement_id, posted_on, description, amount, balance, external_id, hash, occurrence)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			t.ID.String(), t.AccountID.String(), st.ID.String(), t.PostedOn.String(), t.Description, int64(t.Amount),
+			nullAmount(t.Balance, t.HasBalance), t.ExternalID, t.Hash, t.Occurrence); err != nil {
+			return ledgerbus.Statement{}, fmt.Errorf("storing a transaction: %w", err)
+		}
+
+		if err := insertSplits(ctx, tx, t.Splits); err != nil {
+			return ledgerbus.Statement{}, err
+		}
+
+		// The project history of what a rule put into a project: only for
+		// a transaction that was new, so here.
+		for _, e := range also[t.ID] {
+			if err := eventdb.Insert(ctx, tx, e); err != nil {
+				return ledgerbus.Statement{}, err
+			}
+		}
+
+		if t.ByRule() {
+			st.ByRule++
+		}
+
+		st.Added++
+	}
+
+	// What was set aside is remembered as another name for the row it was
+	// taken for, so that the next file worded the same way matches it
+	// exactly and is not asked about again.
+	for _, d := range doubts {
+		if d.Imported {
+			continue
+		}
+
+		if err := remember(ctx, tx, txs[d.Index], d.Twin, st.ImportedAt); err != nil {
+			return ledgerbus.Statement{}, err
+		}
+
+		st.Already++
+	}
+
+	st.Doubts = doubts
+
+	// What it added inside a reconciled period, counted here because
+	// only here is it known which rows were new. The business refuses an
+	// import that counts any (ledgerbus.ErrLocked); the preview shows the
+	// number.
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM transactions t WHERE t.statement_id = ? AND `+lockedWhere,
+		st.ID.String()).Scan(&st.Locked); err != nil {
+		return ledgerbus.Statement{}, fmt.Errorf("checking the reconciled periods: %w", err)
+	}
+
+	return st, nil
+}
+
 // already applies the rule in Import's comment to one row.
 func already(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction) (bool, error) {
 	exists := func(q string, args ...any) (bool, error) {
@@ -344,6 +427,10 @@ func already(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction) (bool, er
 			return found, err
 		}
 
+		if found, err := exists(`SELECT 1 FROM transaction_aliases WHERE account_id = ? AND hash = ?`, account, t.Hash); found || err != nil {
+			return found, err
+		}
+
 		// As many cut-short matches as this row's occurrence: two charges
 		// the page printed alike are two, and claim two.
 		rows, err := cutShort(ctx, tx, t, false)
@@ -360,6 +447,19 @@ func already(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction) (bool, er
 	res, err := tx.ExecContext(ctx, `
 UPDATE transactions SET external_id = ?
 WHERE rowid = (SELECT rowid FROM transactions WHERE account_id = ? AND hash = ? AND external_id = '' ORDER BY rowid LIMIT 1)`,
+		t.ExternalID, account, t.Hash)
+	if err != nil {
+		return false, fmt.Errorf("matching a transaction: %w", err)
+	}
+
+	if n, err := res.RowsAffected(); n == 1 || err != nil {
+		return n == 1, err
+	}
+
+	// A wording remembered as another name for an unclaimed row: the same.
+	res, err = tx.ExecContext(ctx, `
+UPDATE transactions SET external_id = ?
+WHERE external_id = '' AND id = (SELECT transaction_id FROM transaction_aliases WHERE account_id = ? AND hash = ?)`,
 		t.ExternalID, account, t.Hash)
 	if err != nil {
 		return false, fmt.Errorf("matching a transaction: %w", err)
