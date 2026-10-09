@@ -1,0 +1,39 @@
+{{define "title"}}{{t "Budget for {year}" "year" .Data.Budget.Label}} · {{.Data.Budget.Org.Name}}{{end}}
+{{define "content"}}{{$v := .Data}}{{$c := $v.Budget}}
+<p class="crumbs"><a href="{{$v.Path}}">{{$c.Org.Name}}</a></p>
+<h1>{{t "Budget for {year}" "year" $c.Label}}</h1>
+<p class="hint">{{t "From {start} to {end}." "start" $c.Start "end" ($c.End.AddDays -1)}}
+{{if eq $c.Pace 0}}{{t "This year has not started."}}{{else if eq $c.Pace 100}}{{t "This year has ended."}}{{else}}{{t "{n}% of the year has gone by." "n" $c.Pace}}{{end}}</p>
+<p class="tabs"><a href="?year={{$v.BeforeYear}}">{{t "← {year}" "year" $v.Before}}</a> <a href="?year={{$v.AfterYear}}">{{t "{year} →" "year" $v.After}}</a></p>
+{{template "done" $v.Done}}
+{{template "problem" $v.Problem}}
+
+{{if $c.CanCopy}}
+<section class="card">
+<form method="post" action="{{$v.Path}}/budget/copy?year={{$c.Year}}">
+<button type="submit">{{t "Copy {year}'s budget" "year" $v.Before}}</button>
+<p class="hint">{{t "Then change what is different this year."}}</p>
+</form>
+</section>
+{{end}}
+
+{{if $c.Set}}{{template "comparison" $c}}
+{{else}}<p class="hint">{{t "No budget for this year. A budget is what the owners expect the organization to bring in and spend in the year, by category. Every account's money in the year is compared with it, whether or not it is in a project."}}</p>{{end}}
+
+{{if $v.CanSet}}
+{{template "budget-form" (dict "View" $v "Hint" "year")}}
+<section class="card">
+<h2>{{t "The budget year"}}</h2>
+<form method="post" action="{{$v.Path}}/budget/year-start">
+  <div class="field">
+    <label for="month">{{t "Budget year starts in"}}</label>
+    <select id="month" name="month">
+      {{range $v.Months}}<option value="{{.}}"{{if eq . $c.Org.FiscalStart}} selected{{end}}>{{template "month-name" .}}</option>{{end}}
+    </select>
+    <p class="hint">{{t "Changing it changes which months every budget year covers. Budgets already set keep their amounts."}}</p>
+  </div>
+  <button type="submit" class="quiet">{{t "Save"}}</button>
+</form>
+</section>
+{{end}}
+{{end}}

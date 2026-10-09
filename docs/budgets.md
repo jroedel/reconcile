@@ -83,7 +83,7 @@ A new domain, `budget` (`business/domain/budget/budgetbus`,
   - `amount` is cents, positive; a line set to zero is removed.
 - **`orgs.fiscal_start INTEGER NOT NULL DEFAULT 1`** (`AddColumn` in
   `tenancydb`, with the old-schema test): the month the budget year
-  starts. Set by an owner on the organization's edit page; changing it
+  starts. Set by an owner on the organization's budget page; changing it
   changes which months every budget year covers, and the history says so.
 - Setting, changing and removing a line go in the scope's history
   (`budget.set`, `budget.removed`), with the before and after amounts.
@@ -105,7 +105,10 @@ A new domain, `budget` (`business/domain/budget/budgetbus`,
   layout with the pace mark; links to the year before and after; "Copy
   last year's budget" for owners when this year has none. Linked from the
   organization's page. The form for owners is the same as a project's.
-- **The organization's edit page** gains "Budget year starts in" (a month).
+- **"Budget year starts in"** (a month), for owners, at the foot of the
+  organization's budget page, where its effect is seen. (Planned for the
+  organization's edit page; there it would sit far from the only thing it
+  changes.) The history says the month it was moved to.
 - All of it works without JavaScript, and the bars are decoration: every
   figure is also written out.
 

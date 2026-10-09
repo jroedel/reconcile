@@ -1,23 +1,67 @@
 {{/*
-  The words the budget pages share: a side of the comparison, the form's
-  fields for a kind, what a net says, and what went wrong.
+  The words the budget pages share: the comparison and its sides, the form,
+  what a net says, what just happened, and what went wrong.
 */}}
+
+{{/* comparison is a budget beside what happened (budgetbus.Comparison). */}}
+{{define "comparison"}}{{$c := .}}{{$cur := $c.Currency}}
+<section class="card">
+<p><strong>{{template "net" (dict "Amount" $c.ExpectedNet "Cur" $cur "Expected" true)}}</strong></p>
+<p>{{template "net" (dict "Amount" $c.ActualNet "Cur" $cur "Expected" false)}}</p>
+{{if $c.Unsorted}}<p class="notice">{{t "{amount} of this money is not sorted yet, or is in a category whose kind is not said, and is not counted here." "amount" (money $c.Unsorted $cur)}}</p>{{end}}
+{{range $c.Elsewhere}}<p class="hint">{{t "In {currency}, which this budget is not: income {income}, expenses {expenses}." "currency" .Currency "income" (money .Income .Currency) "expenses" (money .Expenses.Abs .Currency)}}</p>{{end}}
+</section>
+{{template "side" (dict "Side" $c.Income "Cur" $cur "Pace" $c.Pace)}}
+{{template "side" (dict "Side" $c.Expenses "Cur" $cur "Pace" $c.Pace)}}
+{{end}}
+
+{{/* budget-form is the owners' form. Hint says whose: "project" or "year". */}}
+{{define "budget-form"}}{{$v := .View}}{{$c := $v.Budget}}{{$f := $v.Form}}
+<section class="card" id="set">
+<h2>{{if $c.Set}}{{t "Change the budget"}}{{else}}{{t "Set the budget"}}{{end}}</h2>
+<p class="hint">{{if eq .Hint "year"}}{{t "Amounts for the whole year, without a sign. Leave a category empty for no line. A total is for when you know the whole and not the parts."}}{{else}}{{t "Amounts for the whole project, without a sign. Leave a category empty for no line. A total is for when you know the whole and not the parts."}}{{end}}</p>
+<form method="post" action="{{$v.Action}}">
+  <div class="field">
+    <label for="currency">{{t "Currency"}}</label>
+    <select id="currency" name="currency">
+      {{range $f.Currencies}}<option value="{{.}}"{{if eq . (index $v.Typed "currency")}} selected{{end}}>{{.}}</option>{{end}}
+    </select>
+  </div>
+  {{template "fields" (dict "View" $v "Kind" "income" "Categories" $f.IncomeCategories)}}
+  {{template "fields" (dict "View" $v "Kind" "expense" "Categories" $f.ExpenseCategories)}}
+  <button type="submit">{{t "Save the budget"}}</button>
+</form>
+</section>
+{{end}}
+
+{{define "done"}}{{if .}}<p class="notice ok" role="status">
+{{- if eq . "set"}}{{t "The budget is saved. The history says what changed."}}
+{{- else if eq . "copied"}}{{t "Last year's budget is copied. Change what is different this year."}}
+{{- else if eq . "nothing-to-copy"}}{{t "There was nothing to copy: this year has a budget already, or last year had none."}}
+{{- else if eq . "year-start"}}{{t "The budget year is moved."}}
+{{- else if eq . "no-month"}}{{t "Choose the month the budget year starts in."}}
+{{- end}}</p>{{end}}{{end}}
+
+{{define "month-name"}}
+{{- if eq . 1}}{{t "January"}}{{else if eq . 2}}{{t "February"}}{{else if eq . 3}}{{t "March"}}{{else if eq . 4}}{{t "April"}}
+{{- else if eq . 5}}{{t "May"}}{{else if eq . 6}}{{t "June"}}{{else if eq . 7}}{{t "July"}}{{else if eq . 8}}{{t "August"}}
+{{- else if eq . 9}}{{t "September"}}{{else if eq . 10}}{{t "October"}}{{else if eq . 11}}{{t "November"}}{{else}}{{t "December"}}{{end}}{{end}}
 
 {{/* side is one kind's lines beside what happened. Side is a
      budgetbus.Side, Cur the budget's currency. */}}
-{{define "side"}}{{$s := .Side}}{{$cur := .Cur}}
+{{define "side"}}{{$s := .Side}}{{$cur := .Cur}}{{$pace := .Pace}}
 <section class="card">
 <h2>{{if eq $s.Kind "income"}}{{t "Income"}}{{else}}{{t "Expenses"}}{{end}}</h2>
 {{if $s.Total.Budgeted}}
 <p>{{template "row-figures" (dict "Row" $s.Total "Kind" $s.Kind "Cur" $cur)}}</p>
-<meter min="0" max="100" value="{{$s.Total.Percent}}" aria-hidden="true"></meter>
+{{template "bar" (dict "Row" $s.Total "Kind" $s.Kind "Pace" $pace)}}
 {{if $s.Mismatch}}<p class="hint">{{t "The lines add up to {lines}, and the total typed is {typed}. The budget counts the larger." "lines" (money $s.Lines $cur) "typed" (money $s.Typed $cur)}}</p>{{end}}
 {{else}}<p class="hint">{{t "Nothing budgeted. So far: {amount}." "amount" (money $s.Total.Actual $cur)}}</p>{{end}}
 {{if $s.Rows}}
 <ul class="list">
 {{range $s.Rows}}<li><strong>{{.Name}}</strong>
 <br>{{template "row-figures" (dict "Row" . "Kind" $s.Kind "Cur" $cur)}}
-<meter min="0" max="100" value="{{.Percent}}" aria-hidden="true"></meter>
+{{template "bar" (dict "Row" . "Kind" $s.Kind "Pace" $pace)}}
 {{if .Moved}}<br><span class="hint">{{t "Its category is no longer of this kind. The line stays here until the budget is saved again."}}</span>{{end}}</li>
 {{end}}</ul>
 {{end}}
@@ -81,3 +125,8 @@
 {{- else if eq . "count"}}{{t "That is more lines than a budget may have."}}
 {{- else}}{{t "Something went wrong at our end. Please try again in a few minutes."}}
 {{- end}}</p>{{end}}{{end}}
+
+{{/* bar is a line's share of its budget. For an expense in a year under
+     way, the bar is marked once it is ahead of the year's pace; the words
+     beside it say the figures either way. */}}
+{{define "bar"}}<meter min="0" max="100" value="{{.Row.Percent}}"{{if and (eq .Kind "expense") (gt .Pace 0) (lt .Pace 100)}} low="0" high="{{.Pace}}" optimum="0"{{end}} aria-hidden="true"></meter>{{end}}

@@ -1,38 +1,10 @@
 {{define "title"}}{{t "Budget"}} · {{.Data.Budget.Project.Name}}{{end}}
-{{define "content"}}{{$v := .Data}}{{$c := $v.Budget}}{{$cur := $c.Currency}}
+{{define "content"}}{{$v := .Data}}{{$c := $v.Budget}}
 <p class="crumbs"><a href="{{$v.Path}}">{{$c.Project.Name}}</a> · <a href="{{$v.Path}}/book">{{t "Income and expenses"}}</a></p>
 <h1>{{t "Budget"}}</h1>
-{{if eq $v.Done "set"}}<p class="notice ok" role="status">{{t "The budget is saved. The project's history says what changed."}}</p>{{end}}
+{{template "done" $v.Done}}
 {{template "problem" $v.Problem}}
-
-{{if $c.Set}}
-<section class="card">
-<p><strong>{{template "net" (dict "Amount" $c.ExpectedNet "Cur" $cur "Expected" true)}}</strong></p>
-<p>{{template "net" (dict "Amount" $c.ActualNet "Cur" $cur "Expected" false)}}</p>
-{{if $c.Unsorted}}<p class="notice">{{t "{amount} in this project is not sorted yet, or is in a category whose kind is not said, and is not counted here." "amount" (money $c.Unsorted $cur)}}</p>{{end}}
-{{range $c.Elsewhere}}<p class="hint">{{t "In {currency}, which this budget is not: income {income}, expenses {expenses}." "currency" .Currency "income" (money .Income .Currency) "expenses" (money .Expenses.Abs .Currency)}}</p>{{end}}
-</section>
-{{template "side" (dict "Side" $c.Income "Cur" $cur)}}
-{{template "side" (dict "Side" $c.Expenses "Cur" $cur)}}
-{{else}}
-<p class="hint">{{t "No budget yet. A budget is what the owners expect the project to bring in and spend, by category, so that anyone with a role can see whether it is on its way to coming out even."}}</p>
-{{end}}
-
-{{if $v.CanSet}}{{$f := $v.Form}}
-<section class="card" id="set">
-<h2>{{if $c.Set}}{{t "Change the budget"}}{{else}}{{t "Set the budget"}}{{end}}</h2>
-<p class="hint">{{t "Amounts for the whole project, without a sign. Leave a category empty for no line. A total is for when you know the whole and not the parts."}}</p>
-<form method="post" action="{{$v.Path}}/budget">
-  <div class="field">
-    <label for="currency">{{t "Currency"}}</label>
-    <select id="currency" name="currency">
-      {{range $f.Currencies}}<option value="{{.}}"{{if eq . (index $v.Typed "currency")}} selected{{end}}>{{.}}</option>{{end}}
-    </select>
-  </div>
-  {{template "fields" (dict "View" $v "Kind" "income" "Categories" $f.Income)}}
-  {{template "fields" (dict "View" $v "Kind" "expense" "Categories" $f.Expenses)}}
-  <button type="submit">{{t "Save the budget"}}</button>
-</form>
-</section>
-{{end}}
+{{if $c.Set}}{{template "comparison" $c}}
+{{else}}<p class="hint">{{t "No budget yet. A budget is what the owners expect the project to bring in and spend, by category, so that anyone with a role can see whether it is on its way to coming out even."}}</p>{{end}}
+{{if $v.CanSet}}{{template "budget-form" (dict "View" $v "Hint" "project")}}{{end}}
 {{end}}

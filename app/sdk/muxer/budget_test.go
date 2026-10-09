@@ -75,3 +75,67 @@ func TestAProjectsBudget(t *testing.T) {
 		}
 	}
 }
+
+// An organization's year: set for 2026, moved to run July to June, copied
+// into the year after; read by a viewer, set only by an owner.
+func TestAnOrganizationsBudgetYear(t *testing.T) {
+	e, txs, _, signUpAs := sorted(t)
+
+	wantRedirect(t, e.owner.post(e.org+"/categories", url.Values{"name": {"Offerings"}, "kind": {"income"}}), e.org+"/categories?done=added")
+
+	choices := options(e.owner.get(txs["CORNER GROCERY"]).Body.String())
+
+	for name, category := range map[string]string{
+		"CORNER GROCERY": choices["Groceries"], "PARISH OFFERTORY": choices["Offerings"], "ELECTRIC CO": choices["Utilities"],
+	} {
+		wantRedirect(t, e.owner.post(txs[name], url.Values{
+			"action": {"save"}, "amount-0": {""}, "category-0": {category}, "project-0": {""}, "memo-0": {""},
+		}), e.account+"/transactions?month=2026-07&done=sorted")
+	}
+
+	budget := e.org + "/budget"
+	wantBody(t, e.owner.get(e.org), `href="`+budget+`"`)
+	wantBody(t, e.owner.get(budget+"?year=2026"), "Budget for 2026", "From 2026-01-01 to 2026-12-31", "No budget for this year", "Set the budget")
+
+	wantRedirect(t, e.owner.post(budget+"?year=2026", url.Values{
+		"currency": {"USD"}, "income-" + choices["Offerings"]: {"3000"}, "expense-" + choices["Utilities"]: {"1,200.00"},
+	}), budget+"?year=2026&done=set")
+
+	wantBody(t, e.owner.get(budget+"?year=2026"), "$250.00 of $3,000.00 received", "$120.00 of $1,200.00 spent", "Not in the budget", "Groceries")
+
+	// Moved to July: 2026 is now July 2026 to June 2027, and still holds
+	// July's money and the budget set for it.
+	wantRedirect(t, e.owner.post(budget+"/year-start", url.Values{"month": {"7"}}), budget+"?done=year-start")
+	wantBody(t, e.owner.get(budget+"?year=2026"), "Budget for 2026–27", "From 2026-07-01 to 2027-06-30", "$120.00 of $1,200.00 spent")
+	wantRedirect(t, e.owner.post(budget+"/year-start", url.Values{"month": {"13"}}), budget+"?done=no-month")
+
+	// The year after starts as a copy.
+	wantBody(t, e.owner.get(budget+"?year=2027"), "Copy 2026–27&#39;s budget")
+	wantRedirect(t, e.owner.post(budget+"/copy?year=2027", nil), budget+"?year=2027&done=copied")
+	wantBody(t, e.owner.get(budget+"?year=2027"), "$0.00 of $3,000.00 received")
+	wantRedirect(t, e.owner.post(budget+"/copy?year=2027", nil), budget+"?year=2027&done=nothing-to-copy")
+
+	wantBody(t, e.owner.get(e.org), "made the budget year start in July", "copied the budget for 2026–27 into 2027–28", "budgeted $3,000.00 for Offerings (2026)")
+
+	if rec := e.owner.get(budget + "?year=abc"); rec.Code != http.StatusNotFound {
+		t.Errorf("a year that is not one: %d", rec.Code)
+	}
+
+	// A viewer reads it; only an owner sets it or moves the year.
+	wantRedirect(t, e.owner.post(e.org+"/people", url.Values{"email": {"viewer@example.org"}, "role": {"viewer"}}), e.org+"?done=granted")
+	viewer := signUpAs("viewer@example.org")
+
+	if body := viewer.get(budget + "?year=2026").Body.String(); !strings.Contains(body, "$120.00 of $1,200.00 spent") || strings.Contains(body, "Save the budget") || strings.Contains(body, "Budget year starts in") {
+		t.Errorf("the viewer's view:\n%s", body)
+	}
+
+	for path, form := range map[string]url.Values{
+		budget + "?year=2026":      {"currency": {"USD"}, "expense-total": {"1"}},
+		budget + "/copy?year=2028": nil,
+		budget + "/year-start":     {"month": {"1"}},
+	} {
+		if rec := viewer.post(path, form); rec.Code != http.StatusForbidden {
+			t.Errorf("a viewer: POST %s = %d", path, rec.Code)
+		}
+	}
+}

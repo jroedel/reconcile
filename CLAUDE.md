@@ -143,7 +143,8 @@ transactions and their splits: checking, deduplicating, storing, sorting,
 and a project's book; reconciling, which locks a period; and applying
 sorting rules), `rule` (an account's sorting rules: text to look for and
 what a charge that has it is sorted into), `budget` (what owners expect
-a project's income and expenses to be, compared with its book), `receipt`
+a project's, or an organization's year's, income and expenses to be,
+compared with what happened), `receipt`
 (the photos and PDFs that justify a charge, waiting in an account's or
 project's inbox until a person matches them) and `export` (the
 accountant's zip, read across the others and stored nowhere). The pages

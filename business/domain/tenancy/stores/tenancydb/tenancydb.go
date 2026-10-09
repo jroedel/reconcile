@@ -30,7 +30,7 @@ var _ tenancybus.Storer = (*Store)(nil)
 
 // Expected is what CheckSchema verifies at startup and on every /healthz.
 var Expected = sqldb.Expected{
-	"orgs":     {"id", "name", "created_by", "created_at", "archived_at"},
+	"orgs":     {"id", "name", "created_by", "created_at", "archived_at", "fiscal_start"},
 	"accounts": {"id", "org_id", "name", "kind", "last4", "currency", "opened_on", "created_by", "created_at", "archived_at"},
 	"projects": {"id", "org_id", "name", "starts_on", "ends_on", "note", "created_by", "created_at", "archived_at"},
 	"grants":   {"id", "scope_kind", "scope_id", "user_id", "email", "role", "granted_by", "created_at"},
@@ -113,7 +113,10 @@ CREATE INDEX IF NOT EXISTS grants_waiting ON grants (email) WHERE email IS NOT N
 		return fmt.Errorf("creating the organization tables: %w", err)
 	}
 
-	return nil
+	// The month an organization's budget year starts (docs/budgets.md), a
+	// later column beside the CREATE: January for every organization made
+	// before it, which is what they had.
+	return sqldb.AddColumn(ctx, db, "orgs", "fiscal_start", "INTEGER NOT NULL DEFAULT 1")
 }
 
 // --- transactions -----------------------------------------------------------
@@ -144,13 +147,13 @@ func (s *Store) inTx(ctx context.Context, ev eventbus.Event, fn func(tx *sql.Tx)
 
 // --- organizations ----------------------------------------------------------
 
-const orgColumns = `id, name, created_by, created_at, archived_at`
+const orgColumns = `id, name, created_by, created_at, archived_at, fiscal_start`
 
 // CreateOrg inserts an organization and its owner's grant.
 func (s *Store) CreateOrg(ctx context.Context, o tenancybus.Org, owner tenancybus.Grant, ev eventbus.Event) error {
 	return s.inTx(ctx, ev, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO orgs (`+orgColumns+`) VALUES (?, ?, ?, ?, ?)`,
-			o.ID.String(), o.Name, o.CreatedBy.String(), ms(o.CreatedAt), nullMS(o.ArchivedAt)); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO orgs (`+orgColumns+`) VALUES (?, ?, ?, ?, ?, ?)`,
+			o.ID.String(), o.Name, o.CreatedBy.String(), ms(o.CreatedAt), nullMS(o.ArchivedAt), o.FiscalStart); err != nil {
 			return fmt.Errorf("inserting the organization: %w", err)
 		}
 
@@ -158,11 +161,11 @@ func (s *Store) CreateOrg(ctx context.Context, o tenancybus.Org, owner tenancybu
 	})
 }
 
-// UpdateOrg writes an organization's name and archived state.
+// UpdateOrg writes an organization's name, archived state and budget year.
 func (s *Store) UpdateOrg(ctx context.Context, o tenancybus.Org, ev eventbus.Event) error {
 	return s.inTx(ctx, ev, func(tx *sql.Tx) error {
-		res, err := tx.ExecContext(ctx, `UPDATE orgs SET name = ?, archived_at = ? WHERE id = ?`,
-			o.Name, nullMS(o.ArchivedAt), o.ID.String())
+		res, err := tx.ExecContext(ctx, `UPDATE orgs SET name = ?, archived_at = ?, fiscal_start = ? WHERE id = ?`,
+			o.Name, nullMS(o.ArchivedAt), o.FiscalStart, o.ID.String())
 		if err != nil {
 			return fmt.Errorf("updating the organization: %w", err)
 		}
@@ -200,7 +203,7 @@ func scanOrg(row scanner) (tenancybus.Org, error) {
 		archived sql.NullInt64
 	)
 
-	if err := row.Scan(&id, &o.Name, &by, &made, &archived); err != nil {
+	if err := row.Scan(&id, &o.Name, &by, &made, &archived, &o.FiscalStart); err != nil {
 		return tenancybus.Org{}, notFound(err, "the organization")
 	}
 

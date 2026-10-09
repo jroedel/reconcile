@@ -417,6 +417,27 @@ func (b *Business) ProjectBook(ctx context.Context, actor, projectID types.ID) (
 
 // totals adds the lines up under a heading, per currency, in heading
 // order.
+// OrgPeriod is every part of an organization's accounts posted from from
+// to before to, for anyone who may read the organization -- who may read
+// every account in it. For an organization's budget year (budgetbus).
+func (b *Business) OrgPeriod(ctx context.Context, actor, orgID types.ID, from, to types.Date) ([]ProjectLine, []Total, error) {
+	access, err := b.accounts.AccessTo(ctx, actor, types.OrgScope(orgID))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if !access.Can(tenancybus.Read) {
+		return nil, nil, ErrNotFound
+	}
+
+	lines, err := b.store.OrgLines(ctx, orgID, from, to)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return lines, totals(lines, func(ProjectLine) string { return "" }), nil
+}
+
 func totals(lines []ProjectLine, key func(ProjectLine) string) []Total {
 	index := map[[2]string]int{}
 

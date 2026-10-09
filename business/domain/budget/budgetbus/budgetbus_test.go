@@ -321,8 +321,8 @@ func TestWhatABudgetMayBeAndWhoSetsIt(t *testing.T) {
 	}
 
 	f, err := w.budgets.ProjectForm(ctx, p.owner, p.project)
-	if err != nil || len(f.Income) != 1 || len(f.Expenses) != 2 {
-		t.Errorf("the form: %d income, %d expense categories: %v", len(f.Income), len(f.Expenses), err)
+	if err != nil || len(f.IncomeCategories) != 1 || len(f.ExpenseCategories) != 2 {
+		t.Errorf("the form: %d income, %d expense categories: %v", len(f.IncomeCategories), len(f.ExpenseCategories), err)
 	}
 
 	// A bookkeeper of the project reads it and cannot set it; a stranger

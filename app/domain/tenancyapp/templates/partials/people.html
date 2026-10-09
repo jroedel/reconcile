@@ -91,8 +91,10 @@
 {{- else if eq .Action "category.restored"}} {{t "brought back the category {name}" "name" .Detail.name}}
 {{- else if eq .Action "split.added"}} {{t "put {amount} of {description} ({date}, {account}) into it" "amount" (money (amount .Detail.amount) .Detail.currency) "description" .Detail.description "date" .Detail.date "account" .Detail.account}}
 {{- else if eq .Action "split.removed"}} {{t "took {description} ({date}, {account}) out of it" "description" .Detail.description "date" .Detail.date "account" .Detail.account}}
-{{- else if eq .Action "budget.set"}} {{template "budget-line" .Detail}}
-{{- else if eq .Action "budget.removed"}} {{if .Detail.category}}{{t "took {category} out of the budget" "category" .Detail.category}}{{else if eq .Detail.kind "income"}}{{t "took the total income out of the budget"}}{{else}}{{t "took the total expenses out of the budget"}}{{end}}
+{{- else if eq .Action "budget.set"}} {{template "budget-line" .Detail}}{{with .Detail.year}} ({{.}}){{end}}
+{{- else if eq .Action "budget.removed"}} {{if .Detail.category}}{{t "took {category} out of the budget" "category" .Detail.category}}{{else if eq .Detail.kind "income"}}{{t "took the total income out of the budget"}}{{else}}{{t "took the total expenses out of the budget"}}{{end}}{{with .Detail.year}} ({{.}}){{end}}
+{{- else if eq .Action "budget.copied"}} {{t "copied the budget for {from} into {year}" "from" .Detail.from "year" .Detail.year}}
+{{- else if eq .Action "org.fiscal"}} {{template "fiscal-line" .Detail.month}}
 {{- else if eq .Action "receipt.added"}} {{t "added {n} receipts" "n" .Detail.count}}
 {{- else if eq .Action "receipt.removed"}} {{t "removed the receipt {what}" "what" .Detail.what}}
 {{- else if eq .Action "receipt.restored"}} {{t "brought back the receipt {what}" "what" .Detail.what}}
@@ -112,3 +114,19 @@
 {{- else if .category}}{{t "budgeted {amount} for {category}" "category" .category "amount" $amt}}
 {{- else if eq .kind "income"}}{{t "budgeted {amount} of income in all" "amount" $amt}}
 {{- else}}{{t "budgeted {amount} of expenses in all" "amount" $amt}}{{end}}{{end}}
+
+{{/* fiscal-line is the budget year moved (tenancybus.FiscalSet), a whole
+     sentence a month, since a month's name cannot be put into another. */}}
+{{define "fiscal-line"}}
+{{- if eq . "1"}}{{t "made the budget year start in January"}}
+{{- else if eq . "2"}}{{t "made the budget year start in February"}}
+{{- else if eq . "3"}}{{t "made the budget year start in March"}}
+{{- else if eq . "4"}}{{t "made the budget year start in April"}}
+{{- else if eq . "5"}}{{t "made the budget year start in May"}}
+{{- else if eq . "6"}}{{t "made the budget year start in June"}}
+{{- else if eq . "7"}}{{t "made the budget year start in July"}}
+{{- else if eq . "8"}}{{t "made the budget year start in August"}}
+{{- else if eq . "9"}}{{t "made the budget year start in September"}}
+{{- else if eq . "10"}}{{t "made the budget year start in October"}}
+{{- else if eq . "11"}}{{t "made the budget year start in November"}}
+{{- else}}{{t "made the budget year start in December"}}{{end}}{{end}}
