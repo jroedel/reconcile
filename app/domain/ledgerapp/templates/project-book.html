@@ -2,6 +2,7 @@
 {{define "content"}}{{$v := .Data}}{{$b := $v.Book}}
 <p class="crumbs"><a href="{{$v.Path}}">{{$b.Project.Name}}</a></p>
 <h1>{{t "Income and expenses"}}</h1>
+<p><a href="{{$v.Path}}/budget">{{t "The budget, beside what happened"}}</a></p>
 {{if and $b.Lines $v.CanExport}}<p><a class="button quiet" href="{{$v.Path}}/export">{{t "Download for the accountant"}}</a> <span class="hint">{{t "A zip of every part in the project as a spreadsheet, with the receipts."}}</span></p>{{end}}
 
 {{if $b.Lines}}

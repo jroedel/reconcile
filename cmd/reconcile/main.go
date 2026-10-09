@@ -16,6 +16,8 @@ import (
 
 	"github.com/jroedel/reconcile/app/sdk/muxer"
 	"github.com/jroedel/reconcile/app/sdk/page"
+	"github.com/jroedel/reconcile/business/domain/budget/budgetbus"
+	"github.com/jroedel/reconcile/business/domain/budget/stores/budgetdb"
 	"github.com/jroedel/reconcile/business/domain/category/categorybus"
 	"github.com/jroedel/reconcile/business/domain/category/stores/categorydb"
 	"github.com/jroedel/reconcile/business/domain/event/eventbus"
@@ -149,6 +151,7 @@ func run() error {
 	rules := rulebus.NewBusiness(log, ruledb.NewStore(db), tenancy, categories)
 	ledger := ledgerbus.NewBusiness(log, ledgerdb.NewStore(db), tenancy, files, categories, rules)
 	receipts := receiptbus.NewBusiness(log, receiptdb.NewStore(db), tenancy, ledger, files)
+	budgets := budgetbus.NewBusiness(log, budgetdb.NewStore(db), tenancy, ledger, categories)
 	export := exportbus.NewBusiness(log, tenancy, ledger, receipts, categories, files)
 
 	go prune(ctx, log, users)
@@ -165,6 +168,7 @@ func run() error {
 		Ledger:     ledger,
 		Categories: categories,
 		Rules:      rules,
+		Budgets:    budgets,
 		Receipts:   receipts,
 		Export:     export,
 		BaseURL:    cfg.Server.BaseURL,
@@ -203,6 +207,7 @@ func prepare(ctx context.Context, db *sql.DB) error {
 		{"the uploaded files", filedb.Init},
 		{"the category lists", categorydb.Init},
 		{"the sorting rules", ruledb.Init},
+		{"the budgets", budgetdb.Init},
 		{"the statements and transactions", ledgerdb.Init},
 		{"the receipts", receiptdb.Init},
 	} {
@@ -231,6 +236,7 @@ func expectedSchema() sqldb.Expected {
 		filedb.Expected,
 		categorydb.Expected,
 		ruledb.Expected,
+		budgetdb.Expected,
 		ledgerdb.Expected,
 		receiptdb.Expected,
 	} {

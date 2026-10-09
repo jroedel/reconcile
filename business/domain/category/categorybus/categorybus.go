@@ -205,6 +205,13 @@ func (b *Business) ForAccount(ctx context.Context, a tenancybus.Account) ([]Cate
 	return b.store.Of(ctx, OwnerOf(a))
 }
 
+// Of is an owner's list, asking nobody's permission: for a domain that has
+// asked already, such as budgets, whose owners may hold a role on a project
+// and none on the organization whose list its money is sorted with.
+func (b *Business) Of(ctx context.Context, owner types.Scope) ([]Category, error) {
+	return b.store.Of(ctx, owner)
+}
+
 // Create adds a category of a kind to a list. A new one always has a kind:
 // only those made before kinds may lack one.
 func (b *Business) Create(ctx context.Context, now time.Time, actor types.ID, owner types.Scope, name string, kind Kind) (Category, error) {

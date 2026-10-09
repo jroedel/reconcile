@@ -91,6 +91,8 @@
 {{- else if eq .Action "category.restored"}} {{t "brought back the category {name}" "name" .Detail.name}}
 {{- else if eq .Action "split.added"}} {{t "put {amount} of {description} ({date}, {account}) into it" "amount" (money (amount .Detail.amount) .Detail.currency) "description" .Detail.description "date" .Detail.date "account" .Detail.account}}
 {{- else if eq .Action "split.removed"}} {{t "took {description} ({date}, {account}) out of it" "description" .Detail.description "date" .Detail.date "account" .Detail.account}}
+{{- else if eq .Action "budget.set"}} {{template "budget-line" .Detail}}
+{{- else if eq .Action "budget.removed"}} {{if .Detail.category}}{{t "took {category} out of the budget" "category" .Detail.category}}{{else if eq .Detail.kind "income"}}{{t "took the total income out of the budget"}}{{else}}{{t "took the total expenses out of the budget"}}{{end}}
 {{- else if eq .Action "receipt.added"}} {{t "added {n} receipts" "n" .Detail.count}}
 {{- else if eq .Action "receipt.removed"}} {{t "removed the receipt {what}" "what" .Detail.what}}
 {{- else if eq .Action "receipt.restored"}} {{t "brought back the receipt {what}" "what" .Detail.what}}
@@ -100,3 +102,13 @@
 </section>
 {{end}}
 {{end}}
+
+{{/* budget-line is a budget line set or changed (budgetbus.Set). */}}
+{{define "budget-line"}}{{$amt := money (amount .amount) .currency}}
+{{- if .before}}{{$was := money (amount .before) .before_currency}}
+{{- if .category}}{{t "changed the budget for {category} from {before} to {amount}" "category" .category "before" $was "amount" $amt}}
+{{- else if eq .kind "income"}}{{t "changed the budget's total income from {before} to {amount}" "before" $was "amount" $amt}}
+{{- else}}{{t "changed the budget's total expenses from {before} to {amount}" "before" $was "amount" $amt}}{{end}}
+{{- else if .category}}{{t "budgeted {amount} for {category}" "category" .category "amount" $amt}}
+{{- else if eq .kind "income"}}{{t "budgeted {amount} of income in all" "amount" $amt}}
+{{- else}}{{t "budgeted {amount} of expenses in all" "amount" $amt}}{{end}}{{end}}
