@@ -1,0 +1,52 @@
+{{define "title"}}{{t "Sort {month}" "month" .Data.Sort.Month}} · {{.Data.Sort.Account.Name}}{{end}}
+{{define "content"}}{{$v := .Data}}{{$m := $v.Sort}}{{$cur := $m.Account.Currency}}
+<p class="crumbs"><a href="{{$v.Path}}">{{$m.Account.Name}}</a> · <a href="{{$v.Path}}/transactions?month={{$m.Month}}">{{$m.Month}}</a></p>
+<h1>{{t "Sort {month}" "month" $m.Month}}</h1>
+{{if eq $v.Done "sorted"}}<p class="notice ok" role="status">{{t "Saved {n}." "n" $v.Saved}}</p>
+{{else if $v.Saved}}<p class="notice ok" role="status">{{t "Saved {n}. The rest are below." "n" $v.Saved}}</p>{{end}}
+{{if $v.NoRule}}<p class="notice" role="alert">{{t "These are saved, but no rule was made for them, because the text to look for was too short or too long. Make it on the rules page:"}} {{range $i, $d := $v.NoRule}}{{if $i}} · {{end}}{{$d}}{{end}} <a href="{{$v.Path}}/rules">{{t "Sorting rules"}}</a></p>{{end}}
+
+{{if $v.Rows}}
+<p class="hint">{{t "Every transaction this month that is not sorted yet. A choice made for you is marked; check it, change it, or empty it. Save sorts every row with a category or a project, and leaves the rest."}}</p>
+<form method="post" action="{{$v.Path}}/sort?month={{$m.Month}}">
+{{range $i, $row := $v.Rows}}{{$t := $row.Transaction}}
+<fieldset class="card part" id="t-{{$t.ID}}">
+  <legend>{{$t.PostedOn}} · <a href="/transactions/{{$t.ID}}">{{if $t.Description}}{{$t.Description}}{{else}}{{t "(no description)"}}{{end}}</a> · <span class="money {{if lt $t.Amount 0}}out{{else}}in{{end}}">{{money $t.Amount $cur}}</span></legend>
+  <input type="hidden" name="tx-{{$i}}" value="{{$t.ID}}">
+  {{with $row.Problem}}<p class="notice" role="alert">{{template "row-problem" .}}</p>{{end}}
+  {{if $row.Guess.Made}}<p class="hint"><span class="badge">{{if eq $row.Guess.By "rule"}}{{t "by rule"}}{{else}}{{t "suggested"}}{{end}}</span> {{template "guess" (dict "Guess" $row.Guess "Category" ($m.CategoryName $row.Guess.CategoryID))}}</p>{{end}}
+  <div class="field">
+    <label for="category-{{$i}}">{{t "Category"}}</label>
+    <select id="category-{{$i}}" name="category-{{$i}}">
+      <option value="">{{t "(not sorted yet)"}}</option>
+      {{range $m.Grouped}}<optgroup label="{{template "kind" .Kind}}">
+      {{range .Categories}}<option value="{{.ID}}"{{if eq .ID.String $row.CategoryID}} selected{{end}}>{{.Name}}</option>{{end}}
+      </optgroup>{{end}}
+    </select>
+  </div>
+  {{if or $m.Projects (not $row.Elsewhere.ID.Zero)}}
+  <div class="field">
+    <label for="project-{{$i}}">{{t "Project"}}</label>
+    <select id="project-{{$i}}" name="project-{{$i}}">
+      <option value="">{{t "(none)"}}</option>
+      {{range $m.Projects}}<option value="{{.ID}}"{{if eq .ID.String $row.ProjectID}} selected{{end}}>{{.Name}}</option>{{end}}
+      {{with $row.Elsewhere}}{{if not .ID.Zero}}<option value="{{.ID}}"{{if eq .ID.String $row.ProjectID}} selected{{end}}>{{if .Name}}{{.Name}}{{else}}{{t "a project you have no role on"}}{{end}}</option>{{end}}{{end}}
+    </select>
+  </div>
+  {{end}}
+  <label class="choice"><input type="checkbox" name="always-{{$i}}" value="1"{{if $row.Always}} checked{{end}}> {{t "Always sort transactions like this the same way"}}</label>
+  <div class="field">
+    <label for="match-{{$i}}">{{t "Transactions whose description has"}}</label>
+    <input id="match-{{$i}}" name="match-{{$i}}" type="text" maxlength="100" value="{{$row.Match}}">
+  </div>
+</fieldset>
+{{end}}
+<div class="actions"><button type="submit">{{t "Save"}}</button></div>
+{{if $m.More}}<p class="hint">{{t "{n} more after these. Save these first, and the next ones are shown." "n" $m.More}}</p>{{end}}
+</form>
+{{if not $m.Categories}}<p class="hint">{{t "There are no categories to choose from yet. A bookkeeper adds them to the list."}}</p>{{end}}
+{{else}}
+<p class="hint">{{t "Nothing in this month is waiting to be sorted."}}</p>
+<p><a href="{{$v.Path}}/transactions?month={{$m.Month}}">{{t "Back to the month"}}</a></p>
+{{end}}
+{{end}}

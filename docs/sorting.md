@@ -88,7 +88,11 @@ A new domain, `rule` (`business/domain/rule/rulebus`, `stores/ruledb`).
 - **Suggestions:** learned per account from the transactions a person sorted
   (a split with a category and no `rule_id`), the eumaeus way: the same
   payee first, then a nearly-same name. At least 2 examples agreeing at
-  least 80%. Category only, and so its kind: a payee always sorted as
+  least 80% (weighed by how alike the names are, for a nearly-same one).
+  Only one-part transactions are evidence: a split one's description says
+  nothing about which part is which. Payees are grouped by `rulebus.Payee`,
+  which passes over a card network's words in front ("POS", "SQ *").
+  Category only, and so its kind: a payee always sorted as
   pass-through is suggested as pass-through. Shown, with the sentence saying why ("3 of the
   last 3 SHELL OIL charges were Fuel"), never stored.
 - **Who:** a rule is read and written by a bookkeeper or owner of the
@@ -107,8 +111,11 @@ A new domain, `rule` (`business/domain/rule/rulebus`, `stores/ruledb`).
   date, description and amount, a category choice grouped by kind and a
   project choice (preselected by rule or suggestion, marked as such), and
   the "always" box. One **Save** at the foot sorts every row with a category or project
-  chosen and leaves the rest. Linked from "{n} not sorted yet" on the month
-  list. Works without JavaScript; 100 rows a page.
+  chosen and leaves the rest. Linked beside "{n} not sorted yet" on the month
+  list. Works without JavaScript. The first 100 rows are shown; the rest
+  come up as those are saved, so there is no paging to lose a choice in. A
+  row whose choice will not do is shown again with why, and the others are
+  saved regardless.
 - **`/accounts/{id}/rules`:** each rule with what it sets, how many parts
   it sorted, and its problem if it has one (a category archived, a project
   ended, a disagreement); change it or remove it; make one; "Sort what is

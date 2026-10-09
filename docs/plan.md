@@ -231,7 +231,7 @@ Owners, bookkeepers and accountants can download it (the Export permission). It 
    - **Kinds of money** (above), before the sorting rules, which build on them: `categories.kind`; the category list grouped by kind and the split editor's choice too; the project book's income, expenses and net, with transfers and pass-through on lines of their own; an operations line beside the month list's cash; the balances that should come back to zero (each pass-through category, an organization's transfers); a "Kind" column in the accountant's package
    - PDF statements
    - Budgets per project and category
-   - Categorization rules and suggestions (eumaeus `categorizebus`; planned in `docs/sorting.md`). Rules first (`rulebus`, `sort_rules`, applied at import and from the rules page); then suggestions and "Sort this month"
+   - Categorization rules and suggestions (eumaeus `categorizebus`; planned in `docs/sorting.md`). Rules (`rulebus`, `sort_rules`, applied at import and from the rules page), then suggestions and "Sort this month" (`/accounts/{id}/sort`)
    - Thumbnails (stewards `imaging`)
 
 ## Open items (do not block steps 1–8)

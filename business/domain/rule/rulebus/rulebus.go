@@ -360,26 +360,42 @@ func (b *Business) Remove(ctx context.Context, now time.Time, actor, id types.ID
 	return r, b.store.Delete(ctx, id, eventbus.New(now, actor, types.AccountScope(r.AccountID), Removed, detail(r)))
 }
 
-// Payee is a description's likely payee, for prefilling the text of a rule
-// made from a transaction: the words before the first that is mostly
-// digits or a reference -- a store number, a date, a card's last four --
-// which would make the rule meet only this one charge.
+// Payee is a description's likely payee: the words before the first that
+// is mostly digits or a reference -- a store number, a date, a card's last
+// four -- which would make a rule meet only this one charge. It prefills
+// the text of a rule made from a transaction, and is what suggestions
+// group earlier transactions by (suggest.go).
+//
+// Before the payee, the words a card network or a bank puts in front of
+// it are passed over, and so is a leading reference: "POS 0712 CORNER
+// GROCERY" and "SQ *COFFEE CART" are the grocery and the coffee cart, not
+// "POS" and "SQ", which would group every card charge as one payee.
 func Payee(description string) string {
 	var words []string
 
 	for w := range strings.FieldsSeq(description) {
+		bare := strings.TrimLeft(w, "*")
+
 		digits := 0
-		for _, c := range w {
+		for _, c := range bare {
 			if c >= '0' && c <= '9' {
 				digits++
 			}
 		}
 
-		if digits*2 >= utf8.RuneCountInString(w) || strings.ContainsAny(w, "#*") {
-			break
+		reference := bare == "" || digits*2 >= utf8.RuneCountInString(bare) || strings.ContainsAny(bare, "#*")
+
+		switch {
+		case len(words) == 0 && (reference || prefixes[strings.ToLower(bare)]):
+			continue
+		case reference:
+		default:
+			words = append(words, bare)
+
+			continue
 		}
 
-		words = append(words, w)
+		break
 	}
 
 	p := strings.Join(words, " ")
@@ -394,4 +410,11 @@ func Payee(description string) string {
 	}
 
 	return p
+}
+
+// prefixes are the words a card network or a bank puts before a payee.
+// Kept short: a word wrongly here is a payee's first word lost.
+var prefixes = map[string]bool{
+	"pos": true, "debit": true, "checkcard": true, "purchase": true, "card": true,
+	"sq": true, "tst": true, "ach": true, "recurring": true,
 }
