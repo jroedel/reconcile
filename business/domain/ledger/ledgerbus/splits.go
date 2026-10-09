@@ -85,6 +85,9 @@ type Editor struct {
 // CanSort reports whether the parts may be changed by this reader now.
 func (e Editor) CanSort() bool { return e.Access.Can(tenancybus.Bookkeep) && !e.Lock.Made() }
 
+// Grouped is the category choices a kind at a time.
+func (e Editor) Grouped() []categorybus.Group { return categorybus.Grouped(e.Categories) }
+
 // CategoryName and ProjectName name a part's choices for a page.
 func (e Editor) CategoryName(id types.ID) string {
 	for _, c := range e.Categories {
@@ -355,18 +358,23 @@ type ProjectLine struct {
 	AccountName  string
 	Currency     string
 	CategoryName string
+	CategoryKind categorybus.Kind
 }
 
-// Total is money in and out in one currency, under one heading: a
-// category's name, a month, or nothing for the whole.
+// Total is money in one currency, under one heading -- a category's name,
+// a month, or nothing for the whole -- as cash (money in and out) and as
+// operations (by kind).
 type Total struct {
 	Key      string
 	Currency string
 	In, Out  money.Amount
+
+	Operations
 }
 
-// Net is what is left: whether it came out even.
-func (t Total) Net() money.Amount { return t.In + t.Out }
+// Net is what the operations did: whether the project came out even.
+// Transfers and pass-through are not in it, however much moved.
+func (t Total) Net() money.Amount { return t.Operations.Net() }
 
 // Book is a project's money, from every account it draws on.
 //
@@ -429,6 +437,13 @@ func totals(lines []ProjectLine, key func(ProjectLine) string) []Total {
 		} else {
 			out[i].Out += l.Split.Amount
 		}
+
+		kind := l.CategoryKind
+		if l.Split.CategoryID.Zero() {
+			kind = categorybus.Unsaid
+		}
+
+		out[i].Add(kind, l.Split.Amount)
 	}
 
 	slices.SortStableFunc(out, func(a, b Total) int {

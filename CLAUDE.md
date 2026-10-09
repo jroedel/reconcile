@@ -137,7 +137,8 @@ do what on each), `event` (the history, written by the domain that made
 the change, in its transaction), `file` (what people upload, bytes kept once
 per content outside anything Apache serves), `importing` (reading a bank's
 CSV or OFX into records, knowing nothing of accounts), `category` (each
-organization's list, or a personal account's), `ledger` (statements,
+organization's list, or a personal account's, each category one of the four
+kinds of money), `ledger` (statements,
 transactions and their splits: checking, deduplicating, storing, sorting,
 and a project's book; and reconciling, which locks a period), `receipt`
 (the photos and PDFs that justify a charge, waiting in an account's or

@@ -27,7 +27,7 @@ var _ categorybus.Storer = (*Store)(nil)
 
 // Expected is what CheckSchema verifies at startup and on every /healthz.
 var Expected = sqldb.Expected{
-	"categories": {"id", "org_id", "account_id", "name", "created_by", "created_at", "archived_at"},
+	"categories": {"id", "org_id", "account_id", "name", "created_by", "created_at", "archived_at", "kind"},
 }
 
 // Init creates the table. After tenancydb, which it references.
@@ -57,7 +57,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS categories_name ON categories (coalesce(org_id
 		return fmt.Errorf("creating the categories table: %w", err)
 	}
 
-	return nil
+	// The kind of money (docs/plan.md, "Kinds of money"), a later column
+	// beside the CREATE. '' is a category made before kinds, whose owner has
+	// not said yet; nothing guesses one here. No CHECK listing the kinds:
+	// a fifth would then be a table rebuild on every database (CLAUDE.md,
+	// "When there is a database"), and categorybus writes only the four.
+	return sqldb.AddColumn(ctx, db, "categories", "kind", "TEXT NOT NULL DEFAULT ''")
 }
 
 func owner(s types.Scope) (org, account any) {
@@ -74,14 +79,14 @@ func (s *Store) Create(ctx context.Context, c categorybus.Category, ev eventbus.
 
 	return s.inTx(ctx, ev, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `
-INSERT INTO categories (id, org_id, account_id, name, created_by, created_at, archived_at) VALUES (?, ?, ?, ?, ?, ?, NULL)`,
-			c.ID.String(), org, account, c.Name, c.CreatedBy.String(), c.CreatedAt.UnixMilli())
+INSERT INTO categories (id, org_id, account_id, name, kind, created_by, created_at, archived_at) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)`,
+			c.ID.String(), org, account, c.Name, string(c.Kind), c.CreatedBy.String(), c.CreatedAt.UnixMilli())
 
 		return err
 	})
 }
 
-// Update writes a category's name and archived time.
+// Update writes a category's name, kind and archived time.
 func (s *Store) Update(ctx context.Context, c categorybus.Category, ev eventbus.Event) error {
 	var archived any
 	if c.Archived() {
@@ -89,7 +94,7 @@ func (s *Store) Update(ctx context.Context, c categorybus.Category, ev eventbus.
 	}
 
 	return s.inTx(ctx, ev, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `UPDATE categories SET name = ?, archived_at = ? WHERE id = ?`, c.Name, archived, c.ID.String())
+		_, err := tx.ExecContext(ctx, `UPDATE categories SET name = ?, kind = ?, archived_at = ? WHERE id = ?`, c.Name, string(c.Kind), archived, c.ID.String())
 
 		return err
 	})
@@ -121,7 +126,7 @@ func (s *Store) inTx(ctx context.Context, ev eventbus.Event, fn func(tx *sql.Tx)
 	return nil
 }
 
-const columns = `id, org_id, account_id, name, created_by, created_at, archived_at`
+const columns = `id, org_id, account_id, name, kind, created_by, created_at, archived_at`
 
 // ByID finds one.
 func (s *Store) ByID(ctx context.Context, id types.ID) (categorybus.Category, error) {
@@ -168,13 +173,13 @@ type scanner interface {
 func scan(row scanner) (categorybus.Category, error) {
 	var (
 		c            categorybus.Category
-		id, by       string
+		id, by, kind string
 		org, account sql.NullString
 		at           int64
 		archived     sql.NullInt64
 	)
 
-	if err := row.Scan(&id, &org, &account, &c.Name, &by, &at, &archived); err != nil {
+	if err := row.Scan(&id, &org, &account, &c.Name, &kind, &by, &at, &archived); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return c, err
 		}
@@ -198,6 +203,7 @@ func scan(row scanner) (categorybus.Category, error) {
 		return c, fmt.Errorf("a stored category is unreadable: %w", err)
 	}
 
+	c.Kind = categorybus.Kind(kind)
 	c.CreatedAt = time.UnixMilli(at).UTC()
 	if archived.Valid {
 		c.ArchivedAt = time.UnixMilli(archived.Int64).UTC()

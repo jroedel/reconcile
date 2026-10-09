@@ -1,5 +1,6 @@
 {{define "problem"}}{{if .}}<p class="notice" role="alert">
 {{- if eq . "name"}}{{t "Give the category a name, of at most {max} characters." "max" 60}}
+{{- else if eq . "kind"}}{{t "Choose what kind of money it is: income, an expense, a transfer or pass-through."}}
 {{- else if eq . "duplicate"}}{{t "The list already has a category with that name. If it is archived, bring it back instead."}}
 {{- else}}{{t "Something went wrong at our end. Please try again in a few minutes."}}
 {{- end}}</p>{{end}}{{end}}
@@ -9,4 +10,20 @@
 {{- else if eq . "renamed"}}{{t "Renamed, everywhere it is used."}}
 {{- else if eq . "archived"}}{{t "Archived. It is off the choices, and stays on the transactions that have it."}}
 {{- else if eq . "restored"}}{{t "Brought back."}}
+{{- else if eq . "kind"}}{{t "Saved. Every part in it now counts as that kind, earlier ones included."}}
 {{- end}}</p>{{end}}{{end}}
+
+{{/* kind is a kind of money's name, as a heading or a choice. */}}
+{{define "kind"}}
+{{- if eq . "expense"}}{{t "Expenses"}}
+{{- else if eq . "income"}}{{t "Income"}}
+{{- else if eq . "transfer"}}{{t "Transfers between our accounts"}}
+{{- else if eq . "passthrough"}}{{t "Pass-through"}}
+{{- else}}{{t "Kind not said yet"}}{{end}}{{end}}
+
+{{/* kind-help says what a kind is for, beside its heading. */}}
+{{define "kind-help"}}
+{{- if eq . "expense"}}{{t "Money spent. A refund is a negative expense, not income."}}
+{{- else if eq . "income"}}{{t "Money that came to you: offerings, donations, fees."}}
+{{- else if eq . "transfer"}}{{t "Money moving between your own accounts, such as paying the card from checking. Neither income nor an expense; in and out should come to the same."}}
+{{- else if eq . "passthrough"}}{{t "Money that went through but was never yours: a personal charge and its repayment, a collection forwarded on. Neither income nor an expense; it should come back to zero."}}{{end}}{{end}}

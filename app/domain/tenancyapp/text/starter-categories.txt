@@ -1,0 +1,4 @@
+{{/* The categories a new list starts with, one to a line: first the
+     transfer category, then the pass-through one (categorybus.Start). */ -}}
+{{t "Transfers between our accounts"}}
+{{t "Personal, repaid"}}

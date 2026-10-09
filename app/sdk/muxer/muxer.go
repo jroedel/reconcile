@@ -140,6 +140,8 @@ func New(cfg Config) (http.Handler, error) {
 			Render:  cfg.Render,
 			Mail:    cfg.Mail,
 			BaseURL: cfg.BaseURL,
+
+			Categories: cfg.Categories,
 		}, guard)
 
 		ledgerapp.Routes(mux, ledgerapp.Config{
@@ -174,6 +176,7 @@ func New(cfg Config) (http.Handler, error) {
 			Categories: cfg.Categories,
 			Tenancy:    cfg.Tenancy,
 			Render:     cfg.Render,
+			Ledger:     cfg.Ledger,
 		}, guard)
 
 		adminapp.Routes(mux, adminapp.Config{

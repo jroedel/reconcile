@@ -137,6 +137,9 @@ type Month struct {
 	// Unsorted is how many of its transactions have a part with no
 	// category.
 	Unsorted int
+
+	// Operations is the month's parts by kind, beside the cash.
+	Operations Operations
 }
 
 // Net is what the month did to the account.

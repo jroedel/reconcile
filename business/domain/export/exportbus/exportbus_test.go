@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jroedel/reconcile/business/domain/category/categorybus"
 	"github.com/jroedel/reconcile/business/domain/file/filebus"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
@@ -87,7 +88,7 @@ func TestWritingAPackage(t *testing.T) {
 	p := Package{
 		Rows: []Row{{
 			PostedOn: day("2026-07-03"), Account: "Parish checking", Description: "=HYPERLINK(\"http://x.invalid\")",
-			Amount: -3000, Total: -3399, Currency: "USD", Category: "Groceries", Project: "Café", Memo: "-light bulbs",
+			Amount: -3000, Total: -3399, Currency: "USD", Category: "Groceries", Kind: categorybus.Expense, Project: "Café", Memo: "-light bulbs",
 			Receipts: []string{"receipts/a_1.jpg"}, Statement: "july.csv", Reconciled: day("2026-08-03"),
 		}},
 		Entries: []Entry{{Path: "receipts/a_1.jpg", File: filebus.File{ID: photo}}},
@@ -99,7 +100,7 @@ func TestWritingAPackage(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := b.Write(t.Context(), time.Date(2026, 8, 3, 9, 0, 0, 0, time.UTC), &out, p, header); err != nil {
+	if err := b.Write(t.Context(), time.Date(2026, 8, 3, 9, 0, 0, 0, time.UTC), &out, p, header, map[categorybus.Kind]string{categorybus.Expense: "Spent"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -138,7 +139,7 @@ func TestWritingAPackage(t *testing.T) {
 	}
 
 	want := []string{"2026-07-03", "Parish checking", "'=HYPERLINK(\"http://x.invalid\")", "-30.00", "USD", "-33.99",
-		"Groceries", "Café", "'-light bulbs", "receipts/a_1.jpg", "july.csv", "2026-08-03"}
+		"Groceries", "Spent", "Café", "'-light bulbs", "receipts/a_1.jpg", "july.csv", "2026-08-03"}
 
 	if len(rows) != 2 || strings.Join(rows[1], "|") != strings.Join(want, "|") {
 		t.Errorf("the row:\n got %q\nwant %q", rows[1], want)
@@ -148,7 +149,7 @@ func TestWritingAPackage(t *testing.T) {
 		t.Error("the photo changed on the way into the zip")
 	}
 
-	if err := b.Write(t.Context(), time.Now(), io.Discard, p, header[:3]); err == nil {
+	if err := b.Write(t.Context(), time.Now(), io.Discard, p, header[:3], nil); err == nil {
 		t.Error("a short header was written")
 	}
 }

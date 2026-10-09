@@ -66,3 +66,12 @@
 {{- else if eq . "partial"}}<span class="badge warn">{{t "Some days missing"}}</span>
 {{- else if eq . "missing"}}<span class="badge warn">{{t "No statement yet"}}</span>
 {{- else}}<span class="badge">{{t "Still going"}}</span>{{end}}{{end}}
+
+{{/* kind is a kind of money's name (categorybus.Kind), as a heading or a
+     group of choices. The same words as the category list's. */}}
+{{define "kind"}}
+{{- if eq . "expense"}}{{t "Expenses"}}
+{{- else if eq . "income"}}{{t "Income"}}
+{{- else if eq . "transfer"}}{{t "Transfers between our accounts"}}
+{{- else if eq . "passthrough"}}{{t "Pass-through"}}
+{{- else}}{{t "Kind not said yet"}}{{end}}{{end}}

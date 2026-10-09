@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jroedel/reconcile/business/domain/category/categorybus"
 	"github.com/jroedel/reconcile/business/domain/event/eventbus"
 	"github.com/jroedel/reconcile/business/domain/event/stores/eventdb"
 	"github.com/jroedel/reconcile/business/domain/importing/sources/csvsource"
@@ -535,6 +536,96 @@ GROUP BY 1 ORDER BY 1 DESC`, account.String())
 		out = append(out, m)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("reading the months: %w", err)
+	}
+
+	return out, s.monthKinds(ctx, account, out)
+}
+
+// monthKinds adds each month's parts up by their category's kind. A
+// second query rather than more columns on the first: that one counts
+// transactions, this one sums parts, and joining parts into it would count
+// a transaction once for each of its parts.
+func (s *Store) monthKinds(ctx context.Context, account types.ID, months []ledgerbus.Month) error {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT substr(t.posted_on, 1, 7), coalesce(c.kind, ''), sum(s.amount)
+FROM splits s
+JOIN transactions t ON t.id = s.transaction_id
+LEFT JOIN categories c ON c.id = s.category_id
+WHERE t.account_id = ?
+GROUP BY 1, 2`, account.String())
+	if err != nil {
+		return fmt.Errorf("adding the months up by kind: %w", err)
+	}
+	defer rows.Close()
+
+	at := map[string]int{}
+	for i, m := range months {
+		at[m.Month] = i
+	}
+
+	for rows.Next() {
+		var (
+			month, kind string
+			sum         int64
+		)
+
+		if err := rows.Scan(&month, &kind, &sum); err != nil {
+			return fmt.Errorf("adding the months up by kind: %w", err)
+		}
+
+		if i, ok := at[month]; ok {
+			months[i].Operations.Add(categorybus.Kind(kind), money.Amount(sum))
+		}
+	}
+
+	return rows.Err()
+}
+
+// Settling is the sums of an owner's transfer and pass-through categories,
+// across every account whose parts use them.
+func (s *Store) Settling(ctx context.Context, owner types.Scope) ([]ledgerbus.SettlingRow, error) {
+	column := "c.account_id"
+	if owner.Kind == types.ScopeOrg {
+		column = "c.org_id"
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+SELECT c.id, c.name, c.kind, a.currency, substr(t.posted_on, 1, 7), sum(s.amount)
+FROM splits s
+JOIN categories c ON c.id = s.category_id
+JOIN transactions t ON t.id = s.transaction_id
+JOIN accounts a ON a.id = t.account_id
+WHERE `+column+` = ? AND c.kind IN ('transfer', 'passthrough')
+GROUP BY c.id, a.currency, 5
+ORDER BY 5`, owner.ID.String())
+	if err != nil {
+		return nil, fmt.Errorf("reading what should come back to zero: %w", err)
+	}
+	defer rows.Close()
+
+	var out []ledgerbus.SettlingRow
+
+	for rows.Next() {
+		var (
+			r        ledgerbus.SettlingRow
+			id, kind string
+			sum      int64
+		)
+
+		if err := rows.Scan(&id, &r.Category.Name, &kind, &r.Currency, &r.Month, &sum); err != nil {
+			return nil, fmt.Errorf("reading what should come back to zero: %w", err)
+		}
+
+		if r.Category.ID, err = types.ParseID(id); err != nil {
+			return nil, fmt.Errorf("a category is unreadable: %w", err)
+		}
+
+		r.Category.Kind, r.Category.Owner, r.Sum = categorybus.Kind(kind), owner, money.Amount(sum)
+		out = append(out, r)
+	}
+
 	return out, rows.Err()
 }
 
@@ -782,7 +873,7 @@ func (s *Store) ReplaceSplits(ctx context.Context, transactionID types.ID, split
 func (s *Store) ProjectLines(ctx context.Context, projectID types.ID) ([]ledgerbus.ProjectLine, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT s.id, s.transaction_id, s.position, s.amount, s.category_id, s.project_id, s.memo,
-       t.posted_on, t.description, a.id, a.name, a.currency, coalesce(c.name, '')
+       t.posted_on, t.description, a.id, a.name, a.currency, coalesce(c.name, ''), coalesce(c.kind, '')
 FROM splits s
 JOIN transactions t ON t.id = s.transaction_id
 JOIN accounts a ON a.id = t.account_id
@@ -800,14 +891,16 @@ ORDER BY t.posted_on, t.rowid, s.position`, projectID.String())
 		var (
 			l               ledgerbus.ProjectLine
 			posted, account string
+			kind            string
 		)
 
-		l.Split, err = scanSplit(rows, &posted, &l.Description, &account, &l.AccountName, &l.Currency, &l.CategoryName)
+		l.Split, err = scanSplit(rows, &posted, &l.Description, &account, &l.AccountName, &l.Currency, &l.CategoryName, &kind)
 		if err != nil {
 			return nil, err
 		}
 
 		var e1, e2 error
+		l.CategoryKind = categorybus.Kind(kind)
 		l.PostedOn, e1 = types.ParseDate(posted)
 		l.AccountID, e2 = types.ParseID(account)
 

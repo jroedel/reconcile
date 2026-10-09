@@ -6,6 +6,7 @@
 package categoryapp
 
 import (
+	"context"
 	"embed"
 	"errors"
 	"io/fs"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/jroedel/reconcile/app/sdk/mid"
 	"github.com/jroedel/reconcile/business/domain/category/categorybus"
+	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/user/userbus"
 	"github.com/jroedel/reconcile/business/types"
@@ -41,8 +43,16 @@ type Config struct {
 	Tenancy    *tenancybus.Business
 	Render     Renderer
 
+	// Ledger adds up what should come back to zero. Nil shows nothing.
+	Ledger Settler
+
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
+}
+
+// Settler is the part of ledgerbus this app uses.
+type Settler interface {
+	Settling(ctx context.Context, actor types.ID, owner types.Scope) (ledgerbus.Settling, error)
 }
 
 type app struct {
@@ -65,6 +75,7 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	handle("POST /accounts/{id}/categories", a.create(types.ScopeAccount))
 	handle("POST /categories/{id}/rename", a.rename)
 	handle("POST /categories/{id}/archive", a.archive)
+	handle("POST /categories/{id}/kind", a.setKind)
 }
 
 func actor(w http.ResponseWriter, r *http.Request) (userbus.User, bool) {
@@ -101,7 +112,11 @@ func (a app) failed(w http.ResponseWriter, r *http.Request, err error) {
 
 // problem is the code a page words for an error with what was typed.
 func problem(err error) string {
-	if _, ok := errors.AsType[tenancybus.Invalid](err); ok {
+	if invalid, ok := errors.AsType[tenancybus.Invalid](err); ok {
+		if invalid.Field == "category-kind" {
+			return "kind"
+		}
+
 		return "name"
 	}
 
@@ -127,13 +142,30 @@ type listView struct {
 	OwnerPath   string
 	CanBookkeep bool
 
-	Categories []categorybus.Category
-	Archived   []categorybus.Category
+	// CanManage is the owner, who alone says what kind a category is.
+	CanManage bool
+
+	// Unsaid is the categories made before kinds, listed first so that
+	// the owner says what each is; Groups the rest, a kind at a time.
+	Unsaid   []categorybus.Category
+	Groups   []group
+	Archived []categorybus.Category
+	Kinds    []categorybus.Kind
+
+	// Settling is the balances that should come back to zero: each
+	// pass-through category's, and the transfers across the accounts.
+	Settling ledgerbus.Settling
 
 	// Typed into the add form, kept when it is refused.
 	Name    string
+	Kind    categorybus.Kind
 	Problem string
 	Done    string
+}
+
+type group struct {
+	Kind       categorybus.Kind
+	Categories []categorybus.Category
 }
 
 // owner is the scope a list path names, its name and its page. An account
@@ -200,12 +232,36 @@ func (a app) page(w http.ResponseWriter, r *http.Request, me userbus.User, owner
 	view.OwnerName = name
 	view.OwnerPath = strings.TrimSuffix(view.Path, "/categories")
 	view.CanBookkeep = access.Can(tenancybus.Bookkeep)
+	view.CanManage = access.Can(tenancybus.Manage)
+	view.Kinds = categorybus.Kinds
+
+	if view.Kind == "" {
+		view.Kind = categorybus.Expense
+	}
+
+	byKind := map[categorybus.Kind][]categorybus.Category{}
 
 	for _, c := range list {
-		if c.Archived() {
+		switch {
+		case c.Archived():
 			view.Archived = append(view.Archived, c)
-		} else {
-			view.Categories = append(view.Categories, c)
+		case c.Kind == categorybus.Unsaid:
+			view.Unsaid = append(view.Unsaid, c)
+		default:
+			byKind[c.Kind] = append(byKind[c.Kind], c)
+		}
+	}
+
+	for _, k := range categorybus.Kinds {
+		if len(byKind[k]) > 0 {
+			view.Groups = append(view.Groups, group{Kind: k, Categories: byKind[k]})
+		}
+	}
+
+	if a.cfg.Ledger != nil {
+		// Not worth failing the page for: its job is the list.
+		if view.Settling, err = a.cfg.Ledger.Settling(r.Context(), me.ID, owner); err != nil {
+			a.cfg.Log.Error("what should come back to zero could not be added up", "request_id", web.RequestIDFrom(r.Context()), "error", err)
 		}
 	}
 
@@ -230,11 +286,11 @@ func (a app) create(kind types.ScopeKind) http.HandlerFunc {
 			return
 		}
 
-		name := r.PostForm.Get("name")
+		name, kind := r.PostForm.Get("name"), categorybus.Kind(r.PostForm.Get("kind"))
 
-		_, err := a.cfg.Categories.Create(r.Context(), a.cfg.Now(), me.ID, owner, name)
+		_, err := a.cfg.Categories.Create(r.Context(), a.cfg.Now(), me.ID, owner, name, kind)
 		if code := problem(err); code != "" {
-			a.page(w, r, me, owner, ownerName, http.StatusUnprocessableEntity, listView{Name: name, Problem: code})
+			a.page(w, r, me, owner, ownerName, http.StatusUnprocessableEntity, listView{Name: name, Kind: kind, Problem: code})
 
 			return
 		}
@@ -269,6 +325,14 @@ func (a app) archive(w http.ResponseWriter, r *http.Request) {
 		}
 
 		return c, done, err
+	})
+}
+
+func (a app) setKind(w http.ResponseWriter, r *http.Request) {
+	a.change(w, r, func(me userbus.User, id types.ID) (categorybus.Category, string, error) {
+		c, err := a.cfg.Categories.SetKind(r.Context(), a.cfg.Now(), me.ID, id, categorybus.Kind(r.PostForm.Get("kind")))
+
+		return c, "kind", err
 	})
 }
 

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jroedel/reconcile/business/domain/category/categorybus"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/types"
@@ -44,7 +45,7 @@ func newEstate(w *world) estate {
 	e.org, e.account, e.project = org.ID, acct.ID, p.ID
 
 	for name, into := range map[string]*types.ID{"Utilities": &e.utilities, "Groceries": &e.groceries} {
-		c, err := w.cats.Create(ctx, now, e.owner, org.Scope(), name)
+		c, err := w.cats.Create(ctx, now, e.owner, org.Scope(), name, categorybus.Expense)
 		if err != nil {
 			w.t.Fatal(err)
 		}
@@ -175,8 +176,14 @@ func TestAProjectsBook(t *testing.T) {
 		t.Errorf("lines: %+v", book.Lines)
 	}
 
-	want := ledgerbus.Total{Currency: "USD", In: money.MustParse("1000.00"), Out: money.MustParse("-20.00")}
-	if len(book.Totals) != 1 || book.Totals[0] != want || book.Totals[0].Net() != money.MustParse("980.00") {
+	// The deposit has no category, so it is money in and not yet income:
+	// the project is short by the groceries until somebody says what the
+	// deposit was.
+	want := ledgerbus.Total{
+		Currency: "USD", In: money.MustParse("1000.00"), Out: money.MustParse("-20.00"),
+		Operations: ledgerbus.Operations{Expenses: money.MustParse("-20.00"), Unsorted: money.MustParse("1000.00")},
+	}
+	if len(book.Totals) != 1 || book.Totals[0] != want || book.Totals[0].Net() != money.MustParse("-20.00") {
 		t.Errorf("totals: %+v", book.Totals)
 	}
 

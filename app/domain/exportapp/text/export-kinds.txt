@@ -1,0 +1,6 @@
+{{/* The kind column's words in transactions.csv, one to a line, in
+     categorybus.Kinds' order: expense, income, transfer, pass-through. */ -}}
+{{t "Expense"}}
+{{t "Income"}}
+{{t "Transfer"}}
+{{t "Pass-through"}}

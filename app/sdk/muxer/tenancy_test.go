@@ -135,8 +135,8 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		{e.orgGrant + "/remove", nil},
 		{"/accounts", url.Values{"org": {orgID}, "name": {"Mine now"}, "kind": {"cash"}}},
 		{"/projects", url.Values{"org": {orgID}, "name": {"Mine now"}}},
-		{e.org + "/categories", url.Values{"name": {"Mine now"}}},
-		{e.ownAccount + "/categories", url.Values{"name": {"Mine now"}}},
+		{e.org + "/categories", url.Values{"name": {"Mine now"}, "kind": {"expense"}}},
+		{e.ownAccount + "/categories", url.Values{"name": {"Mine now"}, "kind": {"expense"}}},
 	}
 
 	for _, scope := range []string{e.account, e.project, e.ownAccount, e.ownProject} {

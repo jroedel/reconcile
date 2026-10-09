@@ -28,6 +28,9 @@
 
 {{range $v.Months}}{{if eq .Month $v.Month}}
 <p>{{t "Money in"}} <span class="money in">{{money .In $cur}}</span> · {{t "Money out"}} <span class="money out">{{money .Out $cur}}</span></p>
+{{with .Operations}}<p class="hint">{{t "Income {income} · Expenses {expenses} · Net {net}" "income" (money .Income $cur) "expenses" (money .Expenses $cur) "net" (money .Net $cur)}}
+{{- if .Transfers}} · {{t "transfers {amount}" "amount" (money .Transfers $cur)}}{{end}}
+{{- if .PassThrough}} · {{t "pass-through {amount}" "amount" (money .PassThrough $cur)}}{{end}}</p>{{end}}
 {{if .Unsorted}}<p>{{if $v.Unsorted}}<a href="?month={{.Month}}">{{t "Show all of the month"}}</a>{{else}}<a href="?month={{.Month}}&amp;unsorted=1">{{t "{n} not sorted yet" "n" .Unsorted}}</a>{{end}}</p>
 {{else}}<p class="hint">{{t "Every transaction this month is sorted."}}</p>{{end}}
 {{end}}{{end}}

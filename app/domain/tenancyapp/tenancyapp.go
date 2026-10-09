@@ -12,13 +12,16 @@ import (
 	"context"
 	"embed"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/jroedel/reconcile/app/sdk/mid"
+	"github.com/jroedel/reconcile/business/domain/category/categorybus"
 	"github.com/jroedel/reconcile/business/domain/event/eventbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/user/userbus"
@@ -27,7 +30,7 @@ import (
 	"github.com/jroedel/reconcile/foundation/web"
 )
 
-//go:embed templates mail
+//go:embed templates mail text
 var files embed.FS
 
 // Templates is this app's pages and messages, for page.NewRenderer.
@@ -37,6 +40,13 @@ var Templates fs.FS = files
 type Renderer interface {
 	Render(w http.ResponseWriter, r *http.Request, status int, name string, data any)
 	Mail(lang types.Lang, name string, data any) (subject, body string, err error)
+	Text(lang types.Lang, name string, data any) (string, error)
+}
+
+// Starter is the part of categorybus this app uses: giving a new list the
+// categories it begins with.
+type Starter interface {
+	Start(ctx context.Context, now time.Time, actor types.ID, owner types.Scope, starters []categorybus.Starter) error
 }
 
 // Users is the part of userbus this app uses: names for the people lists
@@ -52,6 +62,10 @@ type Config struct {
 	History *eventbus.Business
 	Users   Users
 	Render  Renderer
+
+	// Categories starts the category list of a new organization or
+	// personal account. Nil starts none.
+	Categories Starter
 
 	// Mail may be nil: an invitation is then logged as not sent, and the
 	// grant is made all the same -- the person can still sign in.
@@ -368,7 +382,43 @@ func (a app) createOrg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.startList(r, me.ID, o.Scope())
+
 	back(w, r, "/orgs/"+o.ID.String(), "created")
+}
+
+// startList gives a new list its transfer and pass-through categories, named
+// in the creator's language (text/starter-categories.txt). A failure is
+// logged and not the person's problem: the organization is made, and the
+// two can be added by hand.
+func (a app) startList(r *http.Request, actor types.ID, owner types.Scope) {
+	if a.cfg.Categories == nil {
+		return
+	}
+
+	text, err := a.cfg.Render.Text(mid.LangFrom(r.Context()), "starter-categories", nil)
+	if err == nil {
+		var names []string
+
+		for line := range strings.Lines(text) {
+			if line = strings.TrimSpace(line); line != "" {
+				names = append(names, line)
+			}
+		}
+
+		if len(names) != 2 {
+			err = fmt.Errorf("starter-categories.txt has %d names, not 2", len(names))
+		} else {
+			err = a.cfg.Categories.Start(r.Context(), a.cfg.Now(), actor, owner, []categorybus.Starter{
+				{Name: names[0], Kind: categorybus.Transfer},
+				{Name: names[1], Kind: categorybus.PassThrough},
+			})
+		}
+	}
+
+	if err != nil {
+		a.cfg.Log.Error("a new list's first categories could not be made", "request_id", web.RequestIDFrom(r.Context()), "error", err)
+	}
 }
 
 type orgView struct {
@@ -584,6 +634,12 @@ func (a app) createAccount(w http.ResponseWriter, r *http.Request) {
 		a.failed(w, r, err)
 
 		return
+	}
+
+	// A personal account keeps its own list; one in an organization uses
+	// the organization's, started when the organization was.
+	if acct.OrgID.Zero() {
+		a.startList(r, me.ID, acct.Scope())
 	}
 
 	back(w, r, "/accounts/"+acct.ID.String(), "created")

@@ -96,14 +96,14 @@ func TestTheAccountantsPackage(t *testing.T) {
 	}
 
 	rows := sheet(t, files)
-	if len(rows) != 8 || rows[0][0] != "Date" || rows[0][11] != "Reconciled on" {
+	if len(rows) != 8 || rows[0][0] != "Date" || rows[0][12] != "Reconciled on" || rows[0][7] != "Kind" {
 		t.Fatalf("%d rows, header %q", len(rows), rows[0])
 	}
 
 	var parts [][]string
 
 	for _, r := range rows[1:] {
-		if r[11] == "" {
+		if r[12] == "" {
 			t.Errorf("a July row is not marked reconciled: %q", r)
 		}
 
@@ -116,11 +116,11 @@ func TestTheAccountantsPackage(t *testing.T) {
 		t.Fatalf("the grocery has %d rows", len(parts))
 	}
 
-	if p := parts[0]; p[3] != "-30.00" || p[5] != "-33.99" || p[6] != "Groceries" || p[7] != "World Youth Day" || p[9] != photo || p[10] != "checking-july.csv" {
+	if p := parts[0]; p[3] != "-30.00" || p[5] != "-33.99" || p[6] != "Groceries" || p[7] != "Expense" || p[8] != "World Youth Day" || p[10] != photo || p[11] != "checking-july.csv" {
 		t.Errorf("the grocery's first part: %q", p)
 	}
 
-	if p := parts[1]; p[3] != "-3.99" || p[8] != "'=1+1" || p[9] != photo {
+	if p := parts[1]; p[3] != "-3.99" || p[7] != "Expense" || p[9] != "'=1+1" || p[10] != photo {
 		t.Errorf("the grocery's second part: %q", p)
 	}
 
@@ -132,7 +132,7 @@ func TestTheAccountantsPackage(t *testing.T) {
 	}
 
 	files = unzipped(t, rec.Body.Bytes())
-	if rows := sheet(t, files); len(rows) != 2 || rows[1][3] != "-30.00" || rows[1][9] != photo || rows[1][10] != "" {
+	if rows := sheet(t, files); len(rows) != 2 || rows[1][3] != "-30.00" || rows[1][10] != photo || rows[1][11] != "" {
 		t.Errorf("the project's spreadsheet: %q", rows)
 	}
 

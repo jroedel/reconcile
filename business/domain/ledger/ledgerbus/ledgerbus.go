@@ -115,6 +115,10 @@ type Storer interface {
 	// ProjectLines is every part in a project, oldest first.
 	ProjectLines(ctx context.Context, projectID types.ID) ([]ProjectLine, error)
 
+	// Settling is the sums of a list's transfer and pass-through
+	// categories, by category, currency and month.
+	Settling(ctx context.Context, owner types.Scope) ([]SettlingRow, error)
+
 	// TransactionsByID is several transactions with their parts.
 	TransactionsByID(ctx context.Context, ids []types.ID) ([]Transaction, error)
 
