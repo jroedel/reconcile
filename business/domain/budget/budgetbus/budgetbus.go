@@ -1,5 +1,6 @@
 // Package budgetbus is budgets: what a project's owners expect its money to
-// do, and -- in a later step -- an organization's year (docs/budgets.md).
+// do, and what an organization's owners expect of a budget year
+// (docs/budgets.md).
 //
 // A budget is lines of income and expense, one per category or a total
 // for a kind, in one currency, set by the owners. What it is compared with
@@ -43,6 +44,7 @@ var (
 const (
 	Set     eventbus.Action = "budget.set"
 	Removed eventbus.Action = "budget.removed"
+	Copied  eventbus.Action = "budget.copied"
 )
 
 // MaxLines is the most lines one budget may have: every category of a long
@@ -68,6 +70,7 @@ type Line struct {
 
 // Access is how this domain asks who may do what (tenancybus).
 type Access interface {
+	Org(ctx context.Context, actor, id types.ID) (tenancybus.Org, tenancybus.Access, error)
 	Project(ctx context.Context, actor, id types.ID) (tenancybus.Project, tenancybus.Access, error)
 	Overview(ctx context.Context, actor types.ID) (tenancybus.Overview, error)
 }
@@ -75,6 +78,7 @@ type Access interface {
 // Ledger is where the money a budget is compared with is.
 type Ledger interface {
 	ProjectBook(ctx context.Context, actor, projectID types.ID) (ledgerbus.Book, error)
+	OrgPeriod(ctx context.Context, actor, orgID types.ID, from, to types.Date) ([]ledgerbus.ProjectLine, []ledgerbus.Total, error)
 }
 
 // Categories is the lists a budget's lines are in.
@@ -158,10 +162,28 @@ type Side struct {
 // the page says, since one of them is likely a mistake.
 func (s Side) Mismatch() bool { return s.HasTyped && len(s.Rows) > 0 && s.Typed != s.Lines }
 
-// Comparison is a budget beside what happened.
+// Comparison is a budget beside what happened: a project's, or an
+// organization's year's.
 type Comparison struct {
-	Project tenancybus.Project
+	Project tenancybus.Project // a project's budget
+	Org     tenancybus.Org     // an organization's year
 	Access  tenancybus.Access
+
+	// The budget year, for an organization's: the calendar year it starts
+	// in, as a page names it ("2026", or "2026–27"), and its days, Start to
+	// before End.
+	Year       int
+	Label      string
+	Start, End types.Date
+
+	// Pace is how much of the year has gone by today, 0 to 100. A budget
+	// is compared with the whole year's figure and never pro-rated: this
+	// is a mark beside it, for a person to read (docs/budgets.md).
+	Pace int
+
+	// CanCopy reports whether the year has no budget and the one before
+	// has: "Copy last year's budget".
+	CanCopy bool
 
 	// Currency is the budget's. Set reports whether it has any lines.
 	Currency string
@@ -204,7 +226,7 @@ func (b *Business) Project(ctx context.Context, actor, projectID types.ID) (Comp
 		return Comparison{}, err
 	}
 
-	cats, err := b.choices(ctx, book)
+	cats, err := b.choices(ctx, book.Project.OrgID, book.Lines)
 	if err != nil {
 		return Comparison{}, err
 	}
@@ -212,7 +234,7 @@ func (b *Business) Project(ctx context.Context, actor, projectID types.ID) (Comp
 	c := Comparison{Project: book.Project, Access: book.Access, Set: len(lines) > 0}
 
 	if c.Currency = currencyOf(lines); c.Currency == "" {
-		if c.Currency, err = b.defaultCurrency(ctx, actor, book); err != nil {
+		if c.Currency, err = b.defaultCurrency(ctx, actor, book.Lines); err != nil {
 			return Comparison{}, err
 		}
 	}
@@ -315,16 +337,15 @@ func compare(c *Comparison, lines []Line, parts []ledgerbus.ProjectLine, cats ma
 	}
 }
 
-// choices is the categories a project's budget may have lines for, by ID:
-// the income and expense categories of its organization's list, and of
-// every category its parts are in -- a personal project's money, or an
-// organization's project paid from somebody's personal card, is sorted
-// with other lists.
-func (b *Business) choices(ctx context.Context, book ledgerbus.Book) (map[types.ID]categorybus.Category, error) {
+// choices is the categories a budget may have lines for, by ID: those of
+// the organization's list, and every category its parts are in -- a
+// personal project's money, or an organization's project paid from
+// somebody's personal card, is sorted with other lists.
+func (b *Business) choices(ctx context.Context, orgID types.ID, parts []ledgerbus.ProjectLine) (map[types.ID]categorybus.Category, error) {
 	out := map[types.ID]categorybus.Category{}
 
-	if !book.Project.OrgID.Zero() {
-		list, err := b.categories.Of(ctx, types.OrgScope(book.Project.OrgID))
+	if !orgID.Zero() {
+		list, err := b.categories.Of(ctx, types.OrgScope(orgID))
 		if err != nil {
 			return nil, err
 		}
@@ -334,7 +355,7 @@ func (b *Business) choices(ctx context.Context, book ledgerbus.Book) (map[types.
 		}
 	}
 
-	for _, p := range book.Lines {
+	for _, p := range parts {
 		if id := p.Split.CategoryID; !id.Zero() {
 			if _, ok := out[id]; !ok {
 				out[id] = categorybus.Category{ID: id, Name: p.CategoryName, Kind: p.CategoryKind}
@@ -345,12 +366,12 @@ func (b *Business) choices(ctx context.Context, book ledgerbus.Book) (map[types.
 	return out, nil
 }
 
-// defaultCurrency is a new budget's currency: the one most of the project's
-// money is in, or else the one most of the reader's accounts are in.
-func (b *Business) defaultCurrency(ctx context.Context, actor types.ID, book ledgerbus.Book) (string, error) {
+// defaultCurrency is a new budget's currency: the one most of its money is
+// in, or else the one most of the reader's accounts are in.
+func (b *Business) defaultCurrency(ctx context.Context, actor types.ID, parts []ledgerbus.ProjectLine) (string, error) {
 	count := map[string]int{}
 
-	for _, p := range book.Lines {
+	for _, p := range parts {
 		count[p.Currency]++
 	}
 
@@ -404,8 +425,11 @@ var currencyCode = regexp.MustCompile(`^[A-Z]{3}$`)
 // kind at a time, by name, without the archived unless one has a line.
 type Form struct {
 	Comparison
-	Income, Expenses []categorybus.Category
-	Currencies       []string
+
+	// IncomeCategories and ExpenseCategories are the categories a line may
+	// be for, by kind.
+	IncomeCategories, ExpenseCategories []categorybus.Category
+	Currencies                          []string
 }
 
 // ProjectForm is the form for a project's budget, an owner's.
@@ -424,11 +448,18 @@ func (b *Business) ProjectForm(ctx context.Context, actor, projectID types.ID) (
 		return Form{}, err
 	}
 
-	cats, err := b.choices(ctx, book)
+	cats, err := b.choices(ctx, book.Project.OrgID, book.Lines)
 	if err != nil {
 		return Form{}, err
 	}
 
+	return form(c, cats, book.Lines), nil
+}
+
+// form is the form for a budget: its categories a kind at a time, by name,
+// without the archived unless one has a line; and its currency first among
+// those its money is in.
+func form(c Comparison, cats map[types.ID]categorybus.Category, parts []ledgerbus.ProjectLine) Form {
 	f := Form{Comparison: c}
 
 	lined := map[types.ID]bool{}
@@ -445,9 +476,9 @@ func (b *Business) ProjectForm(ctx context.Context, actor, projectID types.ID) (
 
 		switch cat.Kind {
 		case categorybus.Income:
-			f.Income = append(f.Income, cat)
+			f.IncomeCategories = append(f.IncomeCategories, cat)
 		case categorybus.Expense:
-			f.Expenses = append(f.Expenses, cat)
+			f.ExpenseCategories = append(f.ExpenseCategories, cat)
 		}
 	}
 
@@ -455,20 +486,20 @@ func (b *Business) ProjectForm(ctx context.Context, actor, projectID types.ID) (
 		return strings.Compare(strings.ToLower(x.Name), strings.ToLower(y.Name))
 	}
 
-	slices.SortFunc(f.Income, byName)
-	slices.SortFunc(f.Expenses, byName)
+	slices.SortFunc(f.IncomeCategories, byName)
+	slices.SortFunc(f.ExpenseCategories, byName)
 
 	seen := map[string]bool{c.Currency: true}
 	f.Currencies = []string{c.Currency}
 
-	for _, p := range book.Lines {
+	for _, p := range parts {
 		if !seen[p.Currency] {
 			seen[p.Currency] = true
 			f.Currencies = append(f.Currencies, p.Currency)
 		}
 	}
 
-	return f, nil
+	return f
 }
 
 // SetProject makes a project's budget these entries, in this currency: an
@@ -488,7 +519,7 @@ func (b *Business) SetProject(ctx context.Context, now time.Time, actor, project
 		return err
 	}
 
-	cats, err := b.choices(ctx, book)
+	cats, err := b.choices(ctx, book.Project.OrgID, book.Lines)
 	if err != nil {
 		return err
 	}
@@ -505,7 +536,7 @@ func (b *Business) SetProject(ctx context.Context, now time.Time, actor, project
 		return err
 	}
 
-	return b.store.Replace(ctx, scope, 0, lines, events(now, actor, scope, before, lines, cats))
+	return b.store.Replace(ctx, scope, 0, lines, events(now, actor, scope, "", before, lines, cats))
 }
 
 // linesOf checks the entries and makes them lines. A category must be one
@@ -565,7 +596,7 @@ func linesOf(scope types.Scope, year int, currency string, entries []Entry, cats
 // events is a line of history for each line that changed: set, changed,
 // or taken out. A change of currency alone is said on every line, since
 // every amount now means something else.
-func events(now time.Time, actor types.ID, scope types.Scope, before, after []Line, cats map[types.ID]categorybus.Category) []eventbus.Event {
+func events(now time.Time, actor types.ID, scope types.Scope, year string, before, after []Line, cats map[types.ID]categorybus.Category) []eventbus.Event {
 	key := func(l Line) string { return l.CategoryID.String() + "/" + string(l.Kind) }
 
 	was := map[string]Line{}
@@ -583,6 +614,10 @@ func events(now time.Time, actor types.ID, scope types.Scope, before, after []Li
 
 		if had {
 			d["before"], d["before_currency"] = prior.Amount.String(), prior.Currency
+		}
+
+		if year != "" {
+			d["year"] = year
 		}
 
 		return d

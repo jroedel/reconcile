@@ -893,6 +893,19 @@ func (s *Store) ReplaceSplits(ctx context.Context, transactionID types.ID, split
 // domains line by line: a project's book is read whole, and a line knows
 // nothing more about its account than the name and currency.
 func (s *Store) ProjectLines(ctx context.Context, projectID types.ID) ([]ledgerbus.ProjectLine, error) {
+	return s.lines(ctx, `s.project_id = ?`, projectID.String())
+}
+
+// OrgLines is every part of an organization's accounts posted from from to
+// before to, with the same about each as a project's line: an
+// organization's budget year (budgetbus).
+func (s *Store) OrgLines(ctx context.Context, orgID types.ID, from, to types.Date) ([]ledgerbus.ProjectLine, error) {
+	return s.lines(ctx, `a.org_id = ? AND t.posted_on >= ? AND t.posted_on < ?`, orgID.String(), from.String(), to.String())
+}
+
+// lines is the parts matching a condition, with their transaction, account
+// and category.
+func (s *Store) lines(ctx context.Context, where string, args ...any) ([]ledgerbus.ProjectLine, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT s.id, s.transaction_id, s.position, s.amount, s.category_id, s.project_id, s.memo, s.rule_id,
        t.posted_on, t.description, a.id, a.name, a.currency, coalesce(c.name, ''), coalesce(c.kind, '')
@@ -900,10 +913,10 @@ FROM splits s
 JOIN transactions t ON t.id = s.transaction_id
 JOIN accounts a ON a.id = t.account_id
 LEFT JOIN categories c ON c.id = s.category_id
-WHERE s.project_id = ?
-ORDER BY t.posted_on, t.rowid, s.position`, projectID.String())
+WHERE `+where+`
+ORDER BY t.posted_on, t.rowid, s.position`, args...)
 	if err != nil {
-		return nil, fmt.Errorf("reading the project's book: %w", err)
+		return nil, fmt.Errorf("reading the parts: %w", err)
 	}
 	defer rows.Close()
 
@@ -927,7 +940,7 @@ ORDER BY t.posted_on, t.rowid, s.position`, projectID.String())
 		l.AccountID, e2 = types.ParseID(account)
 
 		if err := errors.Join(e1, e2); err != nil {
-			return nil, fmt.Errorf("a project's line is unreadable: %w", err)
+			return nil, fmt.Errorf("a part's line is unreadable: %w", err)
 		}
 
 		out = append(out, l)

@@ -166,6 +166,7 @@ func New(cfg Config) (http.Handler, error) {
 		budgetapp.Routes(mux, budgetapp.Config{
 			Log:     cfg.Log,
 			Budgets: cfg.Budgets,
+			Years:   cfg.Tenancy,
 			Render:  cfg.Render,
 		}, guard)
 

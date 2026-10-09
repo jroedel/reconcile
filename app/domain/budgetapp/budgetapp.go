@@ -1,14 +1,16 @@
 // Package budgetapp is the budget pages (docs/budgets.md): a project's
-// budget beside what happened, for anyone who may read the project, and
-// the form its owners set it with.
+// budget, and an organization's budget year, each beside what happened,
+// for anyone who may read it, with the form its owners set it with.
 package budgetapp
 
 import (
+	"context"
 	"embed"
 	"errors"
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/budget/budgetbus"
 	"github.com/jroedel/reconcile/business/domain/category/categorybus"
 	"github.com/jroedel/reconcile/business/domain/importing/sources/csvsource"
+	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/user/userbus"
 	"github.com/jroedel/reconcile/business/types"
 	"github.com/jroedel/reconcile/business/types/money"
@@ -33,10 +36,16 @@ type Renderer interface {
 	Render(w http.ResponseWriter, r *http.Request, status int, name string, data any)
 }
 
+// Years is where an organization's budget year is moved (tenancybus).
+type Years interface {
+	SetFiscalStart(ctx context.Context, now time.Time, actor, id types.ID, month int) (tenancybus.Org, error)
+}
+
 // Config is what this app needs.
 type Config struct {
 	Log     *slog.Logger
 	Budgets *budgetbus.Business
+	Years   Years
 	Render  Renderer
 
 	// Now is the clock; nil means time.Now.
@@ -55,8 +64,14 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 
 	a := app{cfg: cfg}
 
-	mux.Handle("GET /projects/{id}/budget", guard(http.HandlerFunc(a.project)))
-	mux.Handle("POST /projects/{id}/budget", guard(http.HandlerFunc(a.setProject)))
+	handle := func(pattern string, h http.HandlerFunc) { mux.Handle(pattern, guard(h)) }
+
+	handle("GET /projects/{id}/budget", a.project)
+	handle("POST /projects/{id}/budget", a.setProject)
+	handle("GET /orgs/{id}/budget", a.org)
+	handle("POST /orgs/{id}/budget", a.setOrg)
+	handle("POST /orgs/{id}/budget/copy", a.copyYear)
+	handle("POST /orgs/{id}/budget/year-start", a.yearStart)
 }
 
 func actor(w http.ResponseWriter, r *http.Request) (userbus.User, bool) {
@@ -103,7 +118,14 @@ func field(kind categorybus.Kind, category types.ID) string {
 
 type budgetView struct {
 	Budget budgetbus.Comparison
-	Path   string // the project's page
+	Path   string // the project's or the organization's page
+	Action string // where the form is sent
+
+	// An organization's year: the years either side, by name, and the
+	// months its year may start in.
+	Before, After         string
+	BeforeYear, AfterYear int
+	Months                []int
 
 	// Form is the owner's form, when the reader is one.
 	Form    budgetbus.Form
@@ -146,6 +168,7 @@ func (a app) projectPage(w http.ResponseWriter, r *http.Request, status int, vie
 	}
 
 	view.Budget, view.Path, view.CanSet = c, "/projects/"+id.String(), c.CanSet()
+	view.Action = view.Path + "/budget"
 
 	if view.CanSet {
 		if view.Form, err = a.cfg.Budgets.ProjectForm(r.Context(), me.ID, id); err != nil {
@@ -179,26 +202,11 @@ func stored(c budgetbus.Comparison) map[string]string {
 	return out
 }
 
-func (a app) setProject(w http.ResponseWriter, r *http.Request) {
-	me, ok := actor(w, r)
-	if !ok {
-		return
-	}
-
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "That form could not be read. Open the page again and send it from there.", http.StatusBadRequest)
-
-		return
-	}
-
-	id, ok := a.pathID(w, r)
-	if !ok {
-		return
-	}
-
-	typed := map[string]string{"currency": r.PostForm.Get("currency")}
-
-	var entries []budgetbus.Entry
+// posted reads the budget form: what was typed, by field, and the entries
+// it makes. bad is the field whose amount could not be read, if one could
+// not.
+func posted(r *http.Request) (typed map[string]string, entries []budgetbus.Entry, bad string) {
+	typed = map[string]string{"currency": r.PostForm.Get("currency")}
 
 	for name := range r.PostForm {
 		kind, rest, found := strings.Cut(name, "-")
@@ -224,17 +232,33 @@ func (a app) setProject(w http.ResponseWriter, r *http.Request) {
 
 		amount, err := typedAmount(text)
 		if err != nil {
-			a.projectPage(w, r, http.StatusUnprocessableEntity, budgetView{Typed: typed, Problem: "amount", About: name})
+			bad = name
 
-			return
+			continue
 		}
 
 		entries = append(entries, budgetbus.Entry{CategoryID: category, Kind: categorybus.Kind(kind), Amount: amount})
 	}
 
-	err := a.cfg.Budgets.SetProject(r.Context(), a.cfg.Now(), me.ID, id, typed["currency"], entries)
+	return typed, entries, bad
+}
+
+// parsed reads the form, or answers that it could not be read.
+func parsed(w http.ResponseWriter, r *http.Request) bool {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "That form could not be read. Open the page again and send it from there.", http.StatusBadRequest)
+
+		return false
+	}
+
+	return true
+}
+
+// saved is the tail of saving a budget: back to its page saying so, or the
+// page again with what was wrong.
+func (a app) saved(w http.ResponseWriter, r *http.Request, err error, typed map[string]string, again func(int, budgetView), to string) {
 	if invalid, ok := errors.AsType[budgetbus.Invalid](err); ok {
-		a.projectPage(w, r, http.StatusUnprocessableEntity, budgetView{Typed: typed, Problem: invalid.Field, About: field(invalid.Kind, invalid.CategoryID)})
+		again(http.StatusUnprocessableEntity, budgetView{Typed: typed, Problem: invalid.Field, About: field(invalid.Kind, invalid.CategoryID)})
 
 		return
 	}
@@ -245,7 +269,190 @@ func (a app) setProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/projects/"+id.String()+"/budget?done=set", http.StatusSeeOther)
+	http.Redirect(w, r, to, http.StatusSeeOther)
+}
+
+func (a app) setProject(w http.ResponseWriter, r *http.Request) {
+	me, ok := actor(w, r)
+	if !ok || !parsed(w, r) {
+		return
+	}
+
+	id, ok := a.pathID(w, r)
+	if !ok {
+		return
+	}
+
+	again := func(status int, view budgetView) { a.projectPage(w, r, status, view) }
+
+	typed, entries, bad := posted(r)
+	if bad != "" {
+		again(http.StatusUnprocessableEntity, budgetView{Typed: typed, Problem: "amount", About: bad})
+
+		return
+	}
+
+	err := a.cfg.Budgets.SetProject(r.Context(), a.cfg.Now(), me.ID, id, typed["currency"], entries)
+	a.saved(w, r, err, typed, again, "/projects/"+id.String()+"/budget?done=set")
+}
+
+// --- an organization's year ---------------------------------------------------
+
+// yearOf is the year a request asks for: zero, the year today is in, when it
+// names none. ok is false for one that is not a number.
+func yearOf(r *http.Request) (int, bool) {
+	s := r.URL.Query().Get("year")
+	if s == "" {
+		return 0, true
+	}
+
+	y, err := strconv.Atoi(s)
+
+	return y, err == nil
+}
+
+func (a app) org(w http.ResponseWriter, r *http.Request) {
+	a.orgPage(w, r, http.StatusOK, budgetView{Done: r.URL.Query().Get("done")})
+}
+
+func (a app) orgPage(w http.ResponseWriter, r *http.Request, status int, view budgetView) {
+	me, ok := actor(w, r)
+	if !ok {
+		return
+	}
+
+	id, ok := a.pathID(w, r)
+	if !ok {
+		return
+	}
+
+	year, ok := yearOf(r)
+	if !ok {
+		a.failed(w, r, budgetbus.ErrNotFound)
+
+		return
+	}
+
+	f, err := a.cfg.Budgets.OrgYear(r.Context(), a.cfg.Now(), me.ID, id, year)
+	if err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
+	c := f.Comparison
+	start := c.Org.FiscalStart
+
+	view.Budget, view.Form, view.CanSet = c, f, c.CanSet()
+	view.Path = "/orgs/" + id.String()
+	view.Action = view.Path + "/budget?year=" + strconv.Itoa(c.Year)
+	view.Before, view.After = budgetbus.Label(c.Year-1, start), budgetbus.Label(c.Year+1, start)
+	view.BeforeYear, view.AfterYear = c.Year-1, c.Year+1
+	view.Months = []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}
+
+	if view.CanSet && view.Typed == nil {
+		view.Typed = stored(c)
+	}
+
+	a.cfg.Render.Render(w, r, status, "org-budget", view)
+}
+
+func (a app) setOrg(w http.ResponseWriter, r *http.Request) {
+	me, ok := actor(w, r)
+	if !ok || !parsed(w, r) {
+		return
+	}
+
+	id, ok := a.pathID(w, r)
+	if !ok {
+		return
+	}
+
+	year, ok := yearOf(r)
+	if !ok || year == 0 {
+		a.failed(w, r, budgetbus.ErrNotFound)
+
+		return
+	}
+
+	again := func(status int, view budgetView) { a.orgPage(w, r, status, view) }
+
+	typed, entries, bad := posted(r)
+	if bad != "" {
+		again(http.StatusUnprocessableEntity, budgetView{Typed: typed, Problem: "amount", About: bad})
+
+		return
+	}
+
+	err := a.cfg.Budgets.SetOrgYear(r.Context(), a.cfg.Now(), me.ID, id, year, typed["currency"], entries)
+	a.saved(w, r, err, typed, again, "/orgs/"+id.String()+"/budget?year="+strconv.Itoa(year)+"&done=set")
+}
+
+// copyYear is "Copy last year's budget".
+func (a app) copyYear(w http.ResponseWriter, r *http.Request) {
+	me, ok := actor(w, r)
+	if !ok || !parsed(w, r) {
+		return
+	}
+
+	id, ok := a.pathID(w, r)
+	if !ok {
+		return
+	}
+
+	year, ok := yearOf(r)
+	if !ok || year == 0 {
+		a.failed(w, r, budgetbus.ErrNotFound)
+
+		return
+	}
+
+	back := "/orgs/" + id.String() + "/budget?year=" + strconv.Itoa(year)
+
+	_, err := a.cfg.Budgets.CopyYear(r.Context(), a.cfg.Now(), me.ID, id, year)
+	if errors.Is(err, budgetbus.ErrNothingToCopy) {
+		http.Redirect(w, r, back+"&done=nothing-to-copy", http.StatusSeeOther)
+
+		return
+	}
+
+	if err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
+	http.Redirect(w, r, back+"&done=copied", http.StatusSeeOther)
+}
+
+// yearStart moves the month the organization's budget year starts in.
+func (a app) yearStart(w http.ResponseWriter, r *http.Request) {
+	me, ok := actor(w, r)
+	if !ok || !parsed(w, r) {
+		return
+	}
+
+	id, ok := a.pathID(w, r)
+	if !ok {
+		return
+	}
+
+	month, _ := strconv.Atoi(r.PostForm.Get("month"))
+
+	_, err := a.cfg.Years.SetFiscalStart(r.Context(), a.cfg.Now(), me.ID, id, month)
+	if _, invalid := errors.AsType[tenancybus.Invalid](err); invalid {
+		http.Redirect(w, r, "/orgs/"+id.String()+"/budget?done=no-month", http.StatusSeeOther)
+
+		return
+	}
+
+	if err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
+	http.Redirect(w, r, "/orgs/"+id.String()+"/budget?done=year-start", http.StatusSeeOther)
 }
 
 // typedAmount reads an amount as a person types it, with a decimal comma

@@ -116,6 +116,7 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		e.org + "/categories", e.ownAccount + "/categories", e.account + "/categories",
 		e.project + "/book", e.ownProject + "/book",
 		e.project + "/budget", e.ownProject + "/budget",
+		e.org + "/budget", e.org + "/budget?year=2026",
 		e.account + "/transactions", e.ownAccount + "/transactions",
 		e.account + "/months", e.ownAccount + "/months",
 		e.account + "/rules", e.ownAccount + "/rules",
@@ -140,6 +141,9 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		{"/projects", url.Values{"org": {orgID}, "name": {"Mine now"}}},
 		{e.org + "/categories", url.Values{"name": {"Mine now"}, "kind": {"expense"}}},
 		{e.ownAccount + "/categories", url.Values{"name": {"Mine now"}, "kind": {"expense"}}},
+		{e.org + "/budget?year=2026", url.Values{"currency": {"USD"}, "expense-total": {"100"}}},
+		{e.org + "/budget/copy?year=2027", nil},
+		{e.org + "/budget/year-start", url.Values{"month": {"7"}}},
 	}
 
 	for _, account := range []string{e.account, e.ownAccount} {

@@ -39,6 +39,7 @@ import (
 	"log/slog"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -90,6 +91,10 @@ type Org struct {
 	CreatedBy  types.ID
 	CreatedAt  time.Time
 	ArchivedAt time.Time // zero while in use
+
+	// FiscalStart is the month its budget year starts, 1 to 12
+	// (docs/budgets.md): January unless an owner says otherwise.
+	FiscalStart int
 }
 
 // Scope names it.
@@ -342,7 +347,7 @@ func (b *Business) CreateOrg(ctx context.Context, now time.Time, actor types.ID,
 		return Org{}, err
 	}
 
-	o := Org{ID: types.NewID(), Name: name, CreatedBy: actor, CreatedAt: now}
+	o := Org{ID: types.NewID(), Name: name, CreatedBy: actor, CreatedAt: now, FiscalStart: 1}
 
 	owner := Grant{ID: types.NewID(), Scope: o.Scope(), UserID: actor, Role: Owner, GrantedBy: actor, CreatedAt: now}
 
@@ -392,6 +397,37 @@ func (b *Business) RenameOrg(ctx context.Context, now time.Time, actor, id types
 	o.Name = name
 
 	return o, b.store.UpdateOrg(ctx, o, eventbus.New(now, actor, o.Scope(), eventbus.Renamed, detail))
+}
+
+// FiscalSet is the line in an organization's history when its budget year
+// is moved.
+const FiscalSet eventbus.Action = "org.fiscal"
+
+// SetFiscalStart says which month an organization's budget year starts in.
+// It changes which months every budget year of it covers, so it is an
+// owner's, and the history says from what to what.
+func (b *Business) SetFiscalStart(ctx context.Context, now time.Time, actor, id types.ID, month int) (Org, error) {
+	if _, err := b.require(ctx, actor, types.OrgScope(id), Manage); err != nil {
+		return Org{}, err
+	}
+
+	if month < 1 || month > 12 {
+		return Org{}, Invalid{Field: "fiscal-start", Err: errors.New("choose a month")}
+	}
+
+	o, err := b.store.OrgByID(ctx, id)
+	if err != nil {
+		return Org{}, err
+	}
+
+	if o.FiscalStart == month {
+		return o, nil
+	}
+
+	detail := map[string]string{"from": strconv.Itoa(o.FiscalStart), "month": strconv.Itoa(month)}
+	o.FiscalStart = month
+
+	return o, b.store.UpdateOrg(ctx, o, eventbus.New(now, actor, o.Scope(), FiscalSet, detail))
 }
 
 // SetOrgArchived puts an organization away, or brings it back. Nothing in it
