@@ -2,6 +2,9 @@ package muxer
 
 import (
 	"bytes"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -127,6 +130,10 @@ func TestThreeReceiptsIntoTheProjectAndOneMatched(t *testing.T) {
 		t.Errorf("the photo: %d %q %q", f.Code, f.Header().Get("Content-Type"), f.Header().Get("Content-Disposition"))
 	}
 
+	// These photos are only a JPEG's first bytes, so they have no smaller
+	// picture: asked for one, the page is sent to the original.
+	wantRedirect(t, e.owner.get(added[0]+"/files/0/small"), added[0]+"/files/0")
+
 	// The pilgrim, who cannot see the card, still sees their receipt and
 	// where it went -- and is given no way into the card.
 	page := pilgrim.get(added[0]).Body.String()
@@ -190,7 +197,7 @@ func TestReceiptsAreAsPrivateAsTheirInbox(t *testing.T) {
 
 	stranger := signUpAs("stranger@example.org")
 
-	for _, path := range []string{receipt, receipt + "/files/0", e.project + "/receipts", e.account + "/receipts"} {
+	for _, path := range []string{receipt, receipt + "/files/0", receipt + "/files/0/small", e.project + "/receipts", e.account + "/receipts"} {
 		if rec := stranger.get(path); rec.Code != http.StatusNotFound {
 			t.Errorf("a stranger: GET %s = %d", path, rec.Code)
 		}
@@ -228,5 +235,56 @@ func TestReceiptsAreAsPrivateAsTheirInbox(t *testing.T) {
 
 	if rec := viewer.post(receipt+"/details", url.Values{"merchant": {"Mine"}}); rec.Code != http.StatusForbidden {
 		t.Errorf("a viewer's edit: %d", rec.Code)
+	}
+}
+
+// drawnPhoto is a JPEG drawn here, never a real photo.
+func drawnPhoto(t *testing.T, w, h int) string {
+	t.Helper()
+
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := range h {
+		for x := range w {
+			img.Set(x, y, color.RGBA{R: uint8(x), G: uint8(y), B: 120, A: 255})
+		}
+	}
+
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	return buf.String()
+}
+
+// A list shows a receipt's small picture and its page the large one; both
+// are made on the first request, and the original is still a tap away.
+func TestReceiptsAreShownSmaller(t *testing.T) {
+	e, _, _, _ := sorted(t)
+
+	rec := e.owner.receipts(e.project+"/receipts", nil, [2]string{"till.jpg", drawnPhoto(t, 1200, 2400)})
+	inbox := e.owner.get(rec.Header().Get("Location")).Body.String()
+	receipt := receiptsOn(inbox)[0]
+
+	if !strings.Contains(inbox, receipt+`/files/0/small"`) {
+		t.Errorf("the inbox does not show the small picture:\n%s", inbox)
+	}
+
+	wantBody(t, e.owner.get(receipt), receipt+`/files/0/large"`, `href="`+receipt+`/files/0"`)
+
+	for size, want := range map[string][2]int{"small": {400, 800}, "large": {800, 1600}} {
+		got := e.owner.get(receipt + "/files/0/" + size)
+		if got.Code != http.StatusOK || got.Header().Get("Content-Type") != "image/jpeg" {
+			t.Fatalf("%s: %d %q", size, got.Code, got.Header().Get("Content-Type"))
+		}
+
+		cfg, err := jpeg.DecodeConfig(got.Body)
+		if err != nil || cfg.Width != want[0] || cfg.Height != want[1] {
+			t.Errorf("%s: %dx%d %v", size, cfg.Width, cfg.Height, err)
+		}
+	}
+
+	if got := e.owner.get(receipt + "/files/0/huge"); got.Code != http.StatusSeeOther {
+		t.Errorf("a size that is not one: %d", got.Code)
 	}
 }

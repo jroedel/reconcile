@@ -104,6 +104,7 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	handle(UploadPatterns[2], a.uploadOnto)
 	handle("GET /receipts/{id}", a.receipt)
 	handle("GET /receipts/{id}/files/{n}", a.file)
+	handle("GET /receipts/{id}/files/{n}/{size}", a.picture)
 	handle("POST /receipts/{id}/details", a.details)
 	handle("POST /receipts/{id}/attach", a.attach)
 	handle("POST /receipts/{id}/detach", a.detach)
@@ -694,6 +695,59 @@ func (a app) file(w http.ResponseWriter, r *http.Request) {
 	// receipt and the transaction, and a phone should not fetch eight
 	// megabytes three times.
 	w.Header().Set("Cache-Control", "private, max-age=3600")
+
+	http.ServeContent(w, r, "", f.UploadedAt, rc)
+}
+
+// picture is a photo's smaller picture (filebus.Picture), asked of the
+// receipt exactly as the original is. A file with none -- a PDF, a WebP, a
+// photo too small to need one -- is sent on to the original, so that a
+// page may ask for the small picture of any photo.
+func (a app) picture(w http.ResponseWriter, r *http.Request) {
+	me, ok := actor(w, r)
+	if !ok {
+		return
+	}
+
+	id, ok := a.pathID(w, r)
+	if !ok {
+		return
+	}
+
+	n, err := strconv.Atoi(r.PathValue("n"))
+	if err != nil {
+		a.missing(w, r)
+
+		return
+	}
+
+	f, err := a.cfg.Receipts.File(r.Context(), me.ID, id, n)
+	if err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
+	rc, err := a.cfg.Files.Picture(r.Context(), f, filebus.Size(r.PathValue("size")))
+	if errors.Is(err, filebus.ErrNoPicture) {
+		http.Redirect(w, r, "/receipts/"+id.String()+"/files/"+strconv.Itoa(n), http.StatusSeeOther)
+
+		return
+	}
+
+	if err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+	defer rc.Close()
+
+	w.Header().Set("Content-Type", filebus.JPEG)
+	w.Header().Set("Content-Disposition", "inline")
+
+	// A picture of a photo never changes, so a day; private, as the
+	// original is.
+	w.Header().Set("Cache-Control", "private, max-age=86400")
 
 	http.ServeContent(w, r, "", f.UploadedAt, rc)
 }

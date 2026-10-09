@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 
 	"github.com/jroedel/reconcile/business/domain/file/filebus"
 )
@@ -89,6 +90,72 @@ func (s *Store) Put(r io.Reader, limit int64) (string, int64, error) {
 }
 
 var hexName = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+// sized is the directory of the smaller pictures, inside this one so that
+// a backup has them, though they can be made again from the originals.
+const sized = "sized"
+
+// sizedPath is where a picture of a photo is kept: the photo's hash and the
+// size, both checked, so nothing can reach outside the directory.
+func (s *Store) sizedPath(sha string, size filebus.Size) (string, error) {
+	if !hexName.MatchString(sha) || !slices.Contains(filebus.Sizes, size) {
+		return "", fmt.Errorf("%q at %q is not a picture's name", sha, size)
+	}
+
+	return filepath.Join(s.dir, sized, sha+"-"+string(size)+".jpg"), nil
+}
+
+// OpenSized opens a smaller picture of a photo, or answers ErrNotFound.
+func (s *Store) OpenSized(sha string, size filebus.Size) (io.ReadSeekCloser, error) {
+	path, err := s.sizedPath(sha, size)
+	if err != nil {
+		return nil, err
+	}
+
+	f, err := os.Open(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, filebus.ErrNotFound
+	}
+
+	return f, err
+}
+
+// PutSized keeps a smaller picture, written whole under a temporary name
+// and renamed, so that a reader never opens half of one. Two requests that
+// made the same picture at once each rename the same bytes over the other.
+func (s *Store) PutSized(sha string, size filebus.Size, data []byte) error {
+	path, err := s.sizedPath(sha, size)
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("keeping a smaller picture: %w", err)
+	}
+
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".put-*")
+	if err != nil {
+		return fmt.Errorf("keeping a smaller picture: %w", err)
+	}
+
+	defer os.Remove(tmp.Name()) // a no-op once renamed
+
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+
+		return fmt.Errorf("keeping a smaller picture: %w", err)
+	}
+
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("keeping a smaller picture: %w", err)
+	}
+
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		return fmt.Errorf("keeping a smaller picture: %w", err)
+	}
+
+	return nil
+}
 
 // Open opens one file by its hash. A name that is not a hash is refused,
 // whatever a later caller passes, so nothing can reach outside the directory.

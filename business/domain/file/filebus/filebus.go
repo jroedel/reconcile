@@ -76,6 +76,12 @@ type Bytes interface {
 	// or ErrTooBig without keeping anything.
 	Put(r io.Reader, limit int64) (sha string, size int64, err error)
 	Open(sha string) (io.ReadSeekCloser, error)
+
+	// OpenSized and PutSized keep the smaller pictures made from a photo,
+	// by the photo's hash and the size; OpenSized answers ErrNotFound for
+	// one not made yet.
+	OpenSized(sha string, size Size) (io.ReadSeekCloser, error)
+	PutSized(sha string, size Size, data []byte) error
 }
 
 // Business is the set of operations on files.

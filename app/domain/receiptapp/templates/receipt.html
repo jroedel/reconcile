@@ -10,7 +10,7 @@
 <section class="card pages">
 {{range $i, $f := $r.Files}}
 <figure>
-{{if or (eq $f.ContentType "image/jpeg") (eq $f.ContentType "image/png") (eq $f.ContentType "image/webp")}}<a href="/receipts/{{$r.ID}}/files/{{$i}}"><img src="/receipts/{{$r.ID}}/files/{{$i}}" alt="{{t "Page {n}" "n" (inc $i)}}"></a>
+{{if or (eq $f.ContentType "image/jpeg") (eq $f.ContentType "image/png") (eq $f.ContentType "image/webp")}}<a href="/receipts/{{$r.ID}}/files/{{$i}}"><img src="/receipts/{{$r.ID}}/files/{{$i}}{{if ne $f.ContentType "image/webp"}}/large{{end}}" alt="{{t "Page {n}" "n" (inc $i)}}"></a>
 {{else}}<p><a class="button quiet" href="/receipts/{{$r.ID}}/files/{{$i}}">{{t "Download {name}" "name" $f.Name}}</a></p>{{end}}
 {{if gt (len $r.Files) 1}}<figcaption class="hint">{{t "Page {n}" "n" (inc $i)}}</figcaption>{{end}}
 </figure>

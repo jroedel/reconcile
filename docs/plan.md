@@ -224,7 +224,7 @@ Owners, bookkeepers and accountants can download it (the Export permission). It 
    - **Cross-tenant isolation tests**: user A can never read B's org, account, project, file or export, through any route.
 5. **Import.** Statements, the CSV mapping screen and saved mappings, OFX/QFX, verification, dedupe, the transaction list by month, and the statement file stored and downloadable. Removing a statement takes its transactions with it. The list's filters by category, project and receipt arrive with those things, in steps 6 and 7.
 6. **Categories, splits, projects.** Per-org and personal category lists, the split editor, project assignment, the project dashboard (totals, by category, by month, every part, per currency), and the month list's "not sorted yet" filter.
-7. **Receipts.** Multi-file upload (direct and inbox), receipt viewer, attach and detach, match suggestions (same amount within ±5 days, from the accounts the person may attach receipts on) on the waiting list and the transaction page. Uploads stream part by part, 20 MB a file, 20 files and 120 MB a request, ten minutes. Thumbnails wait for step 9; pages show the photo itself.
+7. **Receipts.** Multi-file upload (direct and inbox), receipt viewer, attach and detach, match suggestions (same amount within ±5 days, from the accounts the person may attach receipts on) on the waiting list and the transaction page. Uploads stream part by part, 20 MB a file, 20 files and 120 MB a request, ten minutes. Pages show a photo's smaller pictures (step 9, below).
 8. **Reconcile and export.** In two pull requests: first the month-by-month page, the statement reconcile screen, and locking and reopening (audited); then the export zip (`exportbus`, `exportapp`).
 9. **Later, separately planned:**
    - The translations API, an MCP tool for Claude, and a review screen; then ES/PT go live (planned in `docs/translations.md`)
@@ -232,7 +232,7 @@ Owners, bookkeepers and accountants can download it (the Export permission). It 
    - PDF statements
    - Budgets per project and category
    - Categorization rules and suggestions (eumaeus `categorizebus`; planned in `docs/sorting.md`). Rules (`rulebus`, `sort_rules`, applied at import and from the rules page), then suggestions and "Sort this month" (`/accounts/{id}/sort`)
-   - Thumbnails (stewards `imaging`)
+   - Thumbnails (stewards `imaging`, now `foundation/imaging`): a JPEG or PNG receipt has a small picture for lists and a large one for its page, upright and without EXIF, made the first time a page asks and kept beside the original by its hash (`files/sized/`). The original is unchanged, still a tap away, and is what the accountant's package holds. PDF, WebP and HEIC are shown or offered as they are
 
 ## Open items (do not block steps 1–8)
 
