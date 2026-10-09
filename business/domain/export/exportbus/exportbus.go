@@ -53,14 +53,21 @@ var (
 // Columns is how many columns the spreadsheet has; the header a caller
 // gives Write must have as many, in this order: date, account,
 // description, amount, currency, the transaction's total, category, the
-// category's kind, project, memo, receipts, statement, and the day its
-// period was reconciled.
+// category's kind, project, memo, receipts, statement, the day its
+// period was reconciled, and the transaction it is part of the explanation
+// of (docs/clearing.md, 2).
 //
 // The kind is a column of its own (docs/plan.md, "Kinds of money") so that
 // an accountant can map the categories onto their chart of accounts at a
 // glance, and see at once which rows are transfers and pass-through rather
 // than income or expenses.
-const Columns = 13
+const Columns = 14
+
+// ExplanationColumns is how many columns explanations.csv has, in this
+// order: the explained transaction's date, account, description and
+// amount; one line's date, account, description and amount; the
+// difference the lines leave; whether it was accepted; and the note.
+const ExplanationColumns = 11
 
 // Accounts is how this domain asks who may do what, and names projects
 // (tenancybus).
@@ -76,6 +83,8 @@ type Ledger interface {
 	ProjectBook(ctx context.Context, actor, projectID types.ID) (ledgerbus.Book, error)
 	LookupAll(ctx context.Context, ids []types.ID) ([]ledgerbus.Transaction, error)
 	Reconciliations(ctx context.Context, accountID types.ID) ([]ledgerbus.Reconciliation, error)
+	Clearing(ctx context.Context, actor types.ID, ids []types.ID) (ledgerbus.Clearing, error)
+	Explain(ctx context.Context, actor, id types.ID) (ledgerbus.Explanation, error)
 }
 
 // Receipts is what is attached to the transactions (receiptbus).
@@ -137,6 +146,10 @@ type Row struct {
 	// Reconciled is the day the period holding the transaction was
 	// reconciled, or zero.
 	Reconciled types.Date
+
+	// ClearedBy is the transaction this one is part of the explanation
+	// of, when the reader may read its account.
+	ClearedBy ledgerbus.Transaction
 }
 
 // Entry is a file in the zip beside the spreadsheet.
@@ -152,6 +165,20 @@ type Package struct {
 	Name    string
 	Rows    []Row
 	Entries []Entry
+
+	// Explanations is the explained transactions of an account's package,
+	// for explanations.csv; none, and there is no such file.
+	Explanations []ledgerbus.Explanation
+}
+
+// Words is what a package's files say in the reader's language: the
+// header rows, and the words for each kind and for an accepted
+// difference.
+type Words struct {
+	Columns      []string
+	Kinds        map[categorybus.Kind]string
+	Explanations []string
+	Accepted     string
 }
 
 // Account is an account's package for a period, both days included.
@@ -237,6 +264,11 @@ func (b *Business) Account(ctx context.Context, actor, accountID types.ID, from,
 		return Package{}, err
 	}
 
+	cleared, err := b.clearing(ctx, actor, txs, &p)
+	if err != nil {
+		return Package{}, err
+	}
+
 	for _, t := range txs {
 		for _, s := range t.Splits {
 			p.Rows = append(p.Rows, Row{
@@ -244,6 +276,7 @@ func (b *Business) Account(ctx context.Context, actor, accountID types.ID, from,
 				Amount: s.Amount, Total: t.Amount, Currency: account.Currency,
 				Category: categories[s.CategoryID].Name, Kind: categories[s.CategoryID].Kind, Project: projects[s.ProjectID], Memo: s.Memo,
 				Receipts: attached[t.ID], Statement: fileNames[t.StatementID], Reconciled: reconciledOn(recs, t.PostedOn),
+				ClearedBy: cleared.By[t.ID].Transaction,
 			})
 		}
 	}
@@ -307,12 +340,20 @@ func (b *Business) Project(ctx context.Context, actor, projectID types.ID) (Pack
 		return Package{}, err
 	}
 
+	// What its lines are cleared by, but not the explanations themselves:
+	// a role on a project is no window into the accounts it draws on.
+	cleared, err := b.ledger.Clearing(ctx, actor, ids)
+	if err != nil {
+		return Package{}, err
+	}
+
 	for _, l := range book.Lines {
 		p.Rows = append(p.Rows, Row{
 			PostedOn: l.PostedOn, Account: l.AccountName, Description: l.Description,
 			Amount: l.Split.Amount, Total: byID[l.Split.TransactionID].Amount, Currency: l.Currency,
 			Category: l.CategoryName, Kind: l.CategoryKind, Project: book.Project.Name, Memo: l.Split.Memo,
 			Receipts: attached[l.Split.TransactionID], Reconciled: reconciledOn(recs[l.AccountID], l.PostedOn),
+			ClearedBy: cleared.By[l.Split.TransactionID].Transaction,
 		})
 	}
 
@@ -356,6 +397,35 @@ func (b *Business) attached(ctx context.Context, txs []ledgerbus.Transaction, n 
 	return out, nil
 }
 
+// clearing is what each transaction is cleared by, and puts the
+// explanations of those that are explained into the package.
+func (b *Business) clearing(ctx context.Context, actor types.ID, txs []ledgerbus.Transaction, p *Package) (ledgerbus.Clearing, error) {
+	ids := make([]types.ID, len(txs))
+	for i, t := range txs {
+		ids[i] = t.ID
+	}
+
+	c, err := b.ledger.Clearing(ctx, actor, ids)
+	if err != nil {
+		return ledgerbus.Clearing{}, err
+	}
+
+	for _, t := range txs {
+		if c.State(t.ID) == "" {
+			continue
+		}
+
+		x, err := b.ledger.Explain(ctx, actor, t.ID)
+		if err != nil {
+			return ledgerbus.Clearing{}, err
+		}
+
+		p.Explanations = append(p.Explanations, x)
+	}
+
+	return c, nil
+}
+
 // reconciledOn is the day a reconciliation covering the day was made.
 func reconciledOn(recs []ledgerbus.Reconciliation, day types.Date) types.Date {
 	for _, r := range recs {
@@ -370,32 +440,42 @@ func reconciledOn(recs []ledgerbus.Reconciliation, day types.Date) types.Date {
 // --- writing it -----------------------------------------------------------------
 
 // Write streams a package as a zip: the spreadsheet first, then every file,
-// read from disk one at a time and never held whole. header is the
-// spreadsheet's first row in the reader's language, Columns long, and kinds
-// the words for each kind in the same language.
+// read from disk one at a time and never held whole. words.Columns is the
+// spreadsheet's first row in the reader's language, Columns long, and
+// words.Explanations explanations.csv's, ExplanationColumns long.
 //
 // Photos and PDFs are stored rather than compressed: they are compressed
 // already, and deflating them again costs the server time and saves the
 // accountant nothing.
-func (b *Business) Write(ctx context.Context, now time.Time, w io.Writer, p Package, header []string, kinds map[categorybus.Kind]string) error {
-	if len(header) != Columns {
-		return fmt.Errorf("the header has %d columns, not %d", len(header), Columns)
+func (b *Business) Write(ctx context.Context, now time.Time, w io.Writer, p Package, words Words) error {
+	if len(words.Columns) != Columns {
+		return fmt.Errorf("the header has %d columns, not %d", len(words.Columns), Columns)
+	}
+
+	if len(words.Explanations) != ExplanationColumns {
+		return fmt.Errorf("the explanations' header has %d columns, not %d", len(words.Explanations), ExplanationColumns)
 	}
 
 	zw := zip.NewWriter(w)
 
-	sheet, err := spreadsheet(p.Rows, header, kinds)
+	sheet, err := spreadsheet(p.Rows, words)
 	if err != nil {
 		return err
 	}
 
-	fw, err := zw.CreateHeader(&zip.FileHeader{Name: "transactions.csv", Method: zip.Deflate, Modified: now})
-	if err != nil {
+	if err := deflated(zw, "transactions.csv", now, sheet); err != nil {
 		return err
 	}
 
-	if _, err := fw.Write(sheet); err != nil {
-		return err
+	if len(p.Explanations) > 0 {
+		sheet, err := explanations(p.Explanations, words)
+		if err != nil {
+			return err
+		}
+
+		if err := deflated(zw, "explanations.csv", now, sheet); err != nil {
+			return err
+		}
 	}
 
 	for _, e := range p.Entries {
@@ -411,6 +491,18 @@ func (b *Business) Write(ctx context.Context, now time.Time, w io.Writer, p Pack
 	}
 
 	return zw.Close()
+}
+
+// deflated writes a file the package makes, compressed.
+func deflated(zw *zip.Writer, name string, now time.Time, data []byte) error {
+	fw, err := zw.CreateHeader(&zip.FileHeader{Name: name, Method: zip.Deflate, Modified: now})
+	if err != nil {
+		return err
+	}
+
+	_, err = fw.Write(data)
+
+	return err
 }
 
 func (b *Business) copy(zw *zip.Writer, e Entry) error {
@@ -435,15 +527,10 @@ func (b *Business) copy(zw *zip.Writer, e Entry) error {
 // spreadsheet is the rows as CSV, with a byte-order mark: without one,
 // Excel reads UTF-8 as the Windows code page, and every accented name and
 // every "€" arrives as two wrong letters.
-func spreadsheet(rows []Row, header []string, kinds map[categorybus.Kind]string) ([]byte, error) {
-	var buf bytes.Buffer
+func spreadsheet(rows []Row, words Words) ([]byte, error) {
+	buf, cw := sheet()
 
-	buf.WriteString("\ufeff")
-
-	cw := csv.NewWriter(&buf)
-	cw.UseCRLF = true
-
-	if err := cw.Write(header); err != nil {
+	if err := cw.Write(words.Columns); err != nil {
 		return nil, err
 	}
 
@@ -456,10 +543,85 @@ func spreadsheet(rows []Row, header []string, kinds map[categorybus.Kind]string)
 		if err := cw.Write([]string{
 			r.PostedOn.String(), cell(r.Account), cell(r.Description),
 			r.Amount.String(), r.Currency, r.Total.String(),
-			cell(r.Category), cell(kinds[r.Kind]), cell(r.Project), cell(r.Memo),
-			strings.Join(r.Receipts, "; "), cell(r.Statement), reconciled,
+			cell(r.Category), cell(words.Kinds[r.Kind]), cell(r.Project), cell(r.Memo),
+			strings.Join(r.Receipts, "; "), cell(r.Statement), reconciled, clearer(r.ClearedBy),
 		}); err != nil {
 			return nil, err
+		}
+	}
+
+	cw.Flush()
+
+	return buf.Bytes(), cw.Error()
+}
+
+// sheet is a CSV to write, starting with the byte-order mark.
+func sheet() (*bytes.Buffer, *csv.Writer) {
+	var buf bytes.Buffer
+
+	buf.WriteString("\ufeff")
+
+	cw := csv.NewWriter(&buf)
+	cw.UseCRLF = true
+
+	return &buf, cw
+}
+
+// clearer is the "Cleared by" cell: the explained transaction's date,
+// amount and description, or nothing.
+func clearer(t ledgerbus.Transaction) string {
+	if t.ID.Zero() {
+		return ""
+	}
+
+	return cell(t.PostedOn.String() + " " + t.Amount.String() + " " + t.Description)
+}
+
+// explanations is explanations.csv: a row for each line of each
+// explanation, with the explained transaction and the difference repeated
+// on each, so that a filter on any column keeps whole rows. Lines in
+// accounts the reader may not see are one row with their sum and no
+// description.
+func explanations(xs []ledgerbus.Explanation, words Words) ([]byte, error) {
+	buf, cw := sheet()
+
+	if err := cw.Write(words.Explanations); err != nil {
+		return nil, err
+	}
+
+	for _, x := range xs {
+		t := x.Transaction
+
+		accepted := ""
+		if x.Accepted && x.Difference() != 0 {
+			accepted = words.Accepted
+		}
+
+		row := func(day, account, description, amount string) error {
+			return cw.Write([]string{
+				t.PostedOn.String(), cell(x.Account.Name), cell(t.Description), t.Amount.String(),
+				day, cell(account), cell(description), amount,
+				x.Difference().String(), accepted, cell(x.Note),
+			})
+		}
+
+		for _, l := range x.Lines {
+			lt := l.Transaction
+			if err := row(lt.PostedOn.String(), l.Account.Name, lt.Description, lt.Amount.String()); err != nil {
+				return nil, err
+			}
+		}
+
+		if x.Hidden > 0 {
+			if err := row("", "", "", x.HiddenSum.String()); err != nil {
+				return nil, err
+			}
+		}
+
+		if x.Count() == 0 {
+			if err := row("", "", "", ""); err != nil {
+				return nil, err
+			}
 		}
 	}
 

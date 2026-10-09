@@ -91,6 +91,7 @@ type Accounts interface {
 	AccessTo(ctx context.Context, actor types.ID, scope types.Scope) (tenancybus.Access, error)
 	ProjectsFor(ctx context.Context, actor types.ID, p tenancybus.Permission) ([]tenancybus.Project, error)
 	ProjectNames(ctx context.Context, ids []types.ID) (map[types.ID]string, error)
+	Overview(ctx context.Context, actor types.ID) (tenancybus.Overview, error)
 }
 
 // Files is where statements' bytes are (filebus).
@@ -168,6 +169,25 @@ type Storer interface {
 
 	// Examples is what a person sorted in the account, for suggestions.
 	Examples(ctx context.Context, account types.ID) ([]rulebus.Example, error)
+
+	// Explanation is a transaction's explanation (explain.go), if any.
+	Explanation(ctx context.Context, transactionID types.ID) (Stored, bool, error)
+
+	// Explained is how an account's explanations were gathered, newest
+	// first, with each explained transaction's description.
+	Explained(ctx context.Context, account types.ID) ([]Remembered, error)
+
+	// Clearing is which explanation each of some transactions is a line
+	// of, and which are explained themselves, with whether each of those
+	// is settled.
+	Clearing(ctx context.Context, txs []types.ID) (map[types.ID]types.ID, map[types.ID]bool, error)
+
+	// SaveExplanation writes how it was gathered and its lines; a line
+	// another explanation has is ErrExplained, and nothing is saved.
+	SaveExplanation(ctx context.Context, x Stored, add, remove []types.ID, by types.ID, ev eventbus.Event) error
+
+	// Settle writes the note and whether the difference is accepted.
+	Settle(ctx context.Context, transactionID types.ID, note string, accepted bool, by types.ID, ev eventbus.Event) error
 }
 
 // SavedMapping is a CSV mapping kept for the next file with the same

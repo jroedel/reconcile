@@ -50,11 +50,12 @@ var files embed.FS
 // Templates is this app's pages, for page.NewRenderer.
 var Templates fs.FS = files
 
-// UploadPatterns are the routes that take a file: a statement, and an
-// entry by hand with its document. The muxer gives them a branch of their
+// UploadPatterns are the routes that take a file: a statement, an entry
+// by hand with its document, and the same entry made from an explanation's
+// page as one of its lines. The muxer gives them a branch of their
 // own, with a body limit to fit (MaxUpload) and multipart only, instead of
 // the 64 KB every form has.
-var UploadPatterns = []string{"POST /accounts/{id}/statements", "POST /accounts/{id}/entries"}
+var UploadPatterns = []string{"POST /accounts/{id}/statements", "POST /accounts/{id}/entries", "POST /transactions/{id}/explain/entries"}
 
 // MaxUpload is the most an upload's body may be: the file, and room for
 // the multipart wrapping around it.
@@ -110,6 +111,7 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	handle("GET /accounts/{id}/transactions", a.transactions)
 	handle(UploadPatterns[0], a.upload)
 	handle(UploadPatterns[1], a.enter)
+	handle(UploadPatterns[2], a.enterLine)
 	handle("GET /accounts/{id}/imports/{file}", a.preview)
 	handle("POST /accounts/{id}/imports/{file}", a.importFile)
 	handle("GET /statements/{id}", a.statement)
@@ -122,6 +124,9 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	handle("POST /accounts/{id}/sort", a.saveMonth)
 	handle("GET /transactions/{id}", a.transaction)
 	handle("POST /transactions/{id}", a.sortTransaction)
+	handle("GET /transactions/{id}/explain", a.explain)
+	handle("POST /transactions/{id}/explain/lines", a.gather)
+	handle("POST /transactions/{id}/explain/settle", a.settle)
 	handle("GET /projects/{id}/book", a.book)
 }
 
@@ -235,6 +240,10 @@ type transactionsView struct {
 	// Receipts is how many each shown transaction has.
 	Receipts map[types.ID]int
 
+	// Clearing is which shown transactions explain an amount, and which
+	// are explained (docs/clearing.md, 2).
+	Clearing ledgerbus.Clearing
+
 	Problem string
 	Done    string
 }
@@ -306,7 +315,7 @@ func (a app) transactionsPage(w http.ResponseWriter, r *http.Request, status int
 		view.Shown = slices.DeleteFunc(view.Shown, func(t ledgerbus.Transaction) bool { return !t.ByRule() })
 	}
 
-	if err := a.names(r, account, &view); err != nil {
+	if err := a.names(r, me.ID, account, &view); err != nil {
 		a.failed(w, r, err)
 
 		return
@@ -318,7 +327,7 @@ func (a app) transactionsPage(w http.ResponseWriter, r *http.Request, status int
 // names fills in what the shown parts' categories and projects are called.
 // The reader may read the account, which was asked first: the names of
 // where its own money went are part of it (tenancybus.ProjectNames).
-func (a app) names(r *http.Request, account tenancybus.Account, view *transactionsView) error {
+func (a app) names(r *http.Request, me types.ID, account tenancybus.Account, view *transactionsView) error {
 	cats, err := a.cfg.Categories.ForAccount(r.Context(), account)
 	if err != nil {
 		return err
@@ -349,11 +358,16 @@ func (a app) names(r *http.Request, account tenancybus.Account, view *transactio
 	}
 
 	on, err := a.cfg.Receipts.OnTransactions(r.Context(), ids)
+	if err != nil {
+		return err
+	}
 
 	view.Receipts = make(map[types.ID]int, len(on))
 	for id, rs := range on {
 		view.Receipts[id] = len(rs)
 	}
+
+	view.Clearing, err = a.cfg.Ledger.Clearing(r.Context(), me, ids)
 
 	return err
 }

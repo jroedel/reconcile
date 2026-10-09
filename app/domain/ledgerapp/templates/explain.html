@@ -1,0 +1,115 @@
+{{define "title"}}{{t "Explain this amount"}}{{end}}
+{{define "content"}}{{$v := .Data}}{{$x := $v.X}}{{$t := $x.Transaction}}{{$cur := $x.Account.Currency}}
+<p class="crumbs"><a href="/accounts/{{$x.Account.ID}}/transactions?month={{slice $t.PostedOn.String 0 7}}">{{$x.Account.Name}}</a> · <a href="{{$v.Back}}">{{if $t.Description}}{{$t.Description}}{{else}}{{t "A transaction with no description"}}{{end}}</a></p>
+<h1>{{t "Explain this amount"}}</h1>
+<p>{{$t.PostedOn}} · {{$t.Description}} · <span class="money {{if lt $t.Amount 0}}out{{else}}in{{end}}">{{money $t.Amount $cur}}</span></p>
+<p class="hint">{{t "Gather the transactions that together make up this amount, from this organization's accounts: the charges a card payment pays for, the gifts in a deposit. Nothing about them changes by being here."}}</p>
+{{template "done" $v.Done}}
+{{template "problem" $v.Problem}}
+
+<section class="card">
+<h2>{{t "What makes it up"}}</h2>
+{{if $x.Count}}
+<p><strong>{{t "{n} lines come to {sum}" "n" $x.Count "sum" (money $x.Sum $cur)}}</strong>
+{{if eq $x.Difference 0}}<span class="badge ok">{{t "explained"}}</span>
+{{else}}· {{t "the difference is {amount}" "amount" (money $x.Difference $cur)}}
+{{if $x.Accepted}}<span class="badge ok">{{t "difference accepted"}}</span>{{else}}<span class="badge">{{t "open"}}</span>{{end}}{{end}}</p>
+{{else}}<p class="hint">{{t "Nothing yet. Choose where to look below."}}</p>{{end}}
+
+{{if or $v.Groups $x.Hidden}}
+{{if $x.CanChange}}<form method="post" action="/transactions/{{$t.ID}}/explain/lines">{{end}}
+{{range $g := $v.Groups}}
+<h3>{{$g.Account}} <span class="hint">{{t "{n} lines, {sum}" "n" (len $g.Lines) "sum" (money $g.Sum $cur)}}</span></h3>
+<div class="scroll">
+<table class="ledger">
+<thead><tr>{{if $x.CanChange}}<th>{{t "Take out"}}</th>{{end}}<th>{{t "Date"}}</th><th>{{t "Description"}}</th><th class="money">{{t "Amount"}}</th></tr></thead>
+<tbody>
+{{range $g.Lines}}{{$l := .Transaction}}<tr>{{if $x.CanChange}}<td><input type="checkbox" name="remove" value="{{$l.ID}}" aria-label="{{t "Take out"}}"></td>{{end}}
+<td>{{$l.PostedOn}}</td><td><a href="/transactions/{{$l.ID}}">{{if $l.Description}}{{$l.Description}}{{else}}{{t "(no description)"}}{{end}}</a></td>
+<td class="money {{if lt $l.Amount 0}}out{{else}}in{{end}}">{{money $l.Amount $cur}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{end}}
+{{if $x.Hidden}}<p class="hint">{{t "{n} lines in accounts you cannot see, {sum}" "n" $x.Hidden "sum" (money $x.HiddenSum $cur)}}</p>{{end}}
+{{if $x.CanChange}}{{if $v.Groups}}<button type="submit" class="quiet">{{t "Take the ticked lines out"}}</button>{{end}}
+</form>{{end}}
+{{end}}
+</section>
+
+{{if $x.CanChange}}
+<section class="card">
+<h2>{{t "Gather"}}</h2>
+<form method="get" action="/transactions/{{$t.ID}}/explain">
+  <fieldset>
+    <legend>{{t "From these accounts"}}</legend>
+    {{range $x.Choices}}<label class="choice"><input type="checkbox" name="account" value="{{.ID}}"{{if index $v.Chosen .ID}} checked{{end}}> {{.Name}}</label>
+    {{end}}
+  </fieldset>
+  <div class="field">
+    <label for="from">{{t "From the month"}}</label>
+    <input id="from" name="from" type="month" value="{{$v.From}}" required>
+  </div>
+  <div class="field">
+    <label for="to">{{t "To the month"}}</label>
+    <input id="to" name="to" type="month" value="{{$v.To}}" required>
+  </div>
+  <button type="submit" class="quiet">{{t "Look"}}</button>
+</form>
+
+{{if $v.Gathered}}
+{{if $v.Offered}}
+<form method="post" action="/transactions/{{$t.ID}}/explain/lines">
+{{range $x.Choices}}{{if index $v.Chosen .ID}}<input type="hidden" name="account" value="{{.ID}}">{{end}}{{end}}
+<input type="hidden" name="from" value="{{$v.From}}"><input type="hidden" name="to" value="{{$v.To}}">
+<p>{{t "{n} transactions not in any explanation yet, {sum}. Untick what does not belong." "n" (len $v.Offered) "sum" (money $v.Offer $cur)}}</p>
+<div class="scroll">
+<table class="ledger">
+<thead><tr><th>{{t "Add"}}</th><th>{{t "Account"}}</th><th>{{t "Date"}}</th><th>{{t "Description"}}</th><th class="money">{{t "Amount"}}</th></tr></thead>
+<tbody>
+{{range $v.Offered}}{{$l := .Transaction}}<tr><td><input type="checkbox" name="add" value="{{$l.ID}}" checked aria-label="{{t "Add"}}"></td>
+<td>{{.Account.Name}}</td><td>{{$l.PostedOn}}</td><td>{{if $l.Description}}{{$l.Description}}{{else}}{{t "(no description)"}}{{end}}</td>
+<td class="money {{if lt $l.Amount 0}}out{{else}}in{{end}}">{{money $l.Amount $cur}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+<button type="submit">{{t "Add the ticked lines"}}</button>
+</form>
+{{else}}<p class="hint">{{t "Those accounts have nothing in those months that is not in an explanation already."}}</p>{{end}}
+{{end}}
+</section>
+
+<section class="card">
+<h2>{{t "Add what no statement has"}}</h2>
+<p class="hint">{{t "A charge somebody paid on their own card and added to this amount, or a count sheet's total: entered by hand, with the document that shows it, and added here."}}</p>
+<form method="post" action="/transactions/{{$t.ID}}/explain/entries" enctype="multipart/form-data">
+  <div class="field">
+    <label for="entry-account">{{t "Into the account"}}</label>
+    <select id="entry-account" name="account">
+      {{range $x.Choices}}<option value="{{.ID}}"{{if eq .ID.String $x.Account.ID.String}} selected{{end}}>{{.Name}}</option>{{end}}
+    </select>
+  </div>
+  {{template "entry-fields"}}
+  <button type="submit">{{t "Enter it and add it"}}</button>
+</form>
+</section>
+
+{{if $x.Count}}
+<section class="card" id="settle">
+<h2>{{t "Settle"}}</h2>
+{{if eq $x.Difference 0}}<p class="hint">{{t "The lines come to the amount. A note is welcome, and not needed."}}</p>
+{{else}}<p class="hint">{{t "The lines leave {amount} unexplained. Leave it open until what is missing arrives, or accept the difference and say why." "amount" (money $x.Difference $cur)}}</p>{{end}}
+<form method="post" action="/transactions/{{$t.ID}}/explain/settle">
+  <div class="field">
+    <label for="note">{{t "Note"}}</label>
+    <textarea id="note" name="note" maxlength="500" rows="3">{{$v.Note}}</textarea>
+  </div>
+  {{if ne $x.Difference 0}}<label class="choice"><input type="checkbox" name="accept" value="1"{{if $x.Accepted}} checked{{end}}> {{t "Accept the difference"}}</label>{{end}}
+  <button type="submit" class="quiet">{{t "Save"}}</button>
+</form>
+</section>
+{{end}}
+{{else if $x.Note}}
+<section class="card"><h2>{{t "Note"}}</h2><p>{{$x.Note}}</p></section>
+{{end}}
+{{end}}

@@ -140,8 +140,8 @@ CSV, OFX or PDF into records, knowing nothing of accounts), `category` (each
 organization's list, or a personal account's, each category one of the four
 kinds of money), `ledger` (statements,
 transactions and their splits: checking, deduplicating, storing, sorting,
-and a project's book; reconciling, which locks a period; and applying
-sorting rules), `rule` (an account's sorting rules: text to look for and
+and a project's book; reconciling, which locks a period; applying
+sorting rules; and explaining one amount by the others that make it up), `rule` (an account's sorting rules: text to look for and
 what a charge that has it is sorted into), `budget` (what owners expect
 a project's, or an organization's year's, income and expenses to be,
 compared with what happened), `receipt`

@@ -99,8 +99,10 @@ func TestWritingAPackage(t *testing.T) {
 		header[i] = "c" + string(rune('a'+i))
 	}
 
+	words := Words{Columns: header, Kinds: map[categorybus.Kind]string{categorybus.Expense: "Spent"}, Explanations: make([]string, ExplanationColumns)}
+
 	var out bytes.Buffer
-	if err := b.Write(t.Context(), time.Date(2026, 8, 3, 9, 0, 0, 0, time.UTC), &out, p, header, map[categorybus.Kind]string{categorybus.Expense: "Spent"}); err != nil {
+	if err := b.Write(t.Context(), time.Date(2026, 8, 3, 9, 0, 0, 0, time.UTC), &out, p, words); err != nil {
 		t.Fatal(err)
 	}
 
@@ -139,7 +141,7 @@ func TestWritingAPackage(t *testing.T) {
 	}
 
 	want := []string{"2026-07-03", "Parish checking", "'=HYPERLINK(\"http://x.invalid\")", "-30.00", "USD", "-33.99",
-		"Groceries", "Spent", "Café", "'-light bulbs", "receipts/a_1.jpg", "july.csv", "2026-08-03"}
+		"Groceries", "Spent", "Café", "'-light bulbs", "receipts/a_1.jpg", "july.csv", "2026-08-03", ""}
 
 	if len(rows) != 2 || strings.Join(rows[1], "|") != strings.Join(want, "|") {
 		t.Errorf("the row:\n got %q\nwant %q", rows[1], want)
@@ -149,7 +151,7 @@ func TestWritingAPackage(t *testing.T) {
 		t.Error("the photo changed on the way into the zip")
 	}
 
-	if err := b.Write(t.Context(), time.Now(), io.Discard, p, header[:3], nil); err == nil {
+	if err := b.Write(t.Context(), time.Now(), io.Discard, p, Words{Columns: header[:3], Explanations: words.Explanations}); err == nil {
 		t.Error("a short header was written")
 	}
 }

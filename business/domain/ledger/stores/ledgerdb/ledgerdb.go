@@ -40,6 +40,9 @@ var Expected = sqldb.Expected{
 	"csv_mappings":        {"account_id", "fingerprint", "mapping", "updated_by", "updated_at"},
 	"splits":              {"id", "transaction_id", "position", "amount", "category_id", "project_id", "memo", "rule_id"},
 	"transaction_aliases": {"account_id", "hash", "transaction_id", "created_at"},
+	"explanations": {"transaction_id", "note", "accepted", "sources", "back_from", "back_to",
+		"created_by", "created_at", "updated_by", "updated_at"},
+	"explanation_lines": {"transaction_id", "explains", "added_by", "added_at"},
 	"reconciliations": {"statement_id", "account_id", "period_start", "period_end", "note",
 		"reconciled_by", "reconciled_at"},
 }
@@ -114,7 +117,11 @@ CREATE TABLE IF NOT EXISTS csv_mappings (
 		return err
 	}
 
-	return initAliases(ctx, db)
+	if err := initAliases(ctx, db); err != nil {
+		return err
+	}
+
+	return initExplanations(ctx, db)
 }
 
 // initReconciliations creates the table of statements a person has checked
@@ -781,6 +788,9 @@ JOIN categories c ON c.id = s.category_id
 JOIN transactions t ON t.id = s.transaction_id
 JOIN accounts a ON a.id = t.account_id
 WHERE `+column+` = ? AND c.kind IN ('transfer', 'passthrough')
+    -- A transfer explained by what it paid for, in the organization's own
+    -- accounts, is met: the card it paid has charges, not a payment.
+    AND NOT (c.kind = 'transfer' AND `+settledWhere+`)
 GROUP BY c.id, a.currency, 5
 ORDER BY 5`, owner.ID.String())
 	if err != nil {

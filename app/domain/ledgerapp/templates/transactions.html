@@ -22,28 +22,7 @@
 <h2>{{t "Enter a transaction by hand"}}</h2>
 <p class="hint">{{t "For what no statement lists, such as a charge somebody paid on their own card and added to this account. The document that shows it is kept with it."}}</p>
 <form method="post" action="{{$v.Path}}/entries" enctype="multipart/form-data">
-  <div class="field">
-    <label for="entry-date">{{t "Date"}}</label>
-    <input id="entry-date" name="date" type="date" required>
-  </div>
-  <div class="field">
-    <label for="entry-description">{{t "Description"}}</label>
-    <input id="entry-description" name="description" type="text" required maxlength="200">
-  </div>
-  <div class="field">
-    <label for="entry-amount">{{t "Amount"}}</label>
-    <input id="entry-amount" name="amount" type="text" inputmode="decimal" required>
-  </div>
-  <fieldset>
-    <legend>{{t "Which way"}}</legend>
-    <label class="choice"><input type="radio" name="direction" value="out" checked> {{t "Money out"}}</label>
-    <label class="choice"><input type="radio" name="direction" value="in"> {{t "Money in"}}</label>
-  </fieldset>
-  <div class="field">
-    <label for="entry-document">{{t "The document that shows it"}}</label>
-    <input id="entry-document" name="document" type="file" required accept="image/*,application/pdf">
-    <p class="hint">{{t "A photo or a PDF: a receipt, an invoice, or the email that says so."}}</p>
-  </div>
+  {{template "entry-fields"}}
   <button type="submit">{{t "Enter it"}}</button>
 </form>
 </section>
@@ -75,7 +54,9 @@
 {{range $v.Shown}}<tr id="t-{{.ID}}"><td>{{.PostedOn}}</td><td><a href="/transactions/{{.ID}}">{{if .Description}}{{.Description}}{{else}}{{t "(no description)"}}{{end}}</a></td>
 <td>{{if gt (len .Splits) 1}}{{t "{n} parts" "n" (len .Splits)}}{{if not .Sorted}} <span class="badge">{{t "not sorted yet"}}</span>{{end}}
 {{else}}{{range .Splits}}{{with index $v.Categories .CategoryID}}{{.}}{{else}}<span class="badge">{{t "not sorted yet"}}</span>{{end}}{{with index $v.Projects .ProjectID}} · {{.}}{{end}}{{if not .RuleID.Zero}} <span class="badge">{{t "by rule"}}</span>{{end}}{{end}}{{end}}</td>
-<td class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $cur}}{{with index $v.Receipts .ID}}<br><span class="hint">{{t "{n} receipts" "n" .}}</span>{{end}}</td></tr>
+<td class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $cur}}{{with index $v.Receipts .ID}}<br><span class="hint">{{t "{n} receipts" "n" .}}</span>{{end}}
+{{- with index $v.Clearing.By .ID}}<br>{{if .Hidden}}<span class="badge">{{t "cleared"}}</span>{{else}}<a href="/transactions/{{.Transaction.ID}}/explain" class="badge">{{t "cleared {date}" "date" .Transaction.PostedOn}}</a>{{end}}{{end}}
+{{- $state := $v.Clearing.State .ID}}{{if $state}}<br><a href="/transactions/{{.ID}}/explain" class="badge{{if eq $state "explained"}} ok{{end}}">{{if eq $state "explained"}}{{t "explained"}}{{else}}{{t "open"}}{{end}}</a>{{end}}</td></tr>
 {{end}}</tbody>
 </table>
 </div>

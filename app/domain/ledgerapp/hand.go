@@ -40,19 +40,11 @@ func (a app) enter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fields, f, err := a.receiveEntry(r, me.ID)
+	e, _, code, err := a.entryFrom(r, me.ID)
 
 	switch {
-	case errors.Is(err, filebus.ErrType):
-		a.transactionsPage(w, r, http.StatusUnprocessableEntity, "entry-file-type")
-
-		return
-	case errors.Is(err, errNoFile):
-		a.transactionsPage(w, r, http.StatusUnprocessableEntity, "entry-file")
-
-		return
-	case problem(err) != "":
-		a.transactionsPage(w, r, http.StatusUnprocessableEntity, problem(err))
+	case code != "":
+		a.transactionsPage(w, r, http.StatusUnprocessableEntity, code)
 
 		return
 	case err != nil:
@@ -61,15 +53,47 @@ func (a app) enter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	t, err := a.cfg.Ledger.Enter(r.Context(), a.cfg.Now(), me.ID, id, e)
+
+	if code := enterProblem(err); code != "" {
+		a.transactionsPage(w, r, http.StatusUnprocessableEntity, code)
+
+		return
+	}
+
+	if err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
+	back(w, r, "/transactions/"+t.ID.String(), "entered")
+}
+
+// entryFrom reads the entry's form: the entry, the form's other fields,
+// and the code of what was wrong with it that a page words, or an error
+// that is not the form's.
+func (a app) entryFrom(r *http.Request, me types.ID) (ledgerbus.Entry, map[string]string, string, error) {
+	fields, f, err := a.receiveEntry(r, me)
+
+	switch {
+	case errors.Is(err, filebus.ErrType):
+		return ledgerbus.Entry{}, fields, "entry-file-type", nil
+	case errors.Is(err, errNoFile):
+		return ledgerbus.Entry{}, fields, "entry-file", nil
+	case problem(err) != "":
+		return ledgerbus.Entry{}, fields, problem(err), nil
+	case err != nil:
+		return ledgerbus.Entry{}, fields, "", err
+	}
+
 	e := ledgerbus.Entry{Description: fields["description"], File: f.ID}
 
 	e.Date, _ = types.ParseDate(strings.TrimSpace(fields["date"]))
 
 	amount, err := typedAmount(strings.TrimSpace(fields["amount"]))
 	if err != nil || amount < 0 {
-		a.transactionsPage(w, r, http.StatusUnprocessableEntity, "entry-amount")
-
-		return
+		return ledgerbus.Entry{}, fields, "entry-amount", nil
 	}
 
 	// Typed as a number and a direction, because a person writes "40.00
@@ -80,22 +104,23 @@ func (a app) enter(w http.ResponseWriter, r *http.Request) {
 
 	e.Amount = amount
 
-	t, err := a.cfg.Ledger.Enter(r.Context(), a.cfg.Now(), me.ID, id, e)
+	return e, fields, "", nil
+}
 
-	invalid, isInvalid := errors.AsType[ledgerbus.EntryInvalid](err)
+// enterProblem is the code a page words for what Enter refused, or "".
+func enterProblem(err error) string {
+	if invalid, ok := errors.AsType[ledgerbus.EntryInvalid](err); ok {
+		return "entry-" + invalid.Field
+	}
 
 	switch {
-	case isInvalid:
-		a.transactionsPage(w, r, http.StatusUnprocessableEntity, "entry-"+invalid.Field)
 	case errors.Is(err, ledgerbus.ErrEntered):
-		a.transactionsPage(w, r, http.StatusUnprocessableEntity, "entry-already")
+		return "entry-already"
 	case errors.Is(err, ledgerbus.ErrLocked):
-		a.transactionsPage(w, r, http.StatusUnprocessableEntity, "entry-locked")
-	case err != nil:
-		a.failed(w, r, err)
-	default:
-		back(w, r, "/transactions/"+t.ID.String(), "entered")
+		return "entry-locked"
 	}
+
+	return ""
 }
 
 // maxField is the longest a typed field of the entry may be.
@@ -131,7 +156,7 @@ func (a app) receiveEntry(r *http.Request, me types.ID) (map[string]string, file
 			if err != nil {
 				return nil, filebus.File{}, tooBig(err)
 			}
-		case name == "date" || name == "description" || name == "amount" || name == "direction":
+		case name == "date" || name == "description" || name == "amount" || name == "direction" || name == "account":
 			b, err := io.ReadAll(io.LimitReader(part, maxField))
 			part.Close()
 
