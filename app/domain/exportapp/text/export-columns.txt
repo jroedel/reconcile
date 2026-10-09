@@ -14,3 +14,4 @@
 {{t "Statement"}}
 {{t "Reconciled on"}}
 {{t "Cleared by"}}
+{{t "Cardholder"}}

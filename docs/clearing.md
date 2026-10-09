@@ -134,6 +134,11 @@ every account that exists, and for any account that does not need it.
   cardholder with a statement in either of the two months before and none
   in this one. "September: 5 of 6 cardholders."
 - **The accountant's package** gains a "Cardholder" column.
+- **Storage.** `transactions.holder`, the cardholder a file named, kept
+  for every account; it joins the identity only where the option is on.
+  The option itself is a row of the ledger's `holder_accounts`, not a
+  column of `accounts`, so that turning it on or off and giving every row
+  its identity again are one transaction of one store.
 
 ## 4. Pending charges
 

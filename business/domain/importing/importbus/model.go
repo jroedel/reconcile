@@ -48,6 +48,12 @@ type Record struct {
 	// It becomes the memo of the transaction's one part, and is no part of
 	// its identity.
 	Memo string
+
+	// Holder is the cardholder the file says made the charge: a PDF's
+	// person column, or a CSV's column mapped as the cardholder. On an
+	// account whose statements arrive one file per cardholder it is part
+	// of the row's identity (docs/clearing.md, 3).
+	Holder string
 }
 
 // Balance is a balance a file stated, at a date.

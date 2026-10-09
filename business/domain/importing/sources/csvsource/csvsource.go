@@ -61,6 +61,10 @@ type Mapping struct {
 	// Balance names a running-balance column, if the export has one.
 	Balance string `json:"balance,omitempty"`
 
+	// Holder names the column that says which cardholder made a charge,
+	// in a card's export for several cards.
+	Holder string `json:"holder,omitempty"`
+
 	// DateFormat is a Go layout. Empty chooses one from the file (see the
 	// package comment).
 	DateFormat string `json:"date_format,omitempty"`
@@ -119,6 +123,12 @@ var (
 	debitNames   = []string{"debit", "withdrawal", "withdrawals", "money out", "paid out", "spent", "cargo", "cargos", "débito", "debito", "saída", "saida"}
 	creditNames  = []string{"credit", "deposit", "deposits", "money in", "paid in", "received", "abono", "abonos", "crédito", "credito", "entrada"}
 	balanceNames = []string{"balance", "running balance", "saldo", "saldo disponible"}
+
+	// Not "name", which is a payee as often as a person.
+	holderNames = []string{
+		"cardholder", "card holder", "card member", "cardmember", "card member name", "cardholder name",
+		"titular", "tarjetahabiente", "titular do cartão", "titular do cartao", "portador",
+	}
 )
 
 // Inspection is what the mapping screen shows about a file before a mapping
@@ -245,6 +255,10 @@ func toRecord(row []string, get func([]string, string) string, m Mapping, layout
 	}
 
 	rec := importbus.Record{Date: date, Description: description, Amount: amount}
+
+	if m.Holder != "" {
+		rec.Holder = strings.Join(strings.Fields(get(row, m.Holder)), " ")
+	}
 
 	if m.Balance != "" {
 		raw := get(row, m.Balance)
@@ -551,6 +565,11 @@ func Detect(header []string) Mapping {
 		Description: pick(header, descriptionNames),
 		Amount:      pick(header, amountNames),
 		Balance:     pick(header, balanceNames),
+		Holder:      pick(header, holderNames),
+	}
+
+	if m.Holder == m.Description {
+		m.Holder = ""
 	}
 
 	if m.Amount == "" {

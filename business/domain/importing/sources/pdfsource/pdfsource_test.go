@@ -78,6 +78,12 @@ func TestAPrintedActivityPage(t *testing.T) {
 	var got []row
 	for _, r := range res.Records {
 		got = append(got, row{r.Date.Format("2006-01-02"), r.Description, r.Memo, r.Amount.String(), r.Page})
+
+		// The person column is the cardholder, for an account split by
+		// cardholder (docs/clearing.md, 3).
+		if r.Holder != r.Memo {
+			t.Errorf("holder %q, memo %q", r.Holder, r.Memo)
+		}
 	}
 
 	want := []row{

@@ -92,6 +92,8 @@ one. Given a dict of By, a *ledgerbus.Clearer, and Currency. */}}
 {{- if eq . "sorted"}}{{t "Saved."}}
 {{- else if eq . "entered"}}{{t "Entered. Its document is kept with it."}}
 {{- else if eq . "entered-line"}}{{t "Entered, with its document, and added to the explanation."}}
+{{- else if eq . "split-on"}}{{t "Saved. This account's statements are now kept apart by cardholder."}}
+{{- else if eq . "split-off"}}{{t "Saved. This account's statements are no longer kept apart by cardholder."}}
 {{- else if eq . "gathered"}}{{t "The explanation is saved."}}
 {{- else if eq . "settled"}}{{t "Saved. The history keeps the note."}}
 {{- else if eq . "sorted-rule"}}{{t "Saved, and charges like it will be sorted the same way as their statements arrive."}}

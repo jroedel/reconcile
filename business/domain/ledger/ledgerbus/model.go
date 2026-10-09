@@ -89,6 +89,11 @@ type Statement struct {
 	// (Doubt), with any a person imported all the same. Those set aside are
 	// counted in Already. Counted on import and in the preview; not kept.
 	Doubts []Doubt
+
+	// ByHolder is whether its rows' identities were made with their
+	// cardholders (ContentKey); the store refuses it if the account's
+	// option has changed since. Not kept.
+	ByHolder bool
 }
 
 // SetAside is how many of its rows the count rule left out.
@@ -120,6 +125,11 @@ type Transaction struct {
 
 	// ExternalID is the bank's identifier (OFX's FITID), or empty.
 	ExternalID string
+
+	// Holder is the cardholder its file said made it, or empty. Kept
+	// whatever the account; part of the identity only on an account whose
+	// statements arrive one file per cardholder (ContentKey).
+	Holder string
 
 	// Hash and Occurrence are the fallback identity (hash).
 	Hash       string
@@ -218,7 +228,7 @@ func (m Month) Net() money.Amount { return m.In + m.Out }
 
 // transactions turns what a file listed into rows for one account, with
 // their identities.
-func transactions(account types.ID, recs []importbus.Record) []Transaction {
+func transactions(account types.ID, recs []importbus.Record, byHolder bool) []Transaction {
 	out := make([]Transaction, len(recs))
 	seen := make(map[string]int, len(recs))
 
@@ -232,12 +242,13 @@ func transactions(account types.ID, recs []importbus.Record) []Transaction {
 			Balance:     r.Balance,
 			HasBalance:  r.HasBalance,
 			ExternalID:  r.ExternalID,
+			Holder:      r.Holder,
 		}
 
-		key := contentKey(t)
+		key := ContentKey(t, byHolder)
 		seen[key]++
 		t.Occurrence = seen[key]
-		t.Hash = hash(t)
+		t.Hash = Hash(t, byHolder)
 		t.Splits = []Split{{ID: types.NewID(), TransactionID: t.ID, Amount: t.Amount, Memo: r.Memo}}
 
 		out[i] = t
@@ -246,7 +257,7 @@ func transactions(account types.ID, recs []importbus.Record) []Transaction {
 	return out
 }
 
-// hash is the identity of a transaction whose bank gave it none -- every
+// Hash is the identity of a transaction whose bank gave it none -- every
 // CSV row, and the odd OFX row without a FITID. From eumaeus, where it was
 // measured.
 //
@@ -260,17 +271,30 @@ func transactions(account types.ID, recs []importbus.Record) []Transaction {
 //
 // The unit of numbering is one file, which is why transactions is given one
 // file's records and nothing else.
-func hash(t Transaction) string {
-	h := sha256.Sum256([]byte(contentKey(t) + "\x00" + strconv.Itoa(max(t.Occurrence, 1))))
+//
+// Exported for the store, which computes every stored row's again when an
+// account's cardholder option changes (ledgerdb.SetByHolder).
+func Hash(t Transaction, byHolder bool) string {
+	h := sha256.Sum256([]byte(ContentKey(t, byHolder) + "\x00" + strconv.Itoa(max(t.Occurrence, 1))))
 
 	return hex.EncodeToString(h[:])
 }
 
-// contentKey is what makes two rows indistinguishable to a bank export: the
-// same account, day, description and amount.
-func contentKey(t Transaction) string {
-	return t.AccountID.String() + "\x00" + t.PostedOn.String() + "\x00" +
+// ContentKey is what makes two rows indistinguishable to a bank export: the
+// same account, day, description and amount -- and, on an account whose
+// statements arrive one file per cardholder, the same cardholder. Two
+// people who park in one garage on one day for one price are two charges
+// (docs/clearing.md, 3). A row with no cardholder has the same key either
+// way, so a file for the whole card is matched as it always was.
+func ContentKey(t Transaction, byHolder bool) string {
+	key := t.AccountID.String() + "\x00" + t.PostedOn.String() + "\x00" +
 		normalizeDescription(t.Description) + "\x00" + t.Amount.String()
+
+	if byHolder && t.Holder != "" {
+		key += "\x00" + normalizeDescription(t.Holder)
+	}
+
+	return key
 }
 
 // normalizeDescription removes what banks change between exports without

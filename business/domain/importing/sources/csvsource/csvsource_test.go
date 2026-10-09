@@ -239,6 +239,24 @@ func TestDetectPrefersExactMatches(t *testing.T) {
 	}
 }
 
+// A card's export for several cards says whose each charge was; "Name" is
+// a payee as often as a person, and is never taken for one.
+func TestTheCardholderColumn(t *testing.T) {
+	m := csvsource.Detect([]string{"Date", "Description", "Card Member", "Amount"})
+	if m.Holder != "Card Member" {
+		t.Errorf("Detect = %+v", m)
+	}
+
+	if m := csvsource.Detect([]string{"Date", "Name", "Amount"}); m.Holder != "" || m.Description != "Name" {
+		t.Errorf("Detect = %+v", m)
+	}
+
+	res := read(t, "Date,Description,Card Member,Amount\n2026-09-04,CITY GARAGE,  Ana   Lima ,-12.00\n", m)
+	if res.Records[0].Holder != "Ana Lima" {
+		t.Errorf("holder = %q", res.Records[0].Holder)
+	}
+}
+
 func TestSkipLines(t *testing.T) {
 	const data = "Account activity for July\n\nDate,Description,Amount\n2026-07-01,A,1.00\n"
 

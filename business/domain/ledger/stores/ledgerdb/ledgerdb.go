@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -36,13 +37,14 @@ var Expected = sqldb.Expected{
 	"statements": {"id", "account_id", "file_id", "format", "period_start", "period_end", "opening", "closing",
 		"checked", "added", "already", "imported_by", "imported_at"},
 	"transactions": {"id", "account_id", "statement_id", "posted_on", "description", "amount", "balance",
-		"external_id", "hash", "occurrence"},
+		"external_id", "hash", "occurrence", "holder"},
 	"csv_mappings":        {"account_id", "fingerprint", "mapping", "updated_by", "updated_at"},
 	"splits":              {"id", "transaction_id", "position", "amount", "category_id", "project_id", "memo", "rule_id"},
 	"transaction_aliases": {"account_id", "hash", "transaction_id", "created_at"},
 	"explanations": {"transaction_id", "note", "accepted", "sources", "back_from", "back_to",
 		"created_by", "created_at", "updated_by", "updated_at"},
 	"explanation_lines": {"transaction_id", "explains", "added_by", "added_at"},
+	"holder_accounts":   {"account_id", "set_by", "set_at"},
 	"reconciliations": {"statement_id", "account_id", "period_start", "period_end", "note",
 		"reconciled_by", "reconciled_at"},
 }
@@ -109,6 +111,13 @@ CREATE TABLE IF NOT EXISTS csv_mappings (
 		return fmt.Errorf("creating the ledger tables: %w", err)
 	}
 
+	// The cardholder a file said made the charge (docs/clearing.md, 3), a
+	// later column beside the CREATE; empty for every row from before it
+	// and for every file that names nobody.
+	if err := sqldb.AddColumn(ctx, db, "transactions", "holder", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+
 	if err := initSplits(ctx, db); err != nil {
 		return err
 	}
@@ -121,7 +130,11 @@ CREATE TABLE IF NOT EXISTS csv_mappings (
 		return err
 	}
 
-	return initExplanations(ctx, db)
+	if err := initExplanations(ctx, db); err != nil {
+		return err
+	}
+
+	return initHolders(ctx, db)
 }
 
 // initReconciliations creates the table of statements a person has checked
@@ -308,6 +321,19 @@ ON CONFLICT (account_id, fingerprint) DO UPDATE SET mapping = excluded.mapping, 
 // importRows stores the statement and its new rows inside tx, and counts
 // them.
 func importRows(ctx context.Context, tx *sql.Tx, st ledgerbus.Statement, txs []ledgerbus.Transaction, also map[types.ID][]eventbus.Event) (ledgerbus.Statement, error) {
+	// The rows' identities were made under the account's cardholder option
+	// as it was when the file was read. If it has changed since, rows that
+	// name a cardholder would be matched under the wrong rule; rows that
+	// name nobody are the same under either.
+	on, err := byHolder(ctx, tx, st.AccountID)
+	if err != nil {
+		return ledgerbus.Statement{}, err
+	}
+
+	if on != st.ByHolder && slices.ContainsFunc(txs, func(t ledgerbus.Transaction) bool { return t.Holder != "" }) {
+		return ledgerbus.Statement{}, fmt.Errorf("%w: the account's cardholder option changed while the file was read", ledgerbus.ErrUnstable)
+	}
+
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO statements (id, account_id, file_id, format, period_start, period_end, opening, closing, checked, imported_by, imported_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -331,7 +357,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 
 		if !known {
 			var err error
-			if known, err = already(ctx, tx, t); err != nil {
+			if known, err = already(ctx, tx, t, on); err != nil {
 				return ledgerbus.Statement{}, err
 			}
 		}
@@ -345,7 +371,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		fresh = append(fresh, i)
 	}
 
-	doubts, err := countRule(ctx, tx, st.ID, txs, fresh)
+	doubts, err := countRule(ctx, tx, st.ID, txs, fresh, on)
 	if err != nil {
 		return ledgerbus.Statement{}, err
 	}
@@ -363,10 +389,10 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		}
 
 		if _, err := tx.ExecContext(ctx, `
-INSERT INTO transactions (id, account_id, statement_id, posted_on, description, amount, balance, external_id, hash, occurrence)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+INSERT INTO transactions (id, account_id, statement_id, posted_on, description, amount, balance, external_id, hash, occurrence, holder)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			t.ID.String(), t.AccountID.String(), st.ID.String(), t.PostedOn.String(), t.Description, int64(t.Amount),
-			nullAmount(t.Balance, t.HasBalance), t.ExternalID, t.Hash, t.Occurrence); err != nil {
+			nullAmount(t.Balance, t.HasBalance), t.ExternalID, t.Hash, t.Occurrence, t.Holder); err != nil {
 			return ledgerbus.Statement{}, fmt.Errorf("storing a transaction: %w", err)
 		}
 
@@ -419,7 +445,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 }
 
 // already applies the rule in Import's comment to one row.
-func already(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction) (bool, error) {
+func already(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction, byHolder bool) (bool, error) {
 	exists := func(q string, args ...any) (bool, error) {
 		var one int
 
@@ -447,7 +473,7 @@ func already(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction) (bool, er
 
 		// As many cut-short matches as this row's occurrence: two charges
 		// the page printed alike are two, and claim two.
-		rows, err := cutShort(ctx, tx, t, false)
+		rows, err := cutShort(ctx, tx, t, false, byHolder)
 
 		return len(rows) >= max(t.Occurrence, 1), err
 	}
@@ -483,7 +509,7 @@ WHERE external_id = '' AND id = (SELECT transaction_id FROM transaction_aliases 
 		return n == 1, err
 	}
 
-	rows, err := cutShort(ctx, tx, t, true)
+	rows, err := cutShort(ctx, tx, t, true, byHolder)
 	if err != nil || len(rows) == 0 {
 		return false, err
 	}
@@ -498,8 +524,11 @@ WHERE external_id = '' AND id = (SELECT transaction_id FROM transaction_aliases 
 // cutShort is the rows of other statements on t's day for t's amount whose
 // description is t's cut short or the other way round, oldest first; with
 // unclaimed, only those no bank identifier has claimed.
-func cutShort(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction, unclaimed bool) ([]int64, error) {
-	q := `SELECT rowid, description FROM transactions WHERE account_id = ? AND posted_on = ? AND amount = ? AND statement_id <> ?`
+//
+// On an account split by cardholder, only rows of t's cardholder count,
+// and rows that name nobody (ledgerbus.SameHolder).
+func cutShort(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction, unclaimed, byHolder bool) ([]int64, error) {
+	q := `SELECT rowid, description, holder FROM transactions WHERE account_id = ? AND posted_on = ? AND amount = ? AND statement_id <> ?`
 	if unclaimed {
 		q += ` AND external_id = ''`
 	}
@@ -514,12 +543,16 @@ func cutShort(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction, unclaime
 
 	for rows.Next() {
 		var (
-			id   int64
-			desc string
+			id           int64
+			desc, holder string
 		)
 
-		if err := rows.Scan(&id, &desc); err != nil {
+		if err := rows.Scan(&id, &desc, &holder); err != nil {
 			return nil, fmt.Errorf("looking for a transaction: %w", err)
+		}
+
+		if byHolder && !ledgerbus.SameHolder(holder, t.Holder) {
+			continue
 		}
 
 		if ledgerbus.Truncated(desc, t.Description) {
@@ -914,7 +947,7 @@ func inList(ids []types.ID) (string, []any) {
 	return strings.Join(marks, ", "), args
 }
 
-const transactionColumns = `id, account_id, statement_id, posted_on, description, amount, balance, external_id, hash, occurrence`
+const transactionColumns = `id, account_id, statement_id, posted_on, description, amount, balance, external_id, hash, occurrence, holder`
 
 func (s *Store) transactions(ctx context.Context, q string, args ...any) ([]ledgerbus.Transaction, error) {
 	rows, err := s.db.QueryContext(ctx, q, args...)
@@ -933,7 +966,7 @@ func (s *Store) transactions(ctx context.Context, q string, args ...any) ([]ledg
 			balance                sql.NullInt64
 		)
 
-		if err := rows.Scan(&id, &acct, &stmt, &posted, &t.Description, &amount, &balance, &t.ExternalID, &t.Hash, &t.Occurrence); err != nil {
+		if err := rows.Scan(&id, &acct, &stmt, &posted, &t.Description, &amount, &balance, &t.ExternalID, &t.Hash, &t.Occurrence, &t.Holder); err != nil {
 			return nil, fmt.Errorf("reading the transactions: %w", err)
 		}
 

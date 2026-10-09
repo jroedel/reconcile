@@ -141,7 +141,7 @@ func TestWritingAPackage(t *testing.T) {
 	}
 
 	want := []string{"2026-07-03", "Parish checking", "'=HYPERLINK(\"http://x.invalid\")", "-30.00", "USD", "-33.99",
-		"Groceries", "Spent", "Café", "'-light bulbs", "receipts/a_1.jpg", "july.csv", "2026-08-03", ""}
+		"Groceries", "Spent", "Café", "'-light bulbs", "receipts/a_1.jpg", "july.csv", "2026-08-03", "", ""}
 
 	if len(rows) != 2 || strings.Join(rows[1], "|") != strings.Join(want, "|") {
 		t.Errorf("the row:\n got %q\nwant %q", rows[1], want)

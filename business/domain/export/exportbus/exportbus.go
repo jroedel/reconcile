@@ -54,14 +54,14 @@ var (
 // gives Write must have as many, in this order: date, account,
 // description, amount, currency, the transaction's total, category, the
 // category's kind, project, memo, receipts, statement, the day its
-// period was reconciled, and the transaction it is part of the explanation
-// of (docs/clearing.md, 2).
+// period was reconciled, the transaction it is part of the explanation of
+// (docs/clearing.md, 2), and the cardholder its file said made it (3).
 //
 // The kind is a column of its own (docs/plan.md, "Kinds of money") so that
 // an accountant can map the categories onto their chart of accounts at a
 // glance, and see at once which rows are transfers and pass-through rather
 // than income or expenses.
-const Columns = 14
+const Columns = 15
 
 // ExplanationColumns is how many columns explanations.csv has, in this
 // order: the explained transaction's date, account, description and
@@ -150,6 +150,9 @@ type Row struct {
 	// ClearedBy is the transaction this one is part of the explanation
 	// of, when the reader may read its account.
 	ClearedBy ledgerbus.Transaction
+
+	// Holder is the cardholder the transaction's file said made it.
+	Holder string
 }
 
 // Entry is a file in the zip beside the spreadsheet.
@@ -276,7 +279,7 @@ func (b *Business) Account(ctx context.Context, actor, accountID types.ID, from,
 				Amount: s.Amount, Total: t.Amount, Currency: account.Currency,
 				Category: categories[s.CategoryID].Name, Kind: categories[s.CategoryID].Kind, Project: projects[s.ProjectID], Memo: s.Memo,
 				Receipts: attached[t.ID], Statement: fileNames[t.StatementID], Reconciled: reconciledOn(recs, t.PostedOn),
-				ClearedBy: cleared.By[t.ID].Transaction,
+				ClearedBy: cleared.By[t.ID].Transaction, Holder: t.Holder,
 			})
 		}
 	}
@@ -353,7 +356,7 @@ func (b *Business) Project(ctx context.Context, actor, projectID types.ID) (Pack
 			Amount: l.Split.Amount, Total: byID[l.Split.TransactionID].Amount, Currency: l.Currency,
 			Category: l.CategoryName, Kind: l.CategoryKind, Project: book.Project.Name, Memo: l.Split.Memo,
 			Receipts: attached[l.Split.TransactionID], Reconciled: reconciledOn(recs[l.AccountID], l.PostedOn),
-			ClearedBy: cleared.By[l.Split.TransactionID].Transaction,
+			ClearedBy: cleared.By[l.Split.TransactionID].Transaction, Holder: byID[l.Split.TransactionID].Holder,
 		})
 	}
 
@@ -544,7 +547,7 @@ func spreadsheet(rows []Row, words Words) ([]byte, error) {
 			r.PostedOn.String(), cell(r.Account), cell(r.Description),
 			r.Amount.String(), r.Currency, r.Total.String(),
 			cell(r.Category), cell(words.Kinds[r.Kind]), cell(r.Project), cell(r.Memo),
-			strings.Join(r.Receipts, "; "), cell(r.Statement), reconciled, clearer(r.ClearedBy),
+			strings.Join(r.Receipts, "; "), cell(r.Statement), reconciled, clearer(r.ClearedBy), cell(r.Holder),
 		}); err != nil {
 			return nil, err
 		}
