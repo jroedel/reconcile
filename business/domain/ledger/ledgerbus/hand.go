@@ -121,7 +121,7 @@ func (b *Business) Enter(ctx context.Context, now time.Time, actor, accountID ty
 		ImportedAt: now,
 	}
 
-	txs := transactions(account.ID, []importbus.Record{{Line: 1, Date: day, Description: e.Description, Amount: e.Amount}})
+	txs := transactions(account.ID, []importbus.Record{{Line: 1, Date: day, Description: e.Description, Amount: e.Amount}}, false)
 	txs[0].StatementID = st.ID
 
 	// A person's word that it is another charge: the count rule, which

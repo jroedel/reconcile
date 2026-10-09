@@ -119,6 +119,7 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	handle("POST /statements/{id}/remove", a.remove)
 	handle("POST /statements/{id}/reconcile", a.reconcile)
 	handle("POST /statements/{id}/reopen", a.reopen)
+	handle("POST /accounts/{id}/holders", a.setByHolder)
 	handle("GET /accounts/{id}/months", a.months)
 	handle("GET /accounts/{id}/sort", a.sortMonth)
 	handle("POST /accounts/{id}/sort", a.saveMonth)
@@ -244,6 +245,13 @@ type transactionsView struct {
 	// are explained (docs/clearing.md, 2).
 	Clearing ledgerbus.Clearing
 
+	// ByHolder is whether the account's statements arrive one file per
+	// cardholder, which an owner may change (CanManage); Holders is the
+	// month by cardholder (docs/clearing.md, 3).
+	ByHolder  bool
+	CanManage bool
+	Holders   ledgerbus.HolderMonth
+
 	Problem string
 	Done    string
 }
@@ -276,6 +284,7 @@ func (a app) transactionsPage(w http.ResponseWriter, r *http.Request, status int
 		Account:     account,
 		Path:        "/accounts/" + id.String(),
 		CanBookkeep: access.Can(tenancybus.Bookkeep),
+		CanManage:   access.Can(tenancybus.Manage),
 		Problem:     problem,
 		Done:        r.URL.Query().Get("done"),
 	}
@@ -304,6 +313,18 @@ func (a app) transactionsPage(w http.ResponseWriter, r *http.Request, status int
 
 			return
 		}
+
+		if view.Holders, err = a.cfg.Ledger.Cardholders(ctx, me.ID, id, view.Month); err != nil {
+			a.failed(w, r, err)
+
+			return
+		}
+	}
+
+	if view.ByHolder, err = a.cfg.Ledger.ByHolder(ctx, me.ID, id); err != nil {
+		a.failed(w, r, err)
+
+		return
 	}
 
 	switch q := r.URL.Query(); {
@@ -507,6 +528,16 @@ func (v previewView) Options(chosen string, optional bool) []string {
 	return out
 }
 
+// NewHolder is the cardholder chosen for a file that names none, when it
+// is nobody the account has seen before: the "somebody new" field's value.
+func (v previewView) NewHolder() string {
+	if slices.Contains(v.Draft.Holders, v.Draft.Holder) {
+		return ""
+	}
+
+	return v.Draft.Holder
+}
+
 // Example is a date layout as the last day of July 2026 would be written
 // in it: a day past the twelfth, so day-first and month-first look
 // different.
@@ -667,6 +698,7 @@ func options(r *http.Request) (ledgerbus.Options, string) {
 		DecimalComma: f.Get("decimal_comma") == "1",
 		SkipLines:    min(max(skip, 0), 50),
 		Invert:       f.Get("invert") == "1",
+		Holder:       f.Get("holder_column"),
 	}
 
 	// One signed column, or two unsigned ones: whichever was chosen.
@@ -679,6 +711,13 @@ func options(r *http.Request) (ledgerbus.Options, string) {
 	// One box for both: a CSV's mapping turns its amounts round, and a
 	// PDF's are turned round as a whole.
 	opts := ledgerbus.Options{Mapping: m, Invert: m.Invert}
+
+	// Whose a file is that names no cardholder: one seen before, or a
+	// name typed for somebody new.
+	opts.Holder = strings.TrimSpace(f.Get("holder_new"))
+	if opts.Holder == "" {
+		opts.Holder = f.Get("holder")
+	}
 
 	// The rows the count rule set aside that are to be imported anyway.
 	for _, v := range f["include"] {

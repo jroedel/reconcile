@@ -170,6 +170,17 @@ type Storer interface {
 	// Examples is what a person sorted in the account, for suggestions.
 	Examples(ctx context.Context, account types.ID) ([]rulebus.Example, error)
 
+	// ByHolder is whether the account's statements arrive one file per
+	// cardholder (holders.go), and SetByHolder turns it on or off, giving
+	// every stored row its identity again in the same transaction.
+	ByHolder(ctx context.Context, account types.ID) (bool, error)
+	SetByHolder(ctx context.Context, account types.ID, on bool, by types.ID, ev eventbus.Event) error
+
+	// Holders is the cardholders the account's rows have named, by name;
+	// HolderTotals what each one's rows come to from start up to end.
+	Holders(ctx context.Context, account types.ID) ([]string, error)
+	HolderTotals(ctx context.Context, account types.ID, start, end types.Date) ([]HolderTotal, error)
+
 	// Explanation is a transaction's explanation (explain.go), if any.
 	Explanation(ctx context.Context, transactionID types.ID) (Stored, bool, error)
 
@@ -233,6 +244,11 @@ type Options struct {
 	// Import is the rows, by their place among the file's rows, to import
 	// although the count rule sets them aside (Doubt).
 	Import []int
+
+	// Holder is whose a file is that names no cardholder, on an account
+	// whose statements arrive one file per cardholder: a person's answer
+	// on the preview (Draft.Unnamed).
+	Holder string
 }
 
 // Draft is a file read for an account and not yet imported: everything the
@@ -258,6 +274,15 @@ type Draft struct {
 
 	// Invert is whether a PDF's amounts were turned round (Options).
 	Invert bool
+
+	// ByHolder is whether the account's statements arrive one file per
+	// cardholder (holders.go). Holders is the cardholders its rows have
+	// named before, Unnamed how many of this file's rows name none, and
+	// Holder whose a person said they are.
+	ByHolder bool
+	Holders  []string
+	Unnamed  int
+	Holder   string
 
 	// Statement is what importing would make, with Added and Already
 	// counted.
@@ -311,6 +336,10 @@ func (b *Business) Prepare(ctx context.Context, actor, accountID, fileID types.I
 
 	if d.Unmapped {
 		return d, nil
+	}
+
+	if err := b.holders(ctx, &d, opts); err != nil {
+		return Draft{}, err
 	}
 
 	if d.Earlier, d.HasEarlier, err = b.store.StatementWithFile(ctx, accountID, f.SHA256); err != nil {
@@ -531,7 +560,8 @@ func (b *Business) statement(d Draft, actor types.ID, now time.Time) (Statement,
 	// A total says nothing of the balance before or after, so a statement
 	// checked by one keeps none (BySum).
 
-	txs := transactions(d.Account.ID, d.Result.Records)
+	st.ByHolder = d.ByHolder
+	txs := transactions(d.Account.ID, d.Result.Records, d.ByHolder)
 
 	// The period the file states, or else the one its rows span.
 	if !d.Result.Start.IsZero() {

@@ -18,6 +18,16 @@
 </form>
 </section>
 
+{{if $v.CanManage}}
+<details class="card"{{if $v.ByHolder}} open{{end}}><summary>{{t "Cardholders"}}</summary>
+<form method="post" action="{{$v.Path}}/holders">
+  <label class="choice"><input type="checkbox" name="on" value="1"{{if $v.ByHolder}} checked{{end}}> {{t "Statements arrive one file per cardholder"}}</label>
+  <p class="hint">{{t "For a card with several cards on it, when each person's month comes as a file of its own. Two people's identical charges on one day are then kept as two, and each month says whose file is missing."}}</p>
+  <button type="submit" class="quiet">{{t "Save"}}</button>
+</form>
+</details>
+{{end}}
+
 <section class="card">
 <h2>{{t "Enter a transaction by hand"}}</h2>
 <p class="hint">{{t "For what no statement lists, such as a charge somebody paid on their own card and added to this account. The document that shows it is kept with it."}}</p>
@@ -40,6 +50,11 @@
 {{with .Operations}}<p class="hint">{{t "Income {income} · Expenses {expenses} · Net {net}" "income" (money .Income $cur) "expenses" (money .Expenses $cur) "net" (money .Net $cur)}}
 {{- if .Transfers}} · {{t "transfers {amount}" "amount" (money .Transfers $cur)}}{{end}}
 {{- if .PassThrough}} · {{t "pass-through {amount}" "amount" (money .PassThrough $cur)}}{{end}}</p>{{end}}
+{{with $v.Holders}}{{if .Totals}}
+<p>{{t "{present} of {expected} cardholders" "present" .Present "expected" .Expected}}{{if .Missing}} · <strong>{{t "No file yet from {names}" "names" .MissingNames}}</strong>{{end}}</p>
+<ul class="list">{{range .Totals}}<li>{{if .Holder}}{{.Holder}}{{else}}{{t "Nobody in particular"}}{{end}} · {{t "{n} transactions" "n" .Count}} · <span class="money {{if lt .Sum 0}}out{{else}}in{{end}}">{{money .Sum $cur}}</span></li>
+{{end}}</ul>
+{{else if .Missing}}<p><strong>{{t "No file yet from {names}" "names" .MissingNames}}</strong></p>{{end}}{{end}}
 {{if or $v.Unsorted $v.ByRule}}<p><a href="?month={{.Month}}">{{t "Show all of the month"}}</a></p>
 {{else}}<p>{{if .Unsorted}}<a href="?month={{.Month}}&amp;unsorted=1">{{t "{n} not sorted yet" "n" .Unsorted}}</a>{{if $v.CanBookkeep}} · <a href="{{$v.Path}}/sort?month={{.Month}}">{{t "Sort them on one page"}}</a>{{end}}{{else}}<span class="hint">{{t "Every transaction this month is sorted."}}</span>{{end}}
 {{- if .ByRule}} · <a href="?month={{.Month}}&amp;byrule=1">{{t "{n} sorted by rule, to check" "n" .ByRule}}</a>{{end}}
@@ -51,7 +66,7 @@
 <table class="ledger">
 <thead><tr><th>{{t "Date"}}</th><th>{{t "Description"}}</th><th>{{t "For"}}</th><th class="money">{{t "Amount"}}</th></tr></thead>
 <tbody>
-{{range $v.Shown}}<tr id="t-{{.ID}}"><td>{{.PostedOn}}</td><td><a href="/transactions/{{.ID}}">{{if .Description}}{{.Description}}{{else}}{{t "(no description)"}}{{end}}</a></td>
+{{range $v.Shown}}<tr id="t-{{.ID}}"><td>{{.PostedOn}}</td><td><a href="/transactions/{{.ID}}">{{if .Description}}{{.Description}}{{else}}{{t "(no description)"}}{{end}}</a>{{if $v.ByHolder}}{{with .Holder}}<br><span class="hint">{{.}}</span>{{end}}{{end}}</td>
 <td>{{if gt (len .Splits) 1}}{{t "{n} parts" "n" (len .Splits)}}{{if not .Sorted}} <span class="badge">{{t "not sorted yet"}}</span>{{end}}
 {{else}}{{range .Splits}}{{with index $v.Categories .CategoryID}}{{.}}{{else}}<span class="badge">{{t "not sorted yet"}}</span>{{end}}{{with index $v.Projects .ProjectID}} · {{.}}{{end}}{{if not .RuleID.Zero}} <span class="badge">{{t "by rule"}}</span>{{end}}{{end}}{{end}}</td>
 <td class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $cur}}{{with index $v.Receipts .ID}}<br><span class="hint">{{t "{n} receipts" "n" .}}</span>{{end}}

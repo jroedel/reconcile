@@ -453,6 +453,7 @@ func (r *reader) row(l line, rw row) {
 		Description: desc,
 		Amount:      rw.figures[0].amount,
 		Memo:        memo,
+		Holder:      memo,
 	}
 
 	if len(rw.figures) == 2 {

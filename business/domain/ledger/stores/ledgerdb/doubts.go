@@ -61,15 +61,30 @@ CREATE INDEX IF NOT EXISTS transaction_aliases_transaction ON transaction_aliase
 // Which of the N are set aside, when not all are, is the ones whose
 // descriptions are likest a stored row's, and each is paired with the
 // stored row it is likest, each stored row once.
-func countRule(ctx context.Context, tx *sql.Tx, statement types.ID, txs []ledgerbus.Transaction, fresh []int) ([]ledgerbus.Doubt, error) {
+//
+// On an account split by cardholder the day and amount are the cardholder's
+// too: a cardholder's rows are counted against that cardholder's stored
+// rows and those that name nobody, and a row that names nobody against
+// all of them (docs/clearing.md, 3).
+func countRule(ctx context.Context, tx *sql.Tx, statement types.ID, txs []ledgerbus.Transaction, fresh []int, byHolder bool) ([]ledgerbus.Doubt, error) {
 	type key struct {
 		day    string
 		amount money.Amount
+		holder string
+	}
+
+	keyOf := func(t ledgerbus.Transaction) key {
+		k := key{day: t.PostedOn.String(), amount: t.Amount}
+		if byHolder {
+			k.holder = ledgerbus.HolderKey(t.Holder)
+		}
+
+		return k
 	}
 
 	listed := map[key]int{}
 	for _, t := range txs {
-		listed[key{t.PostedOn.String(), t.Amount}]++
+		listed[keyOf(t)]++
 	}
 
 	var order []key
@@ -77,7 +92,7 @@ func countRule(ctx context.Context, tx *sql.Tx, statement types.ID, txs []ledger
 	groups := map[key][]int{}
 
 	for _, i := range fresh {
-		k := key{txs[i].PostedOn.String(), txs[i].Amount}
+		k := keyOf(txs[i])
 		if groups[k] == nil {
 			order = append(order, k)
 		}
@@ -93,6 +108,10 @@ func countRule(ctx context.Context, tx *sql.Tx, statement types.ID, txs []ledger
 		twins, err := stored(ctx, tx, txs[group[0]].AccountID, k.day, k.amount, statement)
 		if err != nil {
 			return nil, err
+		}
+
+		if byHolder {
+			twins = slices.DeleteFunc(twins, func(tw ledgerbus.Transaction) bool { return !ledgerbus.SameHolder(tw.Holder, k.holder) })
 		}
 
 		excess := len(group) - max(listed[k]-len(twins), 0)
@@ -140,7 +159,7 @@ func countRule(ctx context.Context, tx *sql.Tx, statement types.ID, txs []ledger
 // than this one, oldest first.
 func stored(ctx context.Context, tx *sql.Tx, account types.ID, day string, amount money.Amount, statement types.ID) ([]ledgerbus.Transaction, error) {
 	rows, err := tx.QueryContext(ctx, `
-SELECT id, statement_id, description, external_id FROM transactions
+SELECT id, statement_id, description, external_id, holder FROM transactions
 WHERE account_id = ? AND posted_on = ? AND amount = ? AND statement_id <> ?
 ORDER BY rowid`, account.String(), day, int64(amount), statement.String())
 	if err != nil {
@@ -155,7 +174,7 @@ ORDER BY rowid`, account.String(), day, int64(amount), statement.String())
 
 		t := ledgerbus.Transaction{AccountID: account, Amount: amount}
 
-		if err := rows.Scan(&id, &st, &t.Description, &t.ExternalID); err != nil {
+		if err := rows.Scan(&id, &st, &t.Description, &t.ExternalID, &t.Holder); err != nil {
 			return nil, fmt.Errorf("counting a day's transactions: %w", err)
 		}
 
