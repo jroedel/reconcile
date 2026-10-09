@@ -90,13 +90,17 @@ A new domain, `budget` (`business/domain/budget/budgetbus`,
 
 ## The pages
 
-- **A project's book** (`/projects/{id}/book`) gains a "Budget" section
-  above the totals when there is a budget: income lines, expense lines,
-  each with budget, actual and left; the expected net (budgeted income
+- **`/projects/{id}/budget`:** the project's budget beside what happened,
+  for anyone who may read the project: income lines, expense lines, each
+  with budget, actual and what is left; the expected net (budgeted income
   less budgeted expenses) beside the actual net; "Not in the budget".
-  Owners get "Set the budget" (`/projects/{id}/budget`), a form with one
-  amount per income and expense category of the list the project's money
-  is sorted with, and the two totals.
+  Below it, for owners, the form: one amount per income and expense
+  category, and the two totals. The categories are the organization's
+  list and any other category the project's money is in (a personal
+  project's, or a part paid from somebody's personal card). Linked from
+  the project's page and its book. (Planned as a section of the book; a
+  page of its own lets the organization's year share its layout, and
+  keeps the book's app from depending on budgets.)
 - **`/orgs/{id}/budget?year=2026`:** the organization's year, the same
   layout with the pace mark; links to the year before and after; "Copy
   last year's budget" for owners when this year has none. Linked from the

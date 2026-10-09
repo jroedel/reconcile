@@ -1,0 +1,11 @@
+{{define "title"}}{{t "Not allowed"}}{{end}}
+{{define "content"}}
+{{if eq (printf "%v" .Data) "server"}}
+<h1>{{t "Something went wrong"}}</h1>
+{{template "problem" "server"}}
+{{else}}
+<h1>{{t "Not allowed"}}</h1>
+<p>{{t "A budget is set by the owners. An owner can give you a different role."}}</p>
+{{end}}
+<p><a href="/">{{t "Back to your organizations"}}</a></p>
+{{end}}

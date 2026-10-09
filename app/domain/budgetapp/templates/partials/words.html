@@ -1,0 +1,83 @@
+{{/*
+  The words the budget pages share: a side of the comparison, the form's
+  fields for a kind, what a net says, and what went wrong.
+*/}}
+
+{{/* side is one kind's lines beside what happened. Side is a
+     budgetbus.Side, Cur the budget's currency. */}}
+{{define "side"}}{{$s := .Side}}{{$cur := .Cur}}
+<section class="card">
+<h2>{{if eq $s.Kind "income"}}{{t "Income"}}{{else}}{{t "Expenses"}}{{end}}</h2>
+{{if $s.Total.Budgeted}}
+<p>{{template "row-figures" (dict "Row" $s.Total "Kind" $s.Kind "Cur" $cur)}}</p>
+<meter min="0" max="100" value="{{$s.Total.Percent}}" aria-hidden="true"></meter>
+{{if $s.Mismatch}}<p class="hint">{{t "The lines add up to {lines}, and the total typed is {typed}. The budget counts the larger." "lines" (money $s.Lines $cur) "typed" (money $s.Typed $cur)}}</p>{{end}}
+{{else}}<p class="hint">{{t "Nothing budgeted. So far: {amount}." "amount" (money $s.Total.Actual $cur)}}</p>{{end}}
+{{if $s.Rows}}
+<ul class="list">
+{{range $s.Rows}}<li><strong>{{.Name}}</strong>
+<br>{{template "row-figures" (dict "Row" . "Kind" $s.Kind "Cur" $cur)}}
+<meter min="0" max="100" value="{{.Percent}}" aria-hidden="true"></meter>
+{{if .Moved}}<br><span class="hint">{{t "Its category is no longer of this kind. The line stays here until the budget is saved again."}}</span>{{end}}</li>
+{{end}}</ul>
+{{end}}
+{{if $s.NotInBudget}}
+<h3>{{t "Not in the budget"}}</h3>
+<ul class="list">
+{{range $s.NotInBudget}}<li>{{.Name}} <span class="money">{{money .Actual $cur}}</span></li>{{end}}
+</ul>
+{{end}}
+</section>
+{{end}}
+
+{{define "row-figures"}}{{$r := .Row}}{{$cur := .Cur}}
+{{- if eq .Kind "income"}}{{t "{actual} of {budget} received" "actual" (money $r.Actual $cur) "budget" (money $r.Budget $cur)}}
+{{- else}}{{t "{actual} of {budget} spent" "actual" (money $r.Actual $cur) "budget" (money $r.Budget $cur)}}{{end}} ·
+{{- if $r.Over}} <span class="badge warn">{{if eq .Kind "income"}}{{t "{amount} more than budgeted" "amount" (money $r.Left.Abs $cur)}}{{else}}{{t "{amount} over" "amount" (money $r.Left.Abs $cur)}}{{end}}</span>
+{{- else if eq .Kind "income"}} {{t "{amount} still to come in" "amount" (money $r.Left $cur)}}
+{{- else}} {{t "{amount} left" "amount" (money $r.Left $cur)}}{{end}}{{end}}
+
+{{define "net"}}{{$cur := .Cur}}
+{{- if .Expected}}
+{{- if lt .Amount 0}}{{t "The budget expects the project to be short by {amount}." "amount" (money .Amount.Abs $cur)}}
+{{- else if gt .Amount 0}}{{t "The budget expects {amount} left over." "amount" (money .Amount $cur)}}
+{{- else}}{{t "The budget expects the project to come out even."}}{{end}}
+{{- else}}
+{{- if lt .Amount 0}}{{t "So far it is short by {amount}." "amount" (money .Amount.Abs $cur)}}
+{{- else if gt .Amount 0}}{{t "So far {amount} is in hand." "amount" (money .Amount $cur)}}
+{{- else}}{{t "So far it is even."}}{{end}}
+{{- end}}{{end}}
+
+{{/* fields is the form's amounts for one kind: its total, then each
+     category. */}}
+{{define "fields"}}{{$v := .View}}{{$k := .Kind}}
+<fieldset class="part">
+<legend>{{if eq $k "income"}}{{t "Income"}}{{else}}{{t "Expenses"}}{{end}}</legend>
+{{$total := $v.Field $k ""}}
+<div class="field">
+  <label for="{{$total}}">{{if eq $k "income"}}{{t "Total income, if you know only the whole"}}{{else}}{{t "Total expenses, if you know only the whole"}}{{end}}</label>
+  <input id="{{$total}}" name="{{$total}}" type="text" inputmode="decimal" value="{{index $v.Typed $total}}">
+  {{if eq $v.About $total}}{{template "field-problem" $v.Problem}}{{end}}
+</div>
+{{range .Categories}}{{$name := $v.Field $k .ID.String}}
+<div class="field">
+  <label for="{{$name}}">{{.Name}}</label>
+  <input id="{{$name}}" name="{{$name}}" type="text" inputmode="decimal" value="{{index $v.Typed $name}}">
+  {{if eq $v.About $name}}{{template "field-problem" $v.Problem}}{{end}}
+</div>
+{{else}}<p class="hint">{{if eq $k "income"}}{{t "There are no income categories on the list yet."}}{{else}}{{t "There are no expense categories on the list yet."}}{{end}}</p>
+{{end}}
+</fieldset>
+{{end}}
+
+{{define "field-problem"}}<p class="notice" role="alert">
+{{- if eq . "amount"}}{{t "This needs an amount, such as 1200 or 1200.50, without a sign."}}
+{{- else}}{{t "This line cannot be in the budget. Choose another category."}}{{end}}</p>{{end}}
+
+{{define "problem"}}{{if .}}<p class="notice" role="alert">
+{{- if eq . "amount"}}{{t "One amount could not be read. It is marked below."}}
+{{- else if eq . "currency"}}{{t "Choose the budget's currency."}}
+{{- else if eq . "category"}}{{t "One line cannot be in the budget. It is marked below."}}
+{{- else if eq . "count"}}{{t "That is more lines than a budget may have."}}
+{{- else}}{{t "Something went wrong at our end. Please try again in a few minutes."}}
+{{- end}}</p>{{end}}{{end}}

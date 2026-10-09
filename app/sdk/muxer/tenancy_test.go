@@ -115,6 +115,7 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		"/accounts/new?org=" + orgID, "/projects/new?org=" + orgID,
 		e.org + "/categories", e.ownAccount + "/categories", e.account + "/categories",
 		e.project + "/book", e.ownProject + "/book",
+		e.project + "/budget", e.ownProject + "/budget",
 		e.account + "/transactions", e.ownAccount + "/transactions",
 		e.account + "/months", e.ownAccount + "/months",
 		e.account + "/rules", e.ownAccount + "/rules",
@@ -147,6 +148,10 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 			write{account + "/rules/apply", nil},
 			write{account + "/sort?month=2026-07", url.Values{"tx-0": {"0123456789abcdef0123456789abcdef"}, "category-0": {"0123456789abcdef0123456789abcdef"}}},
 		)
+	}
+
+	for _, project := range []string{e.project, e.ownProject} {
+		writes = append(writes, write{project + "/budget", url.Values{"currency": {"USD"}, "expense-total": {"100"}}})
 	}
 
 	for _, scope := range []string{e.account, e.project, e.ownAccount, e.ownProject} {
