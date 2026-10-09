@@ -30,10 +30,12 @@ import (
 	"github.com/jroedel/reconcile/business/domain/importing/importbus"
 	"github.com/jroedel/reconcile/business/domain/importing/sources/csvsource"
 	"github.com/jroedel/reconcile/business/domain/importing/sources/ofxsource"
+	"github.com/jroedel/reconcile/business/domain/importing/sources/pdfsource"
 	"github.com/jroedel/reconcile/business/domain/rule/rulebus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/types"
 	"github.com/jroedel/reconcile/business/types/money"
+	"github.com/jroedel/reconcile/foundation/pdftext"
 )
 
 // The errors a page tells apart.
@@ -43,8 +45,13 @@ var (
 	ErrNotFound  = tenancybus.ErrNotFound
 	ErrForbidden = tenancybus.ErrForbidden
 
-	// ErrPDF is a PDF, which is read in a later version.
-	ErrPDF = errors.New("PDF statements cannot be read yet")
+	// The reasons a PDF cannot be read, each said differently on the page
+	// and each ending in the same advice: download CSV or OFX instead.
+	ErrPDFUnavailable = errors.New("PDFs cannot be read on this server")
+	ErrPDFScan        = errors.New("the PDF is a picture, with no text to read")
+	ErrPDFPassword    = errors.New("the PDF is locked with a password")
+	ErrPDFUnreadable  = errors.New("the PDF could not be opened")
+	ErrPDFNoRows      = errors.New("no transactions could be found in the PDF")
 
 	// ErrUnreadable is a file that is neither OFX nor a CSV export with a
 	// date and an amount column.
@@ -191,6 +198,11 @@ type Options struct {
 	// Opening and Closing are balances typed from the paper statement, for
 	// a file that prints none.
 	Opening, Closing importbus.Balance
+
+	// Invert turns a PDF's amounts round: a card issuer prints a purchase
+	// as a positive amount it is owed. Without Options it is on for a card
+	// account and off for any other. A CSV's is its Mapping's.
+	Invert bool
 }
 
 // Draft is a file read for an account and not yet imported: everything the
@@ -213,6 +225,9 @@ type Draft struct {
 	Result           importbus.Result
 	Opening, Closing importbus.Balance
 	Check            Check
+
+	// Invert is whether a PDF's amounts were turned round (Options).
+	Invert bool
 
 	// Statement is what importing would make, with Added and Already
 	// counted.
@@ -272,7 +287,7 @@ func (b *Business) Prepare(ctx context.Context, actor, accountID, fileID types.I
 		return Draft{}, err
 	}
 
-	d.Check = verify(d.Result.Records, d.Opening, d.Closing, account.Kind == tenancybus.Card)
+	d.Check = verify(d.Result.Records, d.Opening, d.Closing, d.Result.Total, account.Kind == tenancybus.Card)
 
 	if len(d.Result.Records) == 0 || d.Check.Failed() {
 		return d, nil
@@ -321,7 +336,7 @@ func (b *Business) read(ctx context.Context, d *Draft, data []byte, opts *Option
 		return nil
 
 	case strings.HasPrefix(http.DetectContentType(head), "application/pdf"):
-		return ErrPDF
+		return b.readPDF(ctx, d, data, opts)
 
 	case !strings.HasPrefix(http.DetectContentType(head), "text/"):
 		return ErrUnreadable
@@ -349,6 +364,64 @@ func (b *Business) read(ctx context.Context, d *Draft, data []byte, opts *Option
 	if opts != nil {
 		d.Opening, d.Closing = opts.Opening, opts.Closing
 	}
+
+	return nil
+}
+
+// readPDF reads a PDF's text into the draft (docs/pdf-statements.md). The
+// balances and the total it states are what it is checked by, unless a
+// person typed balances of their own.
+func (b *Business) readPDF(ctx context.Context, d *Draft, data []byte, opts *Options) error {
+	d.Format = PDF
+
+	text, err := pdftext.Extract(ctx, data)
+
+	switch {
+	case errors.Is(err, pdftext.ErrUnavailable):
+		b.log.Error("a PDF statement arrived and pdftotext is not installed")
+
+		return ErrPDFUnavailable
+	case errors.Is(err, pdftext.ErrNoText):
+		return ErrPDFScan
+	case errors.Is(err, pdftext.ErrPassword):
+		return ErrPDFPassword
+	case ctx.Err() != nil:
+		return ctx.Err()
+	case err != nil:
+		b.log.Info("a PDF statement could not be read", "file_id", d.File.ID.String(), "error", err)
+
+		return ErrPDFUnreadable
+	}
+
+	res, err := pdfsource.Read(text)
+	if err != nil {
+		return ErrPDFNoRows
+	}
+
+	d.Invert = d.Account.Kind == tenancybus.Card
+	d.Opening, d.Closing = res.Opening, res.Closing
+
+	if opts != nil {
+		d.Invert = opts.Invert
+
+		if opts.Opening.Known {
+			d.Opening = opts.Opening
+		}
+
+		if opts.Closing.Known {
+			d.Closing = opts.Closing
+		}
+	}
+
+	// Turned round as a whole, rows, balances and total alike, so that the
+	// check below holds or fails the same either way.
+	if d.Invert {
+		for i := range res.Records {
+			res.Records[i].Amount = -res.Records[i].Amount
+		}
+	}
+
+	d.Result = res
 
 	return nil
 }
@@ -418,6 +491,9 @@ func (b *Business) statement(d Draft, actor types.ID, now time.Time) (Statement,
 		st.Opening, st.HasOpening = d.Check.Opening, true
 		st.Closing, st.HasClosing = d.Check.Closing, true
 	}
+
+	// A total says nothing of the balance before or after, so a statement
+	// checked by one keeps none (BySum).
 
 	txs := transactions(d.Account.ID, d.Result.Records)
 

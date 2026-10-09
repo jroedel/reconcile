@@ -78,8 +78,15 @@ stopped adding up, as a CSV's does.
 positive amount it is owed, a refund negative. On an account whose kind is
 a card, amounts are turned around (as the CSV mapping's "money out is
 positive" does today), and the preview has the same switch, set by the
-account's kind, for a document printed the other way. A running balance
-decides the sign by itself and ignores the switch.
+account's kind, for a document printed the other way. Where a running
+balance gives the signs, it gives them as a bank account's (the balance
+going up is money in), and the switch turns them round for a card the
+same way: a card's balance going up is a purchase.
+
+The first row of a running-balance table has no balance before it but the
+opening balance. Without one, it takes the sign of the column its amount
+is in, when the other rows show two columns of amounts apart; otherwise it
+is left as printed.
 
 ## Not counting a charge twice
 

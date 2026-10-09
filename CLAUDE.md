@@ -126,7 +126,7 @@ app/sdk/                            the plumbing under them: muxer, page, mid
 business/domain/<x>/<x>bus/         the rules. This is where behaviour is.
 business/domain/<x>/stores/<x>db/   storage, per domain
 business/types/                     small value types: ID, Email, money.Amount
-foundation/                         no domain knowledge: web, sqldb, logger, imaging
+foundation/                         no domain knowledge: web, sqldb, logger, imaging, pdftext
 deploy/                             how it reaches the server. Run by CI, not by agents
 scripts/                            how this is built and checked
 ```
@@ -136,7 +136,7 @@ signs in and how), `tenancy` (organizations, accounts, projects, and who may
 do what on each), `event` (the history, written by the domain that made
 the change, in its transaction), `file` (what people upload, bytes kept once
 per content outside anything Apache serves), `importing` (reading a bank's
-CSV or OFX into records, knowing nothing of accounts), `category` (each
+CSV, OFX or PDF into records, knowing nothing of accounts), `category` (each
 organization's list, or a personal account's, each category one of the four
 kinds of money), `ledger` (statements,
 transactions and their splits: checking, deduplicating, storing, sorting,

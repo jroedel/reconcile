@@ -50,6 +50,11 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: poppler, for the PDF statement tests
+        # The server reads PDF statements with poppler's pdftotext; without
+        # it here those tests skip, and a skipped test checks nothing.
+        run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends poppler-utils
+
       - name: lint
         run: make lint
 

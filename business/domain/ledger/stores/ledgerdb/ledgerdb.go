@@ -214,6 +214,11 @@ WHERE NOT EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id)`); err !
 //     came from a CSV of the same period; from now on the match is exact.
 //   - With no identifier and the same hash already in the account: already
 //     here.
+//   - On the same day for the same amount as a row of another statement
+//     whose description is this one's cut short, or this one is that one's
+//     (ledgerbus.Truncated): already here, and given to it the identifier
+//     if it has one. A bank's printed page cuts descriptions short, and the
+//     statement that follows it does not.
 //   - Otherwise it is new.
 func (s *Store) Import(ctx context.Context, st ledgerbus.Statement, txs []ledgerbus.Transaction, also map[types.ID][]eventbus.Event, mapping *ledgerbus.SavedMapping, ev eventbus.Event, commit bool) (ledgerbus.Statement, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -335,7 +340,15 @@ func already(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction) (bool, er
 	account := t.AccountID.String()
 
 	if t.ExternalID == "" {
-		return exists(`SELECT 1 FROM transactions WHERE account_id = ? AND hash = ? LIMIT 1`, account, t.Hash)
+		if found, err := exists(`SELECT 1 FROM transactions WHERE account_id = ? AND hash = ? LIMIT 1`, account, t.Hash); found || err != nil {
+			return found, err
+		}
+
+		// As many cut-short matches as this row's occurrence: two charges
+		// the page printed alike are two, and claim two.
+		rows, err := cutShort(ctx, tx, t, false)
+
+		return len(rows) >= max(t.Occurrence, 1), err
 	}
 
 	if found, err := exists(`SELECT 1 FROM transactions WHERE account_id = ? AND external_id = ?`, account, t.ExternalID); found || err != nil {
@@ -352,9 +365,55 @@ WHERE rowid = (SELECT rowid FROM transactions WHERE account_id = ? AND hash = ? 
 		return false, fmt.Errorf("matching a transaction: %w", err)
 	}
 
-	n, err := res.RowsAffected()
+	if n, err := res.RowsAffected(); n == 1 || err != nil {
+		return n == 1, err
+	}
 
-	return n == 1, err
+	rows, err := cutShort(ctx, tx, t, true)
+	if err != nil || len(rows) == 0 {
+		return false, err
+	}
+
+	if _, err := tx.ExecContext(ctx, `UPDATE transactions SET external_id = ? WHERE rowid = ?`, t.ExternalID, rows[0]); err != nil {
+		return false, fmt.Errorf("matching a transaction: %w", err)
+	}
+
+	return true, nil
+}
+
+// cutShort is the rows of other statements on t's day for t's amount whose
+// description is t's cut short or the other way round, oldest first; with
+// unclaimed, only those no bank identifier has claimed.
+func cutShort(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction, unclaimed bool) ([]int64, error) {
+	q := `SELECT rowid, description FROM transactions WHERE account_id = ? AND posted_on = ? AND amount = ? AND statement_id <> ?`
+	if unclaimed {
+		q += ` AND external_id = ''`
+	}
+
+	rows, err := tx.QueryContext(ctx, q+` ORDER BY rowid`, t.AccountID.String(), t.PostedOn.String(), int64(t.Amount), t.StatementID.String())
+	if err != nil {
+		return nil, fmt.Errorf("looking for a transaction: %w", err)
+	}
+	defer rows.Close()
+
+	var out []int64
+
+	for rows.Next() {
+		var (
+			id   int64
+			desc string
+		)
+
+		if err := rows.Scan(&id, &desc); err != nil {
+			return nil, fmt.Errorf("looking for a transaction: %w", err)
+		}
+
+		if ledgerbus.Truncated(desc, t.Description) {
+			out = append(out, id)
+		}
+	}
+
+	return out, rows.Err()
 }
 
 // --- statements -------------------------------------------------------------

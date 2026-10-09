@@ -166,8 +166,16 @@ func (a app) failed(w http.ResponseWriter, r *http.Request, err error) {
 // problem is the code a page words for an error about the file, or "".
 func problem(err error) string {
 	switch {
-	case errors.Is(err, ledgerbus.ErrPDF):
-		return "pdf"
+	case errors.Is(err, ledgerbus.ErrPDFUnavailable):
+		return "pdf-unavailable"
+	case errors.Is(err, ledgerbus.ErrPDFScan):
+		return "pdf-scan"
+	case errors.Is(err, ledgerbus.ErrPDFPassword):
+		return "pdf-password"
+	case errors.Is(err, ledgerbus.ErrPDFUnreadable):
+		return "pdf-unreadable"
+	case errors.Is(err, ledgerbus.ErrPDFNoRows):
+		return "pdf-no-rows"
 	case errors.Is(err, ledgerbus.ErrUnreadable):
 		return "unreadable"
 	case errors.Is(err, ledgerbus.ErrEmpty):
@@ -451,6 +459,9 @@ type previewView struct {
 	Rows []importbus.Record
 	More int
 
+	// Balances is whether the rows print a balance, for its column.
+	Balances bool
+
 	DateFormats []string
 
 	// Typed into the balance fields, kept as typed.
@@ -534,6 +545,7 @@ func (a app) previewPage(w http.ResponseWriter, r *http.Request, opts *ledgerbus
 
 	view.Rows = d.Result.Records[:min(len(d.Result.Records), previewRows)]
 	view.More = len(d.Result.Records) - len(view.Rows)
+	view.Balances = slices.ContainsFunc(d.Result.Records, func(r importbus.Record) bool { return r.HasBalance })
 
 	// The balances the file states, until somebody types their own.
 	if opts == nil {
@@ -562,7 +574,9 @@ func (a app) previewPage(w http.ResponseWriter, r *http.Request, opts *ledgerbus
 // can read at all.
 func problemOf(err error) string {
 	switch {
-	case errors.Is(err, ledgerbus.ErrPDF), errors.Is(err, ledgerbus.ErrUnreadable):
+	case errors.Is(err, ledgerbus.ErrUnreadable), errors.Is(err, ledgerbus.ErrPDFUnavailable),
+		errors.Is(err, ledgerbus.ErrPDFScan), errors.Is(err, ledgerbus.ErrPDFPassword),
+		errors.Is(err, ledgerbus.ErrPDFUnreadable), errors.Is(err, ledgerbus.ErrPDFNoRows):
 		return problem(err)
 	}
 
@@ -643,7 +657,9 @@ func options(r *http.Request) (ledgerbus.Options, string) {
 		m.Amount = f.Get("amount")
 	}
 
-	opts := ledgerbus.Options{Mapping: m}
+	// One box for both: a CSV's mapping turns its amounts round, and a
+	// PDF's are turned round as a whole.
+	opts := ledgerbus.Options{Mapping: m, Invert: m.Invert}
 
 	var bad string
 
