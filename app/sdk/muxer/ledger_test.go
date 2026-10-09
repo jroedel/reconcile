@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/jroedel/reconcile/app/domain/ledgerapp"
+	"github.com/jroedel/reconcile/foundation/pdftext"
+	"github.com/jroedel/reconcile/foundation/pdftext/pdftexttest"
 	"github.com/jroedel/reconcile/foundation/sqldb"
 )
 
@@ -147,6 +149,38 @@ func TestImportingAStatement(t *testing.T) {
 	imported(t, e.owner, e.account, "checking-july.csv", july)
 }
 
+// A bank's page printed to PDF: read, checked against the total it states,
+// shown with the switch for its signs, and imported.
+func TestImportingAPrintedPDF(t *testing.T) {
+	if !pdftext.Available() {
+		t.Skip("pdftotext is not installed here; CI installs it")
+	}
+
+	h, sent := newSite(t, sqldb.Infrastructure, nil)
+	e := newEstate(t, h, sent)
+
+	page := pdftexttest.Row(40, 50, "Example Bank Account Activity, Aug 1, 2026 to Aug 31, 2026")
+	page = append(page, pdftexttest.Row(70, 50, "Date", 150, "Description", 330, "Name", 470, "Amount")...)
+	page = append(page, pdftexttest.Row(100, 50, "Aug 20, 2026", 150, "Corner Hardware", 330, "PAT EXAMPLE", 470, "-$45.10")...)
+	page = append(page, pdftexttest.Row(130, 50, "Aug 22, 2026", 150, "Parish Office Supply", 330, "PAT EXAMPLE", 470, "-$12.40")...)
+	page = append(page, pdftexttest.Row(160, 50, "Aug 25, 2026", 150, "Bake sale deposit", 330, "PAT EXAMPLE", 470, "$310.00")...)
+	page = append(page, pdftexttest.Row(200, 150, "Total activity", 470, "$252.50")...)
+
+	preview := uploaded(t, e.owner, e.account, "august.pdf", string(pdftexttest.Draw(page)))
+	wantBody(t, e.owner.get(preview), "august.pdf", "Corner Hardware", "PAT EXAMPLE", "-$45.10", "Signs",
+		`name="invert" value="1">`, "The rows add up to the total the document states", "3 new transactions")
+
+	rec := e.owner.post(preview, url.Values{"action": {"import"}})
+
+	loc := rec.Header().Get("Location")
+	if rec.Code != http.StatusSeeOther || !strings.HasSuffix(loc, "?done=imported") {
+		t.Fatalf("import: %d to %q\n%s", rec.Code, loc, rec.Body.String())
+	}
+
+	wantBody(t, e.owner.get(loc), "2026-08-01 to 2026-08-31", "adds up to its stated total")
+	wantBody(t, e.owner.get(e.account+"/transactions?month=2026-08"), "Bake sale deposit", "$310.00", "-$12.40")
+}
+
 // A statement with a row missing says which line broke, and imports
 // nothing.
 func TestAStatementThatDoesNotBalance(t *testing.T) {
@@ -176,13 +210,17 @@ func TestWhatCannotBeUploaded(t *testing.T) {
 
 	wantBody(t, rec, "Choose a file first")
 
-	// A PDF is stored and then said to be a later version's.
+	// A PDF that is not one is stored, and then refused with the advice.
 	rec = e.owner.get(uploaded(t, e.owner, e.account, "statement.pdf", "%PDF-1.7\n%invented\n"))
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("a PDF: %d", rec.Code)
 	}
 
-	wantBody(t, rec, "That is a PDF")
+	if pdftext.Available() {
+		wantBody(t, rec, "That PDF could not be opened", "as CSV or OFX instead")
+	} else {
+		wantBody(t, rec, "PDFs cannot be read on this site at the moment")
+	}
 
 	rec = e.owner.upload(e.account+"/statements", "huge.csv", strings.Repeat("x", ledgerapp.MaxUpload))
 	if rec.Code != http.StatusUnprocessableEntity {

@@ -5,7 +5,8 @@
 // not be read is a code a template words (Warning), not an English sentence.
 //
 // The readers are in sources/: csvsource for any bank's CSV export, with a
-// column mapping, and ofxsource for OFX and QFX downloads. What becomes of
+// column mapping, ofxsource for OFX and QFX downloads, and pdfsource for a
+// statement or a bank's page as a PDF. What becomes of
 // the records -- checking them against their balances, setting aside the
 // ones already imported, storing the rest -- is the ledger's (ledgerbus).
 package importbus
@@ -19,8 +20,11 @@ import (
 // Record is one transaction as a file reported it.
 type Record struct {
 	// Line is where it is in the file, counting from 1, so that a page can
-	// point at the row a check failed on.
+	// point at the row a check failed on. In a PDF it is a line of the
+	// text read out of it, which nobody can see; Page is what a person can
+	// find, and is zero for any other format.
 	Line int
+	Page int
 
 	Date        time.Time
 	Description string
@@ -38,6 +42,12 @@ type Record struct {
 	// format carries one: an OFX FITID. A CSV has none, and the ledger falls
 	// back to a hash of the content (ledgerbus).
 	ExternalID string
+
+	// Memo is what the file says about the transaction beside its
+	// description: on a card's printout, which cardholder made the charge.
+	// It becomes the memo of the transaction's one part, and is no part of
+	// its identity.
+	Memo string
 }
 
 // Balance is a balance a file stated, at a date.
@@ -47,10 +57,17 @@ type Balance struct {
 	Known  bool
 }
 
+// Total is a sum of the rows a file states, in the file's own sign.
+type Total struct {
+	Amount money.Amount
+	Known  bool
+}
+
 // Warning is a line the reader could not use, said as a code and the value
-// that was wrong, for a template to word.
+// that was wrong, for a template to word. Page is a PDF's, as Record's.
 type Warning struct {
 	Line    int
+	Page    int
 	Problem string
 	Value   string
 }
@@ -66,6 +83,7 @@ const (
 	NoFITID           = "no-fitid"  // an OFX transaction with no identifier
 	SeveralStatements = "several"   // an OFX file holding several accounts
 	BadLedgerBalance  = "ledger-balance"
+	Unclear           = "unclear" // a PDF line that looks like a transaction and is not one this can read
 )
 
 // Result is what one read of a file produced.
@@ -79,9 +97,14 @@ type Result struct {
 	Skipped  int
 	Warnings []Warning
 
-	// Closing is the balance the file states at its end, if it states one:
-	// OFX's ledger balance.
-	Closing Balance
+	// Opening and Closing are the balances the file states at its start
+	// and its end, if it states them: OFX's ledger balance, a statement's
+	// previous and new balance.
+	Opening, Closing Balance
+
+	// Total is what the file says its rows add up to, when it says: a
+	// card's printed activity states its total and no balance at all.
+	Total Total
 
 	// Start and End are the period the file says it covers, when it says.
 	Start, End time.Time

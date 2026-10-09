@@ -11,8 +11,8 @@
 <form method="post" action="{{$v.Path}}/statements" enctype="multipart/form-data">
   <div class="field">
     <label for="file">{{t "Statement file"}}</label>
-    <input id="file" name="file" type="file" required accept=".csv,.ofx,.qfx,.txt,text/csv">
-    <p class="hint">{{t "Download it from your bank's website as CSV, OFX or QFX. You will see what was read before anything is imported."}}</p>
+    <input id="file" name="file" type="file" required accept=".csv,.ofx,.qfx,.txt,.pdf,text/csv,application/pdf">
+    <p class="hint">{{t "Download it from your bank's website as CSV, OFX or QFX, or as a PDF: the statement, or the page of transactions printed to PDF. You will see what was read before anything is imported."}}</p>
   </div>
   <button type="submit">{{t "Upload"}}</button>
 </form>

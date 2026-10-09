@@ -15,10 +15,11 @@ import (
 // Format is what kind of file a statement was read from.
 type Format string
 
-// The formats read so far. PDF is step 9 (docs/plan.md).
+// The formats read.
 const (
 	CSV Format = "csv"
 	OFX Format = "ofx"
+	PDF Format = "pdf"
 )
 
 // Method is how a statement was checked before it was imported.
@@ -34,6 +35,12 @@ const (
 	// closing balance, both from the file (OFX) or typed from the paper
 	// statement. A missing row is caught, but not where.
 	ByTotals Method = "totals"
+
+	// BySum: the rows add up to the total the document states, and it
+	// states no balance. A card's printed activity is this: a missing row
+	// is caught, but not where, and there is no closing balance to
+	// reconcile against.
+	BySum Method = "sum"
 
 	// Unchecked: nothing to check against. Imported, and said plainly on
 	// every page that shows the statement.
@@ -191,7 +198,7 @@ func transactions(account types.ID, recs []importbus.Record) []Transaction {
 		seen[key]++
 		t.Occurrence = seen[key]
 		t.Hash = hash(t)
-		t.Splits = []Split{{ID: types.NewID(), TransactionID: t.ID, Amount: t.Amount}}
+		t.Splits = []Split{{ID: types.NewID(), TransactionID: t.ID, Amount: t.Amount, Memo: r.Memo}}
 
 		out[i] = t
 	}
@@ -230,4 +237,40 @@ func contentKey(t Transaction) string {
 // meaning anything -- case, and runs of spaces -- so the hash survives them.
 func normalizeDescription(s string) string {
 	return strings.ToLower(strings.Join(strings.Fields(s), " "))
+}
+
+// Truncated reports whether one description is the other cut short: it
+// ends in an ellipsis, and what is before the ellipsis is how the other
+// begins, ignoring case and spacing. A bank's web page prints "Hilltop
+// Clinic…" where its statement and its CSV say "HILLTOP CLINIC 0412
+// SPRINGFIELD", and the two are one charge (docs/pdf-statements.md, "Not
+// counting a charge twice"). Two descriptions neither of which is cut
+// short are never the same this way: "SHELL" and "SHELL OIL 123" may be
+// two shops.
+func Truncated(a, b string) bool {
+	cut := func(s string) (string, bool) {
+		s = normalizeDescription(s)
+
+		for _, e := range []string{"…", "..."} {
+			if rest, ok := strings.CutSuffix(s, e); ok {
+				return strings.TrimSpace(rest), true
+			}
+		}
+
+		return s, false
+	}
+
+	pa, ca := cut(a)
+	pb, cb := cut(b)
+
+	switch {
+	case !ca && !cb:
+		return false
+	case ca && len(pa) >= 3 && strings.HasPrefix(pb, pa):
+		return true
+	case cb && len(pb) >= 3 && strings.HasPrefix(pa, pb):
+		return true
+	}
+
+	return false
 }

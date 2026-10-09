@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -283,7 +282,7 @@ func TestAStatementThatDoesNotBalanceImportsNothing(t *testing.T) {
 
 	d, file := w.prepare(me, acct, "checking-dropped-row.csv")
 
-	want := ledgerbus.Check{Method: ledgerbus.ByBalances, Line: 3, Expected: money.MustParse("996.50"), Stated: money.MustParse("962.51")}
+	want := ledgerbus.Check{Method: ledgerbus.ByBalances, Line: 3, Date: time.Date(2026, 7, 3, 0, 0, 0, 0, time.UTC), Expected: money.MustParse("996.50"), Stated: money.MustParse("962.51")}
 	if d.Check != want || d.Ready() {
 		t.Errorf("check = %+v, want %+v", d.Check, want)
 	}
@@ -468,21 +467,6 @@ func TestWhoMayImport(t *testing.T) {
 	// The owner with somebody else's upload.
 	if _, err := w.ledger.Prepare(t.Context(), me, acct, file, nil); !errors.Is(err, ledgerbus.ErrNotFound) {
 		t.Errorf("somebody else's file: %v", err)
-	}
-}
-
-func TestAPDFIsSaidToComeLater(t *testing.T) {
-	w := newWorld(t)
-	me := w.user("treasurer@example.org")
-	acct := w.account(me, "checking")
-
-	f, err := w.files.Save(t.Context(), now, me, "statement.pdf", strings.NewReader("%PDF-1.7\n%invented\n"), ledgerbus.MaxFile, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := w.ledger.Prepare(t.Context(), me, acct, f.ID, nil); !errors.Is(err, ledgerbus.ErrPDF) {
-		t.Errorf("err = %v", err)
 	}
 }
 

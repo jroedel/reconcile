@@ -2,6 +2,7 @@ package ledgerbus
 
 import (
 	"slices"
+	"time"
 
 	"github.com/jroedel/reconcile/business/domain/importing/importbus"
 	"github.com/jroedel/reconcile/business/types/money"
@@ -17,6 +18,12 @@ type Check struct {
 	// there, and what the statement said.
 	Line             int
 	Expected, Stated money.Amount
+
+	// Page and Date are the row it broke on as a person finds it in a PDF,
+	// whose lines are the text read out of it rather than anything on the
+	// page.
+	Page int
+	Date time.Time
 
 	// Opening and Closing are the balance before the first row and after
 	// the last, as the file printed them, when it balanced row by row:
@@ -41,9 +48,15 @@ func (c Check) Failed() bool { return c.Method != Unchecked && !c.OK }
 // wrong combination by accident needs the rows to balance read backwards or
 // sign-flipped, which a dropped or doubled row does not do.
 //
+// A document that states neither balances nor a balance on each row, but
+// the total of its rows -- a card's printed activity -- is checked by that
+// (BySum), in either sign, since the total is printed the bank's way round
+// and the rows may have been turned to the account holder's. Balances come
+// first: they check the rows and give the statement its balances as well.
+//
 // debt says which sign is likelier -- what the account's balance means to
 // the person reading it -- and so which to report a failure in.
-func verify(recs []importbus.Record, opening, closing importbus.Balance, debt bool) Check {
+func verify(recs []importbus.Record, opening, closing importbus.Balance, total importbus.Total, debt bool) Check {
 	signs := []money.Amount{1, -1}
 	if debt {
 		signs = []money.Amount{-1, 1}
@@ -91,6 +104,25 @@ func verify(recs []importbus.Record, opening, closing importbus.Balance, debt bo
 		return Check{Method: ByTotals, Expected: opening.Amount + signs[0]*sum, Stated: closing.Amount}
 	}
 
+	if total.Known {
+		var sum money.Amount
+		for _, r := range recs {
+			sum += r.Amount
+		}
+
+		if sum == total.Amount || -sum == total.Amount {
+			return Check{Method: BySum, OK: true}
+		}
+
+		// Said in the total's own sign, so the two figures on the page
+		// can be compared at a glance.
+		if (sum < 0) != (total.Amount < 0) {
+			sum = -sum
+		}
+
+		return Check{Method: BySum, Expected: sum, Stated: total.Amount}
+	}
+
 	return Check{Method: Unchecked}
 }
 
@@ -129,7 +161,7 @@ func chain(recs []importbus.Record, sign money.Amount) Check {
 		}
 
 		if known && running != r.Balance {
-			return Check{Method: ByBalances, Line: r.Line, Expected: running, Stated: r.Balance}
+			return Check{Method: ByBalances, Line: r.Line, Page: r.Page, Date: r.Date, Expected: running, Stated: r.Balance}
 		}
 
 		if !known {

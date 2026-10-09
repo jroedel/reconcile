@@ -6,7 +6,11 @@
 {{define "problem"}}{{if .}}<p class="notice" role="alert">
 {{- if eq . "no-file"}}{{t "Choose a file first: the statement you downloaded from your bank's website."}}
 {{- else if eq . "too-big"}}{{t "That file is too big for a statement. Download a shorter period from your bank, a few months at a time."}}
-{{- else if eq . "pdf"}}{{t "That is a PDF. Reading PDF statements comes in a later version; for now, download the same statement from your bank's website as CSV or OFX."}}
+{{- else if eq . "pdf-unavailable"}}{{t "PDFs cannot be read on this site at the moment. Download the same statement from your bank's website as CSV or OFX instead."}}
+{{- else if eq . "pdf-scan"}}{{t "That PDF is a picture of a statement, such as a scan, with no text in it to read. Download the statement from your bank's website as CSV or OFX instead."}}
+{{- else if eq . "pdf-password"}}{{t "That PDF is locked with a password. Save it again without one, or download the statement from your bank's website as CSV or OFX."}}
+{{- else if eq . "pdf-unreadable"}}{{t "That PDF could not be opened. It may be damaged, or longer than 50 pages. Download the statement from your bank's website as CSV or OFX instead."}}
+{{- else if eq . "pdf-no-rows"}}{{t "No transactions could be found in that PDF. This reads statements whose rows start with a date and end with an amount; for any other, download the statement from your bank's website as CSV or OFX."}}
 {{- else if eq . "unreadable"}}{{t "That file is not a statement this can read. Statements come from your bank's website as CSV, OFX or QFX."}}
 {{- else if eq . "unmapped"}}{{t "Choose which column holds the date, and which holds the amount or the money in and out."}}
 {{- else if eq . "empty"}}{{t "No transactions could be read with these columns. Check them against the file's rows."}}
@@ -55,12 +59,14 @@
 {{- else if eq .Problem "balance"}}{{t "{value} is not a balance" "value" .Value}}
 {{- else if eq .Problem "no-fitid"}}{{t "the bank gave the transaction on {value} no identifier, so it is matched by its contents" "value" .Value}}
 {{- else if eq .Problem "several"}}{{t "the file holds more than one account, and all of them are read into this one"}}
+{{- else if eq .Problem "unclear"}}{{t "this looks like a transaction, but its date or its amounts could not be read: {value}" "value" .Value}}
 {{- else if eq .Problem "ledger-balance"}}{{t "the closing balance, {value}, could not be read" "value" .Value}}
 {{- else}}{{.Problem}}{{end}}{{end}}
 
 {{define "method"}}
 {{- if eq . "balances"}}<span class="badge">{{t "balanced row by row"}}</span>
 {{- else if eq . "totals"}}<span class="badge">{{t "balanced in total"}}</span>
+{{- else if eq . "sum"}}<span class="badge">{{t "adds up to its stated total"}}</span>
 {{- else}}<span class="badge">{{t "not checked"}}</span>{{end}}{{end}}
 
 {{/* cover is how a month of an account stands (ledgerbus.Cover), in words
