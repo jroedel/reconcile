@@ -49,7 +49,9 @@
     <label for="category-{{$i}}">{{t "Category"}}</label>
     <select id="category-{{$i}}" name="category-{{$i}}">
       <option value="">{{t "(not sorted yet)"}}</option>
-      {{range $e.Categories}}<option value="{{.ID}}"{{if eq .ID.String $row.CategoryID}} selected{{end}}>{{.Name}}</option>{{end}}
+      {{range $e.Grouped}}<optgroup label="{{template "kind" .Kind}}">
+      {{range .Categories}}<option value="{{.ID}}"{{if eq .ID.String $row.CategoryID}} selected{{end}}>{{.Name}}</option>{{end}}
+      </optgroup>{{end}}
     </select>
   </div>
   {{if $e.Projects}}

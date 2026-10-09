@@ -52,10 +52,15 @@ var (
 
 // Columns is how many columns the spreadsheet has; the header a caller
 // gives Write must have as many, in this order: date, account,
-// description, amount, currency, the transaction's total, category,
-// project, memo, receipts, statement, and the day its period was
-// reconciled.
-const Columns = 12
+// description, amount, currency, the transaction's total, category, the
+// category's kind, project, memo, receipts, statement, and the day its
+// period was reconciled.
+//
+// The kind is a column of its own (docs/plan.md, "Kinds of money") so that
+// an accountant can map the categories onto their chart of accounts at a
+// glance, and see at once which rows are transfers and pass-through rather
+// than income or expenses.
+const Columns = 13
 
 // Accounts is how this domain asks who may do what, and names projects
 // (tenancybus).
@@ -116,6 +121,10 @@ type Row struct {
 	Currency      string
 
 	Category, Project, Memo string
+
+	// Kind is the category's kind; Unsaid for a part with no category, or
+	// one whose kind is not said.
+	Kind categorybus.Kind
 
 	// Receipts is the paths in the zip of the transaction's receipts, a
 	// file per page.
@@ -180,9 +189,9 @@ func (b *Business) Account(ctx context.Context, actor, accountID types.ID, from,
 		return Package{}, err
 	}
 
-	categories := make(map[types.ID]string, len(cats))
+	categories := make(map[types.ID]categorybus.Category, len(cats))
 	for _, c := range cats {
-		categories[c.ID] = c.Name
+		categories[c.ID] = c
 	}
 
 	var projectIDs []types.ID
@@ -233,7 +242,7 @@ func (b *Business) Account(ctx context.Context, actor, accountID types.ID, from,
 			p.Rows = append(p.Rows, Row{
 				PostedOn: t.PostedOn, Account: account.Name, Description: t.Description,
 				Amount: s.Amount, Total: t.Amount, Currency: account.Currency,
-				Category: categories[s.CategoryID], Project: projects[s.ProjectID], Memo: s.Memo,
+				Category: categories[s.CategoryID].Name, Kind: categories[s.CategoryID].Kind, Project: projects[s.ProjectID], Memo: s.Memo,
 				Receipts: attached[t.ID], Statement: fileNames[t.StatementID], Reconciled: reconciledOn(recs, t.PostedOn),
 			})
 		}
@@ -302,7 +311,7 @@ func (b *Business) Project(ctx context.Context, actor, projectID types.ID) (Pack
 		p.Rows = append(p.Rows, Row{
 			PostedOn: l.PostedOn, Account: l.AccountName, Description: l.Description,
 			Amount: l.Split.Amount, Total: byID[l.Split.TransactionID].Amount, Currency: l.Currency,
-			Category: l.CategoryName, Project: book.Project.Name, Memo: l.Split.Memo,
+			Category: l.CategoryName, Kind: l.CategoryKind, Project: book.Project.Name, Memo: l.Split.Memo,
 			Receipts: attached[l.Split.TransactionID], Reconciled: reconciledOn(recs[l.AccountID], l.PostedOn),
 		})
 	}
@@ -362,19 +371,20 @@ func reconciledOn(recs []ledgerbus.Reconciliation, day types.Date) types.Date {
 
 // Write streams a package as a zip: the spreadsheet first, then every file,
 // read from disk one at a time and never held whole. header is the
-// spreadsheet's first row in the reader's language, Columns long.
+// spreadsheet's first row in the reader's language, Columns long, and kinds
+// the words for each kind in the same language.
 //
 // Photos and PDFs are stored rather than compressed: they are compressed
 // already, and deflating them again costs the server time and saves the
 // accountant nothing.
-func (b *Business) Write(ctx context.Context, now time.Time, w io.Writer, p Package, header []string) error {
+func (b *Business) Write(ctx context.Context, now time.Time, w io.Writer, p Package, header []string, kinds map[categorybus.Kind]string) error {
 	if len(header) != Columns {
 		return fmt.Errorf("the header has %d columns, not %d", len(header), Columns)
 	}
 
 	zw := zip.NewWriter(w)
 
-	sheet, err := spreadsheet(p.Rows, header)
+	sheet, err := spreadsheet(p.Rows, header, kinds)
 	if err != nil {
 		return err
 	}
@@ -425,7 +435,7 @@ func (b *Business) copy(zw *zip.Writer, e Entry) error {
 // spreadsheet is the rows as CSV, with a byte-order mark: without one,
 // Excel reads UTF-8 as the Windows code page, and every accented name and
 // every "€" arrives as two wrong letters.
-func spreadsheet(rows []Row, header []string) ([]byte, error) {
+func spreadsheet(rows []Row, header []string, kinds map[categorybus.Kind]string) ([]byte, error) {
 	var buf bytes.Buffer
 
 	buf.WriteString("\ufeff")
@@ -446,7 +456,7 @@ func spreadsheet(rows []Row, header []string) ([]byte, error) {
 		if err := cw.Write([]string{
 			r.PostedOn.String(), cell(r.Account), cell(r.Description),
 			r.Amount.String(), r.Currency, r.Total.String(),
-			cell(r.Category), cell(r.Project), cell(r.Memo),
+			cell(r.Category), cell(kinds[r.Kind]), cell(r.Project), cell(r.Memo),
 			strings.Join(r.Receipts, "; "), cell(r.Statement), reconciled,
 		}); err != nil {
 			return nil, err

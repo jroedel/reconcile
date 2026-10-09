@@ -102,17 +102,17 @@ func TestAnOrganizationsList(t *testing.T) {
 	}
 
 	for _, name := range []string{"Utilities", "  Offerings  ", "Travel"} {
-		if _, err := w.cats.Create(t.Context(), now, me, org.Scope(), name); err != nil {
+		if _, err := w.cats.Create(t.Context(), now, me, org.Scope(), name, categorybus.Expense); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// The same name in another case is the same category.
-	if _, err := w.cats.Create(t.Context(), now, me, org.Scope(), "utilities"); !errors.Is(err, categorybus.ErrDuplicate) {
+	if _, err := w.cats.Create(t.Context(), now, me, org.Scope(), "utilities", categorybus.Expense); !errors.Is(err, categorybus.ErrDuplicate) {
 		t.Errorf("a second Utilities: %v", err)
 	}
 
-	if _, err := w.cats.Create(t.Context(), now, me, org.Scope(), " "); err == nil {
+	if _, err := w.cats.Create(t.Context(), now, me, org.Scope(), " ", categorybus.Expense); err == nil {
 		t.Error("an empty name was accepted")
 	}
 
@@ -152,7 +152,7 @@ func TestAnOrganizationsList(t *testing.T) {
 	}
 
 	// And has no list of its own.
-	if _, err := w.cats.Create(t.Context(), now, me, acct.Scope(), "Mine"); !errors.Is(err, categorybus.ErrNotFound) {
+	if _, err := w.cats.Create(t.Context(), now, me, acct.Scope(), "Mine", categorybus.Expense); !errors.Is(err, categorybus.ErrNotFound) {
 		t.Errorf("a list for an account in an organization: %v", err)
 	}
 }
@@ -166,7 +166,7 @@ func TestAPersonalAccountKeepsItsOwnList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := w.cats.Create(t.Context(), now, me, acct.Scope(), "Groceries"); err != nil {
+	if _, err := w.cats.Create(t.Context(), now, me, acct.Scope(), "Groceries", categorybus.Expense); err != nil {
 		t.Fatal(err)
 	}
 
@@ -176,7 +176,7 @@ func TestAPersonalAccountKeepsItsOwnList(t *testing.T) {
 
 	// A project has no list.
 	p, _ := w.ten.CreateProject(t.Context(), now, me, types.ID{}, tenancybus.ProjectFields{Name: "Camino"})
-	if _, err := w.cats.Create(t.Context(), now, me, p.Scope(), "Boots"); !errors.Is(err, categorybus.ErrNotFound) {
+	if _, err := w.cats.Create(t.Context(), now, me, p.Scope(), "Boots", categorybus.Expense); !errors.Is(err, categorybus.ErrNotFound) {
 		t.Errorf("a project's list: %v", err)
 	}
 }
@@ -192,7 +192,7 @@ func TestWhoMayKeepAList(t *testing.T) {
 	w.grant(me, org.Scope(), "viewer@example.org", tenancybus.Viewer)
 	w.grant(me, org.Scope(), "bookkeeper@example.org", tenancybus.Bookkeeper)
 
-	c, err := w.cats.Create(t.Context(), now, bookkeeper, org.Scope(), "Utilities")
+	c, err := w.cats.Create(t.Context(), now, bookkeeper, org.Scope(), "Utilities", categorybus.Expense)
 	if err != nil {
 		t.Fatalf("a bookkeeper: %v", err)
 	}
@@ -206,8 +206,11 @@ func TestWhoMayKeepAList(t *testing.T) {
 	}
 
 	for what, err := range map[string]error{
-		"list":    func() error { _, _, err := w.cats.List(t.Context(), stranger, org.Scope()); return err }(),
-		"create":  func() error { _, err := w.cats.Create(t.Context(), now, stranger, org.Scope(), "X"); return err }(),
+		"list": func() error { _, _, err := w.cats.List(t.Context(), stranger, org.Scope()); return err }(),
+		"create": func() error {
+			_, err := w.cats.Create(t.Context(), now, stranger, org.Scope(), "X", categorybus.Expense)
+			return err
+		}(),
 		"rename":  func() error { _, err := w.cats.Rename(t.Context(), now, stranger, c.ID, "X"); return err }(),
 		"archive": func() error { _, err := w.cats.SetArchived(t.Context(), now, stranger, c.ID, true); return err }(),
 	} {

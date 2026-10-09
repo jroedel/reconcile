@@ -47,7 +47,7 @@ func sorted(t *testing.T) (estate, map[string]string, http.Handler, func(string)
 	e := newEstate(t, h, sent)
 
 	for _, name := range []string{"Groceries", "Utilities"} {
-		wantRedirect(t, e.owner.post(e.org+"/categories", url.Values{"name": {name}}), e.org+"/categories?done=added")
+		wantRedirect(t, e.owner.post(e.org+"/categories", url.Values{"name": {name}, "kind": {"expense"}}), e.org+"/categories?done=added")
 	}
 
 	imported(t, e.owner, e.account, "checking-july.csv", july)
@@ -118,14 +118,16 @@ func TestSortingATransaction(t *testing.T) {
 func TestCategoryLists(t *testing.T) {
 	e, _, _, _ := sorted(t)
 
+	// The two the organization started with, under their kinds, and the
+	// two the owner added, under expenses.
 	page := e.owner.get(e.org + "/categories").Body.String()
-	for _, want := range []string{"Groceries", "Utilities"} {
+	for _, want := range []string{"Groceries", "Utilities", "Transfers between our accounts", "Personal, repaid", "Pass-through"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the list lacks %s", want)
 		}
 	}
 
-	rec := e.owner.post(e.org+"/categories", url.Values{"name": {"groceries"}})
+	rec := e.owner.post(e.org+"/categories", url.Values{"name": {"groceries"}, "kind": {"expense"}})
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("a second Groceries: %d", rec.Code)
 	}
@@ -133,9 +135,11 @@ func TestCategoryLists(t *testing.T) {
 	wantBody(t, rec, "already has a category with that name", `value="groceries"`)
 
 	forms := renameForm.FindAllStringSubmatch(page, -1)
-	if len(forms) != 2 {
+	if len(forms) != 4 {
 		t.Fatalf("%d rename forms", len(forms))
 	}
+
+	// Expenses come first, so the first two are Groceries and Utilities.
 
 	wantRedirect(t, e.owner.post(forms[0][1]+"/rename", url.Values{"name": {"Food"}}), e.org+"/categories?done=renamed")
 	wantRedirect(t, e.owner.post(forms[0][1]+"/rename", url.Values{"name": {""}}), e.org+"/categories?problem=name")
@@ -146,7 +150,7 @@ func TestCategoryLists(t *testing.T) {
 	// An account in the organization uses its list; a personal one has
 	// its own.
 	wantRedirect(t, e.owner.get(e.account+"/categories"), e.org+"/categories")
-	wantRedirect(t, e.owner.post(e.ownAccount+"/categories", url.Values{"name": {"Books"}}), e.ownAccount+"/categories?done=added")
+	wantRedirect(t, e.owner.post(e.ownAccount+"/categories", url.Values{"name": {"Books"}, "kind": {"expense"}}), e.ownAccount+"/categories?done=added")
 	wantBody(t, e.owner.get(e.ownAccount), `href="`+e.ownAccount+`/categories"`)
 }
 

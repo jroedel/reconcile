@@ -9,6 +9,19 @@
 // A category is never deleted, only archived: a split that names it keeps
 // naming it, and last year's package still adds up. An archived category is
 // off the choices for new splits and stays on the ones that have it.
+//
+// # Kinds
+//
+// Every category is one of four kinds of money (docs/plan.md, "Kinds of
+// money"): income, an expense, a transfer between the owner's own accounts,
+// or pass-through -- money that went through but was never theirs. Only
+// income and expenses are operations; the totals read the kind, never a
+// category's name. The kind is on the category rather than on each part so
+// that sorting a part stays one choice.
+//
+// The kind is not the sign. A refund in "Fuel" is money in and still an
+// expense, a negative one; that is the whole reason a kind exists apart from
+// the direction the bank reports.
 package categorybus
 
 import (
@@ -16,6 +29,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -42,7 +56,35 @@ const (
 	Renamed  eventbus.Action = "category.renamed"
 	Archived eventbus.Action = "category.archived"
 	Restored eventbus.Action = "category.restored"
+	KindSet  eventbus.Action = "category.kind"
 )
+
+// Kind is what the money in a category was.
+type Kind string
+
+const (
+	// Unsaid is a category made before kinds, whose owner has not said
+	// which it is. Parts in it count as neither income nor expense until
+	// they do, and the list asks.
+	Unsaid Kind = ""
+
+	Expense     Kind = "expense"
+	Income      Kind = "income"
+	Transfer    Kind = "transfer"
+	PassThrough Kind = "passthrough"
+)
+
+// Kinds is every kind a category may be given, in the order the pages
+// offer them: expenses first, since most parts are.
+var Kinds = []Kind{Expense, Income, Transfer, PassThrough}
+
+// Valid reports whether k is one of Kinds.
+func (k Kind) Valid() bool { return slices.Contains(Kinds, k) }
+
+// Operations reports whether money of this kind is the owner's operations:
+// income or an expense, which a profit and loss adds up. Transfers and
+// pass-through are not, and neither is a category not yet said.
+func (k Kind) Operations() bool { return k == Income || k == Expense }
 
 // MaxName is the longest name a category may have.
 const MaxName = 60
@@ -56,6 +98,7 @@ type Category struct {
 	Owner types.Scope
 
 	Name       string
+	Kind       Kind
 	CreatedBy  types.ID
 	CreatedAt  time.Time
 	ArchivedAt time.Time
@@ -162,8 +205,9 @@ func (b *Business) ForAccount(ctx context.Context, a tenancybus.Account) ([]Cate
 	return b.store.Of(ctx, OwnerOf(a))
 }
 
-// Create adds a category to a list.
-func (b *Business) Create(ctx context.Context, now time.Time, actor types.ID, owner types.Scope, name string) (Category, error) {
+// Create adds a category of a kind to a list. A new one always has a kind:
+// only those made before kinds may lack one.
+func (b *Business) Create(ctx context.Context, now time.Time, actor types.ID, owner types.Scope, name string, kind Kind) (Category, error) {
 	if _, err := b.require(ctx, actor, owner, tenancybus.Bookkeep); err != nil {
 		return Category{}, err
 	}
@@ -173,9 +217,13 @@ func (b *Business) Create(ctx context.Context, now time.Time, actor types.ID, ow
 		return Category{}, err
 	}
 
-	c := Category{ID: types.NewID(), Owner: owner, Name: name, CreatedBy: actor, CreatedAt: now}
+	if !kind.Valid() {
+		return Category{}, badKind
+	}
 
-	if err := b.store.Create(ctx, c, eventbus.New(now, actor, owner, Added, map[string]string{"name": name})); err != nil {
+	c := Category{ID: types.NewID(), Owner: owner, Name: name, Kind: kind, CreatedBy: actor, CreatedAt: now}
+
+	if err := b.store.Create(ctx, c, eventbus.New(now, actor, owner, Added, map[string]string{"name": name, "kind": string(kind)})); err != nil {
 		return Category{}, err
 	}
 
@@ -239,6 +287,90 @@ func (b *Business) SetArchived(ctx context.Context, now time.Time, actor, id typ
 	}
 
 	return c, b.store.Update(ctx, c, eventbus.New(now, actor, c.Owner, action, map[string]string{"name": c.Name}))
+}
+
+// badKind is a kind that is not one of Kinds, worded by the pages as
+// tenancybus.Invalid is.
+var badKind = tenancybus.Invalid{Field: "category-kind", Err: errors.New("choose income, an expense, a transfer or pass-through")}
+
+// SetKind says what kind of money a category is. The owner's to do, not a
+// bookkeeper's: it moves every part ever sorted into the category between
+// income, expenses and the lines outside them, last year's included, which
+// is a decision about the books rather than about one charge.
+func (b *Business) SetKind(ctx context.Context, now time.Time, actor, id types.ID, kind Kind) (Category, error) {
+	c, err := b.store.ByID(ctx, id)
+	if err != nil {
+		return Category{}, err
+	}
+
+	if _, err := b.require(ctx, actor, c.Owner, tenancybus.Manage); err != nil {
+		return Category{}, err
+	}
+
+	if !kind.Valid() {
+		return c, badKind
+	}
+
+	if kind == c.Kind {
+		return c, nil
+	}
+
+	from := c.Kind
+	c.Kind = kind
+
+	return c, b.store.Update(ctx, c, eventbus.New(now, actor, c.Owner, KindSet, map[string]string{"name": c.Name, "from": string(from), "kind": string(kind)}))
+}
+
+// Group is the categories of one kind.
+type Group struct {
+	Kind       Kind
+	Categories []Category
+}
+
+// Grouped is a list a kind at a time, in the order of Kinds, with any whose
+// kind is not said yet last; within a kind, as the list had them. For a
+// choice of category, where the kind is the first thing a person decides.
+func Grouped(list []Category) []Group {
+	var out []Group
+
+	for _, k := range append(slices.Clone(Kinds), Unsaid) {
+		var g Group
+
+		for _, c := range list {
+			if c.Kind == k {
+				g.Categories = append(g.Categories, c)
+			}
+		}
+
+		if len(g.Categories) > 0 {
+			g.Kind = k
+			out = append(out, g)
+		}
+	}
+
+	return out
+}
+
+// Starter is a category every new list begins with.
+type Starter struct {
+	Name string
+	Kind Kind
+}
+
+// Start gives a new list the categories it begins with: one for transfers
+// between the owner's accounts and one for pass-through, because the
+// monthly card payment and the personal charge that is repaid arrive with
+// the first statement, and a list without them invites sorting both as
+// expenses. The names are the caller's, in the creator's language; one the
+// list already has is left as it is.
+func (b *Business) Start(ctx context.Context, now time.Time, actor types.ID, owner types.Scope, starters []Starter) error {
+	for _, s := range starters {
+		if _, err := b.Create(ctx, now, actor, owner, s.Name, s.Kind); err != nil && !errors.Is(err, ErrDuplicate) {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // cleanName is a name with its spaces tidied, or tenancybus.Invalid, which

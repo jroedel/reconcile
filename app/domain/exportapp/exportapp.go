@@ -11,6 +11,7 @@ import (
 	"context"
 	"embed"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"mime"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/jroedel/reconcile/app/sdk/mid"
+	"github.com/jroedel/reconcile/business/domain/category/categorybus"
 	"github.com/jroedel/reconcile/business/domain/export/exportbus"
 	"github.com/jroedel/reconcile/business/types"
 	"github.com/jroedel/reconcile/foundation/web"
@@ -126,11 +128,18 @@ func (a app) download(w http.ResponseWriter, r *http.Request, build func(ctx con
 		return
 	}
 
+	kinds, err := a.kinds(mid.LangFrom(ctx))
+	if err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": p.Name}))
 	w.Header().Set("Cache-Control", "private, no-store")
 
-	if err := a.cfg.Export.Write(ctx, a.cfg.Now(), w, p, columns(text)); err != nil {
+	if err := a.cfg.Export.Write(ctx, a.cfg.Now(), w, p, columns(text), kinds); err != nil {
 		a.cfg.Log.Warn("a download was cut short", "request_id", web.RequestIDFrom(ctx), "user_id", me.ID.String(),
 			"name", p.Name, "error", err)
 
@@ -139,6 +148,27 @@ func (a app) download(w http.ResponseWriter, r *http.Request, build func(ctx con
 
 	a.cfg.Log.Info("the accountant's package was downloaded", "user_id", me.ID.String(), "path", r.URL.Path,
 		"rows", len(p.Rows), "files", len(p.Entries))
+}
+
+// kinds is the words for each kind of money in the kind column, in the
+// reader's language (text/export-kinds.txt).
+func (a app) kinds(lang types.Lang) (map[categorybus.Kind]string, error) {
+	text, err := a.cfg.Render.Text(lang, "export-kinds", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	words := columns(text)
+	if len(words) != len(categorybus.Kinds) {
+		return nil, fmt.Errorf("export-kinds.txt has %d words, not %d", len(words), len(categorybus.Kinds))
+	}
+
+	out := make(map[categorybus.Kind]string, len(words))
+	for i, k := range categorybus.Kinds {
+		out[k] = words[i]
+	}
+
+	return out, nil
 }
 
 // columns is the header row, one column name to a line of the text.

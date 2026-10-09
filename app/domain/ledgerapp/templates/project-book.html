@@ -1,14 +1,18 @@
 {{define "title"}}{{.Data.Book.Project.Name}}{{end}}
 {{define "content"}}{{$v := .Data}}{{$b := $v.Book}}
 <p class="crumbs"><a href="{{$v.Path}}">{{$b.Project.Name}}</a></p>
-<h1>{{t "Money in and out"}}</h1>
+<h1>{{t "Income and expenses"}}</h1>
 {{if and $b.Lines $v.CanExport}}<p><a class="button quiet" href="{{$v.Path}}/export">{{t "Download for the accountant"}}</a> <span class="hint">{{t "A zip of every part in the project as a spreadsheet, with the receipts."}}</span></p>{{end}}
 
 {{if $b.Lines}}
 <section class="card">
 {{range $b.Totals}}
-<p>{{t "Money in"}} <span class="money in">{{money .In .Currency}}</span> · {{t "Money out"}} <span class="money out">{{money .Out .Currency}}</span></p>
+<p>{{t "Income"}} <span class="money in">{{money .Income .Currency}}</span> · {{t "Expenses"}} <span class="money out">{{money .Expenses .Currency}}</span></p>
 <p><strong>{{if lt .Net 0}}{{t "Short by {amount}" "amount" (money .Net.Abs .Currency)}}{{else if gt .Net 0}}{{t "{amount} in hand" "amount" (money .Net .Currency)}}{{else}}{{t "Even"}}{{end}}</strong></p>
+{{if .Transfers}}<p class="hint">{{t "Transfers between our accounts: {amount}. Not income or an expense." "amount" (money .Transfers .Currency)}}</p>{{end}}
+{{if .PassThrough}}<p class="hint">{{t "Pass-through: {amount}, which should come back to zero. Not income or an expense." "amount" (money .PassThrough .Currency)}}</p>{{end}}
+{{if .Unsorted}}<p class="notice">{{t "{amount} is not sorted yet, or is in a category whose kind is not said, and is not in the totals above." "amount" (money .Unsorted .Currency)}}</p>{{end}}
+<p class="hint">{{t "Through the accounts: {in} in, {out} out." "in" (money .In .Currency) "out" (money .Out .Currency)}}</p>
 {{end}}
 </section>
 
@@ -23,8 +27,8 @@
 <section class="card">
 <h2>{{t "By month"}}</h2>
 <div class="scroll"><table class="ledger">
-<thead><tr><th>{{t "Month"}}</th><th class="money">{{t "Money in"}}</th><th class="money">{{t "Money out"}}</th></tr></thead>
-<tbody>{{range $b.ByMonth}}<tr><td>{{.Key}}</td><td class="money in">{{money .In .Currency}}</td><td class="money out">{{money .Out .Currency}}</td></tr>{{end}}</tbody>
+<thead><tr><th>{{t "Month"}}</th><th class="money">{{t "Income"}}</th><th class="money">{{t "Expenses"}}</th><th class="money">{{t "Net"}}</th></tr></thead>
+<tbody>{{range $b.ByMonth}}<tr><td>{{.Key}}</td><td class="money in">{{money .Income .Currency}}</td><td class="money out">{{money .Expenses .Currency}}</td><td class="money {{if lt .Net 0}}out{{else}}in{{end}}">{{money .Net .Currency}}</td></tr>{{end}}</tbody>
 </table></div>
 </section>
 

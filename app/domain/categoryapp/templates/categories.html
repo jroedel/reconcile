@@ -2,14 +2,36 @@
 {{define "content"}}{{$v := .Data}}
 <p class="crumbs"><a href="{{$v.OwnerPath}}">{{$v.OwnerName}}</a></p>
 <h1>{{t "Categories"}}</h1>
-<p class="hint">{{t "What each part of a transaction is for. The same list for every account here, so that the accountant's package adds them up."}}</p>
+<p class="hint">{{t "What each part of a transaction was. The same list for every account here, so that the accountant's package adds them up."}}</p>
 {{template "done" $v.Done}}
 {{template "problem" $v.Problem}}
 
+{{if $v.Unsaid}}
 <section class="card">
-{{if $v.Categories}}
+<h2>{{template "kind" ""}}</h2>
+<p>{{t "These were made before categories had a kind. Until somebody says, what is sorted into them counts as neither income nor an expense."}}</p>
 <ul class="list">
-{{range $v.Categories}}<li>
+{{range $v.Unsaid}}<li>{{.Name}}
+{{if $v.CanManage}}
+<form method="post" action="/categories/{{.ID}}/kind" class="inline">
+  <label class="visually-hidden" for="kind-{{.ID}}">{{t "Kind"}}</label>
+  <select id="kind-{{.ID}}" name="kind">
+    {{range $v.Kinds}}<option value="{{.}}">{{template "kind" .}}</option>{{end}}
+  </select>
+  <button type="submit" class="quiet">{{t "Save"}}</button>
+</form>
+{{else}}<span class="hint">{{t "The owner says which kind it is."}}</span>{{end}}
+</li>
+{{end}}</ul>
+</section>
+{{end}}
+
+{{range $v.Groups}}
+<section class="card">
+<h2>{{template "kind" .Kind}}</h2>
+<p class="hint">{{template "kind-help" .Kind}}</p>
+<ul class="list">
+{{range .Categories}}<li>
 {{if $v.CanBookkeep}}
 <form method="post" action="/categories/{{.ID}}/rename" class="inline">
   <label class="visually-hidden" for="name-{{.ID}}">{{t "Name"}}</label>
@@ -19,26 +41,69 @@
 <form method="post" action="/categories/{{.ID}}/archive" class="inline">
   <input type="hidden" name="archived" value="1"><button type="submit" class="link">{{t "Archive"}}</button>
 </form>
+{{if $v.CanManage}}{{$cur := .Kind}}
+<details class="inline"><summary>{{t "Change its kind"}}</summary>
+<form method="post" action="/categories/{{.ID}}/kind" class="inline">
+  <label class="visually-hidden" for="kind-{{.ID}}">{{t "Kind"}}</label>
+  <select id="kind-{{.ID}}" name="kind">
+    {{range $v.Kinds}}<option value="{{.}}"{{if eq . $cur}} selected{{end}}>{{template "kind" .}}</option>{{end}}
+  </select>
+  <button type="submit" class="quiet">{{t "Save"}}</button>
+  <p class="hint">{{t "Every part already in it moves with it, earlier months included."}}</p>
+</form>
+</details>
+{{end}}
 {{else}}{{.Name}}{{end}}
 </li>
 {{end}}</ul>
-{{else}}<p class="hint">{{t "No categories yet."}}</p>{{end}}
+</section>
+{{end}}
+
+{{if or $v.Settling.PassThrough $v.Settling.Transfers}}
+<section class="card">
+<h2>{{t "What should come back to zero"}}</h2>
+<p class="hint">{{t "Transfers and pass-through are never income or expenses, so over time they should come to nothing. Anything left is worth a question."}}</p>
+<ul class="list">
+{{range $v.Settling.Transfers}}{{$cur := .Currency}}<li><strong>{{template "kind" "transfer"}}</strong>:
+{{if .Balance}}<span class="money {{if lt .Balance 0}}out{{else}}in{{end}}">{{money .Balance .Currency}}</span>
+<br><span class="hint">{{if lt .Balance 0}}{{t "More left your accounts than arrived in them: a statement not imported yet, or money still on its way."}}{{else}}{{t "More arrived in your accounts than left them: a statement not imported yet, or one side sorted as something else."}}{{end}}</span>
+{{else}}<span class="badge ok">{{t "Settled"}}</span>{{end}}
+{{with .Months}}<br><span class="hint">{{t "Months that do not add up on their own:"}} {{range $i, $m := .}}{{if $i}}, {{end}}{{$m.Month}} ({{money $m.Balance $cur}}){{end}}</span>{{end}}
+</li>{{end}}
+{{range $v.Settling.PassThrough}}<li><strong>{{.Category.Name}}</strong>:
+{{if .Balance}}<span class="money {{if lt .Balance 0}}out{{else}}in{{end}}">{{money .Balance .Currency}}</span>
+<br><span class="hint">{{if lt .Balance 0}}{{t "Still to come back: somebody has not repaid it yet."}}{{else}}{{t "Still to go out: collected and not yet passed on."}}{{end}}</span>
+{{else}}<span class="badge ok">{{t "Settled"}}</span>{{end}}
+</li>{{end}}
+</ul>
+</section>
+{{end}}
+
+{{if not (or $v.Unsaid $v.Groups)}}<section class="card"><p class="hint">{{t "No categories yet."}}</p></section>{{end}}
 
 {{if $v.CanBookkeep}}
+<section class="card">
+<h2>{{t "Add a category"}}</h2>
 <form method="post" action="{{$v.Path}}">
   <div class="field">
-    <label for="name">{{t "Add a category"}}</label>
+    <label for="name">{{t "Name"}}</label>
     <input id="name" name="name" type="text" required maxlength="60" value="{{$v.Name}}" placeholder="{{t "Utilities"}}">
+  </div>
+  <div class="field">
+    <label for="kind">{{t "Kind"}}</label>
+    <select id="kind" name="kind">
+      {{range $v.Kinds}}<option value="{{.}}"{{if eq . $v.Kind}} selected{{end}}>{{template "kind" .}}</option>{{end}}
+    </select>
   </div>
   <button type="submit">{{t "Add"}}</button>
 </form>
+</section>
 {{end}}
 
-{{if $v.Archived}}<details><summary>{{t "Archived categories"}}</summary>
+{{if $v.Archived}}<section class="card"><details><summary>{{t "Archived categories"}}</summary>
 <p class="hint">{{t "Off the choices for new transactions, and still on the ones that have them."}}</p>
 <ul class="list">
 {{range $v.Archived}}<li>{{.Name}}
 {{if $v.CanBookkeep}}<form method="post" action="/categories/{{.ID}}/archive" class="inline"><input type="hidden" name="archived" value="0"><button type="submit" class="link">{{t "Bring it back"}}</button></form>{{end}}
-</li>{{end}}</ul></details>{{end}}
-</section>
+</li>{{end}}</ul></details></section>{{end}}
 {{end}}
