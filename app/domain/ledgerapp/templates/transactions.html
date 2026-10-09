@@ -32,7 +32,7 @@
 {{- if .Transfers}} · {{t "transfers {amount}" "amount" (money .Transfers $cur)}}{{end}}
 {{- if .PassThrough}} · {{t "pass-through {amount}" "amount" (money .PassThrough $cur)}}{{end}}</p>{{end}}
 {{if or $v.Unsorted $v.ByRule}}<p><a href="?month={{.Month}}">{{t "Show all of the month"}}</a></p>
-{{else}}<p>{{if .Unsorted}}<a href="?month={{.Month}}&amp;unsorted=1">{{t "{n} not sorted yet" "n" .Unsorted}}</a>{{else}}<span class="hint">{{t "Every transaction this month is sorted."}}</span>{{end}}
+{{else}}<p>{{if .Unsorted}}<a href="?month={{.Month}}&amp;unsorted=1">{{t "{n} not sorted yet" "n" .Unsorted}}</a>{{if $v.CanBookkeep}} · <a href="{{$v.Path}}/sort?month={{.Month}}">{{t "Sort them on one page"}}</a>{{end}}{{else}}<span class="hint">{{t "Every transaction this month is sorted."}}</span>{{end}}
 {{- if .ByRule}} · <a href="?month={{.Month}}&amp;byrule=1">{{t "{n} sorted by rule, to check" "n" .ByRule}}</a>{{end}}
 {{- if $v.CanBookkeep}} · <a href="{{$v.Path}}/rules">{{t "Sorting rules"}}</a>{{end}}</p>{{end}}
 {{end}}{{end}}

@@ -46,6 +46,11 @@ type transactionView struct {
 type sortForm struct {
 	Rows []partRow
 
+	// Guess is the rule's or the suggestion's choice preselected in an
+	// unsorted transaction's one part, shown with why. Only on the page as
+	// first shown: what a person typed is never second-guessed.
+	Guess ledgerbus.Guess
+
 	// Always is the "always sort charges like this the same way" box, and
 	// Match the text it would look for: the payee, prefilled.
 	Always bool
@@ -63,6 +68,15 @@ func (v transactionView) Out() bool { return v.Editor.Transaction.Amount < 0 }
 // monthOf is the transaction list a transaction is listed on.
 func monthOf(t ledgerbus.Transaction) string {
 	return "/accounts/" + t.AccountID.String() + "/transactions?month=" + t.PostedOn.String()[:7]
+}
+
+// idOrEmpty is an ID as a form's value: empty for none.
+func idOrEmpty(id types.ID) string {
+	if id.Zero() {
+		return ""
+	}
+
+	return id.String()
 }
 
 // rowsOf is the form's rows for the parts as stored.
@@ -108,6 +122,17 @@ func (a app) transactionPage(w http.ResponseWriter, r *http.Request, status int,
 
 	if f.Rows == nil {
 		f.Rows = rowsOf(e.Transaction)
+
+		if f.Guess, err = a.cfg.Ledger.Guess(r.Context(), a.cfg.Now(), me.ID, e); err != nil {
+			a.failed(w, r, err)
+
+			return
+		}
+
+		if f.Guess.Made() {
+			f.Rows[0].CategoryID = idOrEmpty(f.Guess.CategoryID)
+			f.Rows[0].ProjectID = idOrEmpty(f.Guess.ProjectID)
+		}
 	}
 
 	if f.Match == "" {

@@ -71,10 +71,11 @@ func TestPayee(t *testing.T) {
 	for in, want := range map[string]string{
 		"SHELL OIL 57444 SPRINGFIELD": "SHELL OIL",
 		"AMAZON MKTPL*2K4 AMZN.COM":   "AMAZON",
-		"SQ *COFFEE CART":             "SQ *COFFEE CART",
+		"SQ *COFFEE CART":             "COFFEE CART",
 		"ELECTRIC  CO":                "ELECTRIC CO",
-		"POS 0712 CORNER GROCERY":     "POS",
-		"07/12 CORNER GROCERY":        "07/12 CORNER GROCERY",
+		"POS 0712 CORNER GROCERY":     "CORNER GROCERY",
+		"07/12 CORNER GROCERY":        "CORNER GROCERY",
+		"POS 4411":                    "POS 4411",
 	} {
 		if got := rulebus.Payee(in); got != want {
 			t.Errorf("Payee(%q) = %q, want %q", in, got, want)

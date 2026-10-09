@@ -30,6 +30,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/importing/importbus"
 	"github.com/jroedel/reconcile/business/domain/importing/sources/csvsource"
 	"github.com/jroedel/reconcile/business/domain/importing/sources/ofxsource"
+	"github.com/jroedel/reconcile/business/domain/rule/rulebus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/types"
 	"github.com/jroedel/reconcile/business/types/money"
@@ -148,6 +149,9 @@ type Storer interface {
 
 	// RuleCounts is how many parts each of the account's rules sorted.
 	RuleCounts(ctx context.Context, account types.ID) (map[types.ID]int, error)
+
+	// Examples is what a person sorted in the account, for suggestions.
+	Examples(ctx context.Context, account types.ID) ([]rulebus.Example, error)
 }
 
 // SavedMapping is a CSV mapping kept for the next file with the same

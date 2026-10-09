@@ -40,6 +40,7 @@
 
 {{if $v.CanSort}}
 <form method="post" action="/transactions/{{$t.ID}}">
+{{if $v.Guess.Made}}<p class="notice"><span class="badge">{{t "not saved yet"}}</span> {{template "guess" (dict "Guess" $v.Guess "Category" ($e.CategoryName $v.Guess.CategoryID))}}</p>{{end}}
 {{range $i, $row := $v.Rows}}
 <fieldset class="card part">
   {{if gt (len $v.Rows) 1}}<legend>{{t "Part {n}" "n" (inc $i)}}</legend>{{end}}

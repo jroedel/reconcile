@@ -8,6 +8,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/event/eventbus"
 	"github.com/jroedel/reconcile/business/domain/event/stores/eventdb"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
+	"github.com/jroedel/reconcile/business/domain/rule/rulebus"
 	"github.com/jroedel/reconcile/business/types"
 )
 
@@ -116,6 +117,53 @@ GROUP BY 1`, account.String())
 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("counting what the rules sorted: %w", err)
+	}
+
+	return out, nil
+}
+
+// maxExamples is the most transactions suggestions learn from, newest
+// first: years of one account, and a bound on a page's work.
+const maxExamples = 2000
+
+// Examples is the account's transactions a person sorted into a category,
+// newest first: one part, with a category, that no rule chose. A split
+// transaction is left out, because its description says nothing about
+// which of its parts is which.
+func (s *Store) Examples(ctx context.Context, account types.ID) ([]rulebus.Example, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT t.description, s.category_id
+FROM splits s JOIN transactions t ON t.id = s.transaction_id
+WHERE t.account_id = ? AND s.category_id IS NOT NULL AND s.rule_id IS NULL
+  AND (SELECT count(*) FROM splits x WHERE x.transaction_id = t.id) = 1
+ORDER BY t.posted_on DESC, t.rowid DESC
+LIMIT ?`, account.String(), maxExamples)
+	if err != nil {
+		return nil, fmt.Errorf("reading what was sorted: %w", err)
+	}
+	defer rows.Close()
+
+	var out []rulebus.Example
+
+	for rows.Next() {
+		var (
+			e  rulebus.Example
+			id string
+		)
+
+		if err := rows.Scan(&e.Description, &id); err != nil {
+			return nil, fmt.Errorf("reading what was sorted: %w", err)
+		}
+
+		if e.CategoryID, err = types.ParseID(id); err != nil {
+			return nil, fmt.Errorf("a stored part is unreadable: %w", err)
+		}
+
+		out = append(out, e)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("reading what was sorted: %w", err)
 	}
 
 	return out, nil

@@ -68,7 +68,13 @@ func (b *Business) sorter(ctx context.Context, now time.Time, actor types.ID, ac
 		return s, err
 	}
 
-	cats, err := b.categories.ForAccount(ctx, account)
+	return b.choices(ctx, s)
+}
+
+// choices reads the account's list and the projects the actor keeps the
+// books of into the sorter.
+func (b *Business) choices(ctx context.Context, s sorter) (sorter, error) {
+	cats, err := b.categories.ForAccount(ctx, s.account)
 	if err != nil {
 		return s, err
 	}
@@ -78,7 +84,7 @@ func (b *Business) sorter(ctx context.Context, now time.Time, actor types.ID, ac
 		s.categories[c.ID] = c
 	}
 
-	mine, err := b.accounts.ProjectsFor(ctx, actor, tenancybus.Bookkeep)
+	mine, err := b.accounts.ProjectsFor(ctx, s.actor, tenancybus.Bookkeep)
 	if err != nil {
 		return s, err
 	}

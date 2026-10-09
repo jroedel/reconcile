@@ -118,6 +118,7 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		e.account + "/transactions", e.ownAccount + "/transactions",
 		e.account + "/months", e.ownAccount + "/months",
 		e.account + "/rules", e.ownAccount + "/rules",
+		e.account + "/sort?month=2026-07", e.ownAccount + "/sort?month=2026-07",
 		e.account + "/export?from=2026-07&to=2026-07", e.ownAccount + "/export?from=2026-07&to=2026-07",
 		e.project + "/export", e.ownProject + "/export",
 		e.account + "/receipts", e.project + "/receipts", e.ownAccount + "/receipts", e.ownProject + "/receipts",
@@ -144,6 +145,7 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		writes = append(writes,
 			write{account + "/rules", url.Values{"match": {"Mine now"}, "direction": {"out"}}},
 			write{account + "/rules/apply", nil},
+			write{account + "/sort?month=2026-07", url.Values{"tx-0": {"0123456789abcdef0123456789abcdef"}, "category-0": {"0123456789abcdef0123456789abcdef"}}},
 		)
 	}
 

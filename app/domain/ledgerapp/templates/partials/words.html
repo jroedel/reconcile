@@ -80,3 +80,20 @@
 {{- else if eq . "transfer"}}{{t "Transfers between our accounts"}}
 {{- else if eq . "passthrough"}}{{t "Pass-through"}}
 {{- else}}{{t "Kind not said yet"}}{{end}}{{end}}
+
+{{/* guess says why a choice is preselected (ledgerbus.Guess): a rule's,
+     or a suggestion from what a person sorted before. Category is the
+     suggested category's name. */}}
+{{define "guess"}}{{$g := .Guess}}{{$s := $g.Suggestion}}
+{{- if eq $g.By "rule"}}{{t "Chosen by the rule for “{match}”." "match" $g.Rule.Match}}
+{{- else if eq $s.Method "payee"}}{{t "Suggested, because {agree} of {of} earlier {payee} transactions were {category}." "agree" $s.Agree "of" $s.Of "payee" $s.Payee "category" .Category}}
+{{- else}}{{t "Suggested, because {agree} of {of} transactions from {payee}, a similar name, were {category}." "agree" $s.Agree "of" $s.Of "payee" $s.Payee "category" .Category}}
+{{- end}}{{end}}
+
+{{/* row-problem is why a row of "Sort this month" was not saved. */}}
+{{define "row-problem"}}
+{{- if eq . "category"}}{{t "Not saved: that category is not on this account's list. Choose another."}}
+{{- else if eq . "project"}}{{t "Not saved: that project is not one you keep the books of."}}
+{{- else if eq . "locked"}}{{t "Not saved: it is in a reconciled period now."}}
+{{- else}}{{t "Not saved. Open it on its own page to sort it."}}
+{{- end}}{{end}}
