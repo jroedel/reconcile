@@ -31,11 +31,16 @@
 {{- else if eq .Problem "project"}}{{t "Part {n} is in a project you do not keep the books of. Ask one of its owners for the bookkeeper role." "n" .Part}}
 {{- else if eq .Problem "memo"}}{{t "The memo on part {n} is too long." "n" .Part}}
 {{- else if eq .Problem "locked"}}{{t "This transaction is in a reconciled period, so its parts cannot change. Reopen the statement first."}}
+{{- else if eq .Problem "rule-match"}}{{t "The parts are saved, but not the rule: give the text to look for, 3 to 100 characters."}}
+{{- else if eq .Problem "rule-choice"}}{{t "The parts are saved, but not the rule: choose a category or a project for it to sort charges into."}}
+{{- else if eq .Problem "rule-category"}}{{t "The parts are saved, but not the rule: its category is archived or not on this account's list."}}
+{{- else if eq .Problem "rule-project"}}{{t "The parts are saved, but not the rule: a rule can only put money into a project you keep the books of."}}
 {{- else}}{{t "Something went wrong at our end. Please try again in a few minutes."}}
 {{- end}}</p>{{end}}{{end}}
 
 {{define "done"}}{{if .}}<p class="notice ok" role="status">
 {{- if eq . "sorted"}}{{t "Saved."}}
+{{- else if eq . "sorted-rule"}}{{t "Saved, and charges like it will be sorted the same way as their statements arrive."}}
 {{- else if eq . "removed"}}{{t "The statement and the transactions it brought in were removed. The file can be imported again."}}
 {{- else if eq . "reconciled"}}{{t "Reconciled. The transactions in its period are locked."}}
 {{- else if eq . "reopened"}}{{t "Reopened. The history keeps the reason."}}

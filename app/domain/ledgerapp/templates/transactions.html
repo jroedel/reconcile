@@ -31,8 +31,10 @@
 {{with .Operations}}<p class="hint">{{t "Income {income} · Expenses {expenses} · Net {net}" "income" (money .Income $cur) "expenses" (money .Expenses $cur) "net" (money .Net $cur)}}
 {{- if .Transfers}} · {{t "transfers {amount}" "amount" (money .Transfers $cur)}}{{end}}
 {{- if .PassThrough}} · {{t "pass-through {amount}" "amount" (money .PassThrough $cur)}}{{end}}</p>{{end}}
-{{if .Unsorted}}<p>{{if $v.Unsorted}}<a href="?month={{.Month}}">{{t "Show all of the month"}}</a>{{else}}<a href="?month={{.Month}}&amp;unsorted=1">{{t "{n} not sorted yet" "n" .Unsorted}}</a>{{end}}</p>
-{{else}}<p class="hint">{{t "Every transaction this month is sorted."}}</p>{{end}}
+{{if or $v.Unsorted $v.ByRule}}<p><a href="?month={{.Month}}">{{t "Show all of the month"}}</a></p>
+{{else}}<p>{{if .Unsorted}}<a href="?month={{.Month}}&amp;unsorted=1">{{t "{n} not sorted yet" "n" .Unsorted}}</a>{{else}}<span class="hint">{{t "Every transaction this month is sorted."}}</span>{{end}}
+{{- if .ByRule}} · <a href="?month={{.Month}}&amp;byrule=1">{{t "{n} sorted by rule, to check" "n" .ByRule}}</a>{{end}}
+{{- if $v.CanBookkeep}} · <a href="{{$v.Path}}/rules">{{t "Sorting rules"}}</a>{{end}}</p>{{end}}
 {{end}}{{end}}
 
 {{if $v.Shown}}
@@ -42,7 +44,7 @@
 <tbody>
 {{range $v.Shown}}<tr id="t-{{.ID}}"><td>{{.PostedOn}}</td><td><a href="/transactions/{{.ID}}">{{if .Description}}{{.Description}}{{else}}{{t "(no description)"}}{{end}}</a></td>
 <td>{{if gt (len .Splits) 1}}{{t "{n} parts" "n" (len .Splits)}}{{if not .Sorted}} <span class="badge">{{t "not sorted yet"}}</span>{{end}}
-{{else}}{{range .Splits}}{{with index $v.Categories .CategoryID}}{{.}}{{else}}<span class="badge">{{t "not sorted yet"}}</span>{{end}}{{with index $v.Projects .ProjectID}} · {{.}}{{end}}{{end}}{{end}}</td>
+{{else}}{{range .Splits}}{{with index $v.Categories .CategoryID}}{{.}}{{else}}<span class="badge">{{t "not sorted yet"}}</span>{{end}}{{with index $v.Projects .ProjectID}} · {{.}}{{end}}{{if not .RuleID.Zero}} <span class="badge">{{t "by rule"}}</span>{{end}}{{end}}{{end}}</td>
 <td class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $cur}}{{with index $v.Receipts .ID}}<br><span class="hint">{{t "{n} receipts" "n" .}}</span>{{end}}</td></tr>
 {{end}}</tbody>
 </table>

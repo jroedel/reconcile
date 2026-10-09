@@ -28,6 +28,8 @@ import (
 	"github.com/jroedel/reconcile/business/domain/ledger/stores/ledgerdb"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/stores/receiptdb"
+	"github.com/jroedel/reconcile/business/domain/rule/rulebus"
+	"github.com/jroedel/reconcile/business/domain/rule/stores/ruledb"
 	"github.com/jroedel/reconcile/business/domain/tenancy/stores/tenancydb"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/translation/stores/translationdb"
@@ -144,7 +146,8 @@ func run() error {
 
 	files := filebus.NewBusiness(log, filedb.NewStore(db), bytes)
 	categories := categorybus.NewBusiness(log, categorydb.NewStore(db), tenancy)
-	ledger := ledgerbus.NewBusiness(log, ledgerdb.NewStore(db), tenancy, files, categories)
+	rules := rulebus.NewBusiness(log, ruledb.NewStore(db), tenancy, categories)
+	ledger := ledgerbus.NewBusiness(log, ledgerdb.NewStore(db), tenancy, files, categories, rules)
 	receipts := receiptbus.NewBusiness(log, receiptdb.NewStore(db), tenancy, ledger, files)
 	export := exportbus.NewBusiness(log, tenancy, ledger, receipts, categories, files)
 
@@ -161,6 +164,7 @@ func run() error {
 		Files:      files,
 		Ledger:     ledger,
 		Categories: categories,
+		Rules:      rules,
 		Receipts:   receipts,
 		Export:     export,
 		BaseURL:    cfg.Server.BaseURL,
@@ -198,6 +202,7 @@ func prepare(ctx context.Context, db *sql.DB) error {
 		{"the organizations, accounts and projects", tenancydb.Init},
 		{"the uploaded files", filedb.Init},
 		{"the category lists", categorydb.Init},
+		{"the sorting rules", ruledb.Init},
 		{"the statements and transactions", ledgerdb.Init},
 		{"the receipts", receiptdb.Init},
 	} {
@@ -225,6 +230,7 @@ func expectedSchema() sqldb.Expected {
 		tenancydb.Expected,
 		filedb.Expected,
 		categorydb.Expected,
+		ruledb.Expected,
 		ledgerdb.Expected,
 		receiptdb.Expected,
 	} {
