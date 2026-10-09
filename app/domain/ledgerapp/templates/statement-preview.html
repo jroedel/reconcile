@@ -72,6 +72,16 @@
 </section>
 {{end}}
 
+{{if $d.Parts}}
+<section class="card">
+<h2>{{t "Which account is this?"}}</h2>
+<p class="hint">{{t "This file holds the statements of several accounts. Choose the one that belongs in this account. The others can be imported from the same file into their own accounts."}}</p>
+{{range $d.Parts}}<label class="choice"><input type="radio" name="part" value="{{.Last4}}"{{if eq .Last4 $d.Part}} checked{{end}}> {{t "The account ending in {last4}, with {n} transactions" "last4" .Last4 "n" (len .Result.Records)}}</label>
+{{end}}
+{{if and $d.Part (eq $d.Part $d.Account.Last4)}}<p class="hint">{{t "This account's number ends in {last4}, so that one is chosen." "last4" $d.Part}}</p>{{end}}
+</section>
+{{end}}
+
 {{if $pdf}}
 <section class="card">
 <h2>{{t "Signs"}}</h2>

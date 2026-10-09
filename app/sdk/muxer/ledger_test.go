@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/jroedel/reconcile/app/domain/ledgerapp"
+	"github.com/jroedel/reconcile/business/domain/importing/sources/pdfsource/pdfsourcetest"
 	"github.com/jroedel/reconcile/foundation/pdftext"
 	"github.com/jroedel/reconcile/foundation/pdftext/pdftexttest"
 	"github.com/jroedel/reconcile/foundation/sqldb"
@@ -179,6 +180,38 @@ func TestImportingAPrintedPDF(t *testing.T) {
 
 	wantBody(t, e.owner.get(loc), "2026-08-01 to 2026-08-31", "adds up to its stated total")
 	wantBody(t, e.owner.get(e.account+"/transactions?month=2026-08"), "Bake sale deposit", "$310.00", "-$12.40")
+}
+
+// A bank's statement of two accounts in one file, imported into an account
+// whose number ends as neither does: the preview asks which, and the one
+// chosen is imported, balanced day by day.
+func TestImportingAStatementOfSeveralAccounts(t *testing.T) {
+	if !pdftext.Available() {
+		t.Skip("pdftotext is not installed here; CI installs it")
+	}
+
+	h, sent := newSite(t, sqldb.Infrastructure, nil)
+	e := newEstate(t, h, sent)
+
+	preview := uploaded(t, e.owner, e.account, "statements.pdf", string(pdfsourcetest.Consolidated()))
+	wantBody(t, e.owner.get(preview), "Which account is this?", "The account ending in 1111, with 8 transactions",
+		"The account ending in 2222, with 2 transactions")
+
+	if rec := e.owner.post(preview, url.Values{"action": {"import"}}); rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("importing without choosing: %d", rec.Code)
+	} else {
+		wantBody(t, rec, "Choose which of them is this account")
+	}
+
+	wantBody(t, e.owner.post(preview, url.Values{"action": {"preview"}, "part": {"1111"}}),
+		"Check 1003", "Every row&#39;s balance follows from the one before", "8 new transactions")
+
+	rec := e.owner.post(preview, url.Values{"action": {"import"}, "part": {"1111"}})
+	if loc := rec.Header().Get("Location"); rec.Code != http.StatusSeeOther || !strings.HasSuffix(loc, "?done=imported") {
+		t.Fatalf("import: %d to %q\n%s", rec.Code, loc, rec.Body.String())
+	}
+
+	wantBody(t, e.owner.get(e.account+"/transactions?month=2026-09"), "Check 1002", "Remote Online Deposit", "-$25.00")
 }
 
 // One charge worded two ways in two files is left out of the second as

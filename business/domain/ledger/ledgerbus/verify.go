@@ -81,7 +81,7 @@ func verify(recs []importbus.Record, opening, closing importbus.Balance, total i
 		for _, ordered := range orders {
 			for _, sign := range signs {
 				if c := chain(ordered, sign); c.OK {
-					return c
+					return heldToTotals(c, recs, opening, closing, sign)
 				}
 			}
 		}
@@ -124,6 +124,28 @@ func verify(recs []importbus.Record, opening, closing importbus.Balance, total i
 	}
 
 	return Check{Method: Unchecked}
+}
+
+// heldToTotals holds a statement that balanced row by row to the opening and
+// closing balances it states as well. The rows only check each other from
+// the first printed balance on: a statement that prints one at the end of
+// each day (pdfsource's daily balances) says nothing of a row missing from
+// before its first day's balance, and the opening balance does.
+func heldToTotals(c Check, recs []importbus.Record, opening, closing importbus.Balance, sign money.Amount) Check {
+	if !opening.Known || !closing.Known {
+		return c
+	}
+
+	var sum money.Amount
+	for _, r := range recs {
+		sum += r.Amount
+	}
+
+	if opening.Amount+sign*sum != closing.Amount {
+		return Check{Method: ByTotals, Expected: opening.Amount + sign*sum, Stated: closing.Amount}
+	}
+
+	return c
 }
 
 // balances counts the rows that print a balance.

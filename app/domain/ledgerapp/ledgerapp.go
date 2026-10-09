@@ -194,6 +194,8 @@ func problem(err error) string {
 		return "same-file"
 	case errors.Is(err, ledgerbus.ErrUnstable):
 		return "unstable"
+	case errors.Is(err, ledgerbus.ErrWhichAccount):
+		return "which-account"
 	case errors.Is(err, ledgerbus.ErrLocked):
 		return "locked"
 	case errors.Is(err, filebus.ErrTooBig):
@@ -711,6 +713,9 @@ func options(r *http.Request) (ledgerbus.Options, string) {
 	// One box for both: a CSV's mapping turns its amounts round, and a
 	// PDF's are turned round as a whole.
 	opts := ledgerbus.Options{Mapping: m, Invert: m.Invert}
+
+	// Which account of a file that holds several.
+	opts.Part = f.Get("part")
 
 	// Whose a file is that names no cardholder: one seen before, or a
 	// name typed for somebody new.

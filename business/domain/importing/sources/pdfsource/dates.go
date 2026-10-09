@@ -138,6 +138,15 @@ func dayFirst(lines []line) bool {
 // resolve gives a day its year and makes it a time: a year it printed, or
 // the one that puts it in the document's period, or failing a period the
 // year the document's dates mostly have.
+// before reports whether one date is before another, once both are
+// resolved; a date that cannot be is before nothing.
+func (d document) before(a, b day) bool {
+	ta, okA := d.resolve(a)
+	tb, okB := d.resolve(b)
+
+	return okA && okB && ta.Before(tb)
+}
+
 func (d document) resolve(x day) (time.Time, bool) {
 	in := func(y int) (time.Time, bool) {
 		t := time.Date(y, x.m, x.d, 0, 0, 0, 0, time.UTC)

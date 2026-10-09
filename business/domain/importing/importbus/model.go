@@ -114,6 +114,27 @@ type Result struct {
 
 	// Start and End are the period the file says it covers, when it says.
 	Start, End time.Time
+
+	// Daily is the balances the file states at the end of some days apart
+	// from its rows: a bank statement's "daily ending balance" table. Each
+	// is checked against the rows (ledgerbus.verify), as a balance printed
+	// on a row is.
+	Daily []Balance
+
+	// Accounts is a document that holds several accounts -- a bank's
+	// consolidated statement -- read as one Result each; Records and the
+	// rest above are then empty, and whoever imports it chooses one.
+	Accounts []Account
+}
+
+// Account is one account's part of a document that holds several.
+type Account struct {
+	// Last4 is the last four digits of the number the document printed
+	// for it: enough to tell the parts apart and to match the account
+	// they are imported into, and no more is kept.
+	Last4 string
+
+	Result Result
 }
 
 // maxWarnings caps the list. A wrong column mapping produces one warning per
