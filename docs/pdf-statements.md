@@ -51,13 +51,58 @@ Around the rows:
 - **A description cut short by the page** ends in "…". It is kept as it
   is: what the document says is what is stored.
 
+### A bank's own statement, laid out by kind
+
+A bank's own statement -- as against a page printed from its website --
+lists its rows by kind, not by date, and a checking account's commonly
+looks like this (it is how one large US bank's consolidated statements are
+laid out, 26 months of which were read locally to build this, and every
+one of the 78 account-months balanced to the cent):
+
+- **Sections with a direction.** "Deposits and additions", "Checks paid",
+  "Electronic withdrawals", "ATM & debit card withdrawals", "Fees", each
+  under its heading, every amount printed without a sign. A heading is a
+  few words alone on a line, outside the description's column, and its
+  words say which way the money went (English, Spanish and Portuguese:
+  `pdfsource/sections.go`). The direction is used only when no row of the
+  document carries a sign or a balance of its own: a card statement that
+  prints "-100.00" under "Payments and credits" is read as printed.
+- **Checks paid** start with the check's number, not a date: the date
+  paid is the last date on the line, and the row is called "Check 1176",
+  as the bank's CSV and OFX call it, so the same check from either is the
+  same transaction. A number alone on its line is a row the page broke;
+  the line after it is the rest.
+- **A row broken at a page's foot** -- its date alone on one line, its
+  description and amount on the next -- is joined, when the second line
+  sits to the right of where the date was. A line with an amount is never
+  page furniture, however often its shape repeats at the pages' edges.
+- **A date at the start of a description** that is earlier than the row's
+  date ("05/16  05/12/2025 Debit for an item processed twice") is the
+  description's. A second date is taken as the posting date only when it
+  is not before the first.
+- **The daily ending balance** is a table of its own: dates, each followed
+  by the balance that day ended with, several pairs to a line. Its rows
+  are not transactions. Each balance is put on the last row on or before
+  its day (the rows sorted by date first, keeping their order within a
+  day) and checked as a balance printed on a row is.
+- **Several accounts in one document.** Each "Account number" starts an
+  account's part, with its own beginning and ending balance, sections and
+  daily balances. The import takes the part whose number ends as the
+  account's last four digits do, or asks which on the preview; only those
+  four digits are kept. The same file can be imported into each account.
+- **Marks a bank hides in the text** ("\*start\*deposits and additions")
+  are not on the page, and are dropped.
+
 ## How it is checked
 
 A PDF is accepted only when its own figures prove it was read whole, or
 the person types the balances, exactly as a CSV is (`ledgerbus.verify`).
 
-1. **Running balance.** When every row carries an amount and a balance,
-   each balance must follow from the one before. The sign of the amount is
+1. **Running balance.** When rows carry a balance -- every row, or the
+   last of each day, from a daily balance table -- each balance must
+   follow from the one before, and the rows must also take the opening
+   balance the document states to its closing one, since balances printed
+   from the first day on say nothing of a row missing before it. The sign of the amount is
    then taken from the balances, never from where the figure sat: a debit
    column and a credit column are only horizontal whitespace after
    extraction, the least durable thing on a page (eumaeus'

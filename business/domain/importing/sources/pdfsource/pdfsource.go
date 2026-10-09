@@ -63,18 +63,38 @@ func Read(text string) (importbus.Result, error) {
 	doc.furniture = furniture(doc.pages)
 
 	r := reader{doc: doc}
-	if stated {
-		r.res.Start, r.res.End = start, end
-	}
 	r.read()
 
-	if len(r.res.Records) == 0 {
-		return r.res, ErrNoRows
+	// Each account's rows on their own, and the parts with none -- a
+	// consolidated statement's cover, before the first account -- dropped.
+	var accounts []importbus.Account
+
+	for _, p := range append(r.parts, part{last4: r.last4, res: r.res, cols: r.cols, dirs: r.dirs}) {
+		if len(p.res.Records) == 0 {
+			continue
+		}
+
+		res := p.finish()
+		if stated {
+			res.Start, res.End = start, end
+		}
+
+		accounts = append(accounts, importbus.Account{Last4: p.last4, Result: res})
 	}
 
-	fromBalances(r.res.Records, r.cols, r.res.Opening)
+	switch len(accounts) {
+	case 0:
+		return importbus.Result{}, ErrNoRows
+	case 1:
+		return accounts[0].Result, nil
+	}
 
-	return r.res, nil
+	out := importbus.Result{Accounts: accounts}
+	if stated {
+		out.Start, out.End = start, end
+	}
+
+	return out, nil
 }
 
 // --- the document -----------------------------------------------------------
@@ -157,7 +177,10 @@ func indent(s string) int {
 
 // always is furniture wherever it is: a page count, an address, and a
 // table's "continued".
-var always = regexp.MustCompile(`(?i)(\bpage \d+ of \d+\b|^page \d+$|https?://|\bwww\.|^\(?continued\b)`)
+//
+// The marks some banks hide in the text around each part of a statement,
+// "*start*deposits and additions", are not on the page at all.
+var always = regexp.MustCompile(`(?i)(\bpage \d+ of \d+\b|^page \d+$|https?://|\bwww\.|^\(?continued\b|^\*(start|end)\*)`)
 
 // furniture is the lines a document repeats on its pages' edges, by their
 // shape: the first and last few lines of each page that are not rows, with
@@ -165,7 +188,7 @@ var always = regexp.MustCompile(`(?i)(\bpage \d+ of \d+\b|^page \d+$|https?://|\
 // carries the time it was printed, count as one line. A shape on the edge
 // of two pages or more is furniture.
 //
-// Only the edges, and only lines that are not rows, because a row's shape
+// Only the edges, and only lines with no amount, because a row's shape
 // repeats too: "Sep 30, 2026  Corner Hardware  $3.78" and the same shop on
 // another day are one shape.
 func furniture(pages [][]line) map[string]bool {
@@ -187,10 +210,12 @@ func furniture(pages [][]line) map[string]bool {
 				continue
 			}
 
-			if _, _, ok := leadingDate(strings.TrimSpace(s), false); ok {
-				if _, figs := figures(s); len(figs) > 0 {
-					continue
-				}
+			// Nor a line that ends with an amount: the second half of a
+			// row the page broke, which a statement often puts at the
+			// foot of a page, where the same deposit on other pages makes
+			// the same shape.
+			if _, figs := figures(s); len(figs) > 0 {
+				continue
 			}
 
 			edges[shape(s)] = true
@@ -254,8 +279,31 @@ type reader struct {
 	open      int
 	continued int
 
-	// cols is each record's amount column, for fromBalances.
+	// cols is each record's amount column, for fromBalances, and dirs the
+	// direction of the section it was in (sections.go).
 	cols []int
+	dirs []direction
+
+	// The section being read: which way its money goes, whether it is the
+	// checks paid -- and the number of a check whose row the page broke --
+	// or the daily balances, and a date there waiting for its amount.
+	dir        direction
+	checks     bool
+	check      string
+	daily      bool
+	pending    day
+	hasPending bool
+
+	// lonely is a date that was alone on its line, for the line after it
+	// (hasLone).
+	lonely  day
+	loneCol int
+	hasLone bool
+
+	// last4 is the account being read, and parts the accounts read before
+	// it, in a document that holds several.
+	last4 string
+	parts []part
 }
 
 func (r *reader) read() {
@@ -275,6 +323,11 @@ type row struct {
 	date    day
 	middle  []cell
 	figures []figure
+
+	// desc is the description when it was read some other way than from
+	// the middle runs: a check's (given).
+	desc  string
+	given bool
 }
 
 // parseRow reads a line as a row, if it is one.
@@ -289,8 +342,12 @@ func (r *reader) parseRow(s string) (row, bool) {
 
 	// A second date is the posting date beside the date of the sale. The
 	// posting date is the one a bank's CSV and OFX carry, so it is the one
-	// that finds the same charge already imported from either.
-	if d2, rest2, ok := leadingDate(strings.TrimLeft(rest, " \t"), r.doc.dayFirst); ok {
+	// that finds the same charge already imported from either. Never an
+	// earlier one: a posting date does not come before the sale, and a
+	// date before the row's is the description's -- "05/16  05/12/2025
+	// Debit for an item processed twice" -- which a bank's own statement
+	// prints after the date the money moved.
+	if d2, rest2, ok := leadingDate(strings.TrimLeft(rest, " \t"), r.doc.dayFirst); ok && !r.doc.before(d2, d) {
 		d, rest = d2, rest2
 	}
 
@@ -375,13 +432,37 @@ func (r *reader) line(l line) {
 		return
 	}
 
+	// Before the furniture: the line naming an account repeats its shape
+	// for every account of a consolidated statement.
+	if r.account(s) {
+		return
+	}
+
 	if r.doc.isFurniture(s) {
 		return
 	}
 
+	// A date alone on the line before waits for this one only.
+	lone := r.hasLone
+	r.hasLone = false
+
 	if _, ok := headings(s); ok {
 		r.open = -1
 
+		return
+	}
+
+	if r.section(s) {
+		return
+	}
+
+	if r.daily {
+		r.balances(s)
+
+		return
+	}
+
+	if r.checks && r.checkRow(l) {
 		return
 	}
 
@@ -391,14 +472,29 @@ func (r *reader) line(l line) {
 		return
 	}
 
-	if _, figs := figures(s); len(figs) > 0 {
+	if body, figs := figures(s); len(figs) > 0 {
+		// The rest of a row whose date the page left alone on the line
+		// before: a row broken where a page's column ends, as some banks'
+		// statements break the last row of a section. To the right of
+		// where the date was, so that a summary's line of figures at the
+		// margin is never taken for it.
+		if lone && indent(s) > r.loneCol+3 {
+			r.row(l, row{date: r.lonely, middle: cells(body, 0), figures: figs})
+
+			return
+		}
+
 		r.stated(s)
 		r.open = -1
 
 		return
 	}
 
-	if _, _, ok := leadingDate(strings.TrimSpace(s), r.doc.dayFirst); ok {
+	if d, rest, ok := leadingDate(strings.TrimSpace(s), r.doc.dayFirst); ok {
+		if strings.TrimSpace(rest) == "" {
+			r.lonely, r.loneCol, r.hasLone = d, indent(s), true
+		}
+
 		r.open = -1
 
 		return
@@ -428,6 +524,14 @@ func (r *reader) row(l line, rw row) {
 	}
 
 	desc, memo := r.describe(rw.middle)
+	if rw.given {
+		desc, memo = rw.desc, ""
+	}
+
+	// A check whose number the page put on the line before.
+	if r.checks && r.check != "" {
+		desc, r.check = checkDescription(r.check, desc), ""
+	}
 
 	// A row that states a balance: kept as the balance it states, and not
 	// imported, since it moves nothing.
@@ -462,6 +566,7 @@ func (r *reader) row(l line, rw row) {
 
 	r.res.Records = append(r.res.Records, rec)
 	r.cols = append(r.cols, rw.figures[0].col)
+	r.dirs = append(r.dirs, r.dir)
 	r.open, r.continued = len(r.res.Records)-1, 0
 }
 

@@ -53,6 +53,10 @@ var (
 	ErrPDFUnreadable  = errors.New("the PDF could not be opened")
 	ErrPDFNoRows      = errors.New("no transactions could be found in the PDF")
 
+	// ErrWhichAccount is a document that holds several accounts, imported
+	// before a person said which of them is this one.
+	ErrWhichAccount = errors.New("the file holds several accounts; choose this one")
+
 	// ErrUnreadable is a file that is neither OFX nor a CSV export with a
 	// date and an amount column.
 	ErrUnreadable = errors.New("that file is not a statement this can read")
@@ -249,6 +253,10 @@ type Options struct {
 	// whose statements arrive one file per cardholder: a person's answer
 	// on the preview (Draft.Unnamed).
 	Holder string
+
+	// Part is which account of a document that holds several is this one,
+	// by the last four digits of its number (Draft.Parts).
+	Part string
 }
 
 // Draft is a file read for an account and not yet imported: everything the
@@ -274,6 +282,15 @@ type Draft struct {
 
 	// Invert is whether a PDF's amounts were turned round (Options).
 	Invert bool
+
+	// Parts is the accounts of a document that holds several -- a bank's
+	// consolidated statement -- and Part the one being imported: the one
+	// whose number ends as this account's, or the one a person chose.
+	// Choose is a document whose part nobody has chosen yet; nothing else
+	// below is filled in.
+	Parts  []importbus.Account
+	Part   string
+	Choose bool
 
 	// ByHolder is whether the account's statements arrive one file per
 	// cardholder (holders.go). Holders is the cardholders its rows have
@@ -463,6 +480,12 @@ func (b *Business) readPDF(ctx context.Context, d *Draft, data []byte, opts *Opt
 		return ErrPDFNoRows
 	}
 
+	if len(res.Accounts) > 0 {
+		if res, err = part(d, res, opts); err != nil || d.Choose {
+			return err
+		}
+	}
+
 	d.Invert = d.Account.Kind == tenancybus.Card
 	d.Opening, d.Closing = res.Opening, res.Closing
 
@@ -489,6 +512,33 @@ func (b *Business) readPDF(ctx context.Context, d *Draft, data []byte, opts *Opt
 	d.Result = res
 
 	return nil
+}
+
+// part chooses which account of a document that holds several is the one
+// being imported: the one a person chose, else the one whose number ends
+// as this account's does. The document's period is every part's.
+func part(d *Draft, res importbus.Result, opts *Options) (importbus.Result, error) {
+	d.Parts = res.Accounts
+
+	d.Part = d.Account.Last4
+	if opts != nil && opts.Part != "" {
+		d.Part = opts.Part
+	}
+
+	for _, a := range res.Accounts {
+		if a.Last4 != "" && a.Last4 == d.Part {
+			out := a.Result
+			if out.Start.IsZero() {
+				out.Start, out.End = res.Start, res.End
+			}
+
+			return out, nil
+		}
+	}
+
+	d.Part, d.Choose = "", true
+
+	return importbus.Result{}, nil
 }
 
 // mapping chooses the columns for a CSV: the person's, else one remembered
@@ -599,6 +649,8 @@ func (b *Business) Import(ctx context.Context, now time.Time, actor, accountID, 
 	}
 
 	switch {
+	case d.Choose:
+		return Statement{}, ErrWhichAccount
 	case d.Unmapped:
 		return Statement{}, ErrUnreadable
 	case d.HasEarlier:
