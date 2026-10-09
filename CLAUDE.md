@@ -2,8 +2,11 @@
 
 `AGENTS.md` is a link to this file, so every agent reads the same rules.
 
-This app helps the people who handle a nonprofit's money day to day keep it
-straight between the accountant's statements. They upload bank and card
+This app helps the people who handle a nonprofit's money day to day
+understand it between the accountant's reports, and talk with the
+accountant about it; it does not replace the bookkeeping software or the
+accountant (`README.md`, which says what income, an expense, a transfer and
+pass-through are). They upload bank and card
 statements, which are read and checked against their own balances; they
 attach receipts, split transactions across categories and **projects** (a
 pilgrimage, a building fund) that draw from several accounts, reconcile each

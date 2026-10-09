@@ -1,9 +1,28 @@
 # reconcile
 
-A web app for the people who handle a nonprofit's money day to day. Upload
-bank and card statements, check them against their own balances, attach
-receipts, follow projects that draw from several accounts, reconcile each
-month, and hand the accountant a package.
+Reconcile helps the people who handle a nonprofit's money day to day
+understand it between the accountant's reports, and talk with the
+accountant about it. It does not replace the bookkeeping software or the
+accountant. It reads what the bank says, and lets the people closest to the
+money say what each movement was:
+
+- **income**: money that came to the organization;
+- **an expense**: money the organization spent (a refund is a negative
+  expense, not income);
+- **a transfer**: money moving between the organization's own accounts, such
+  as paying the credit card from checking;
+- **pass-through**: money that went through the organization's accounts but
+  was never its own, such as a personal charge on its card and the repayment
+  that answers it, or a collection forwarded to the diocese.
+
+Only income and expenses are the organization's operations. Transfers and
+pass-through are kept and shown, and each should come back to zero, but
+they are never counted as earning or spending.
+
+So: upload bank and card statements, check them against their own
+balances, say what each part of each charge was, attach receipts, follow
+projects that draw from several accounts, reconcile each month, and hand the
+accountant a package.
 
 [`docs/plan.md`](docs/plan.md) is the plan and the build order;
 [`docs/design.md`](docs/design.md) is how it should feel to use.
