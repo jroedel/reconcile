@@ -33,16 +33,20 @@ first call in a session.
 ## The key and the site
 
 `scripts/reconcile-api` reads the key from `RECONCILE_API_KEY` and the site
-from `RECONCILE_URL`, both set by the person in their environment before
-Claude Code started, and hands the key to curl without putting it on a
-command line.
+from `RECONCILE_URL`, both in the environment the person started Claude
+Code in -- with `make translate`, which reads them from where the person
+keeps them -- and hands the key to curl without putting it on a command
+line.
 
 - Never print it, echo it, write it to a file, or put its value in a command.
   Refer to it only as `$RECONCILE_API_KEY`, and only through the script.
-- Never look for a key anywhere else, and never read `secrets.env` or
-  `config.toml` (CLAUDE.md §6). If the script says a variable is not set, or
-  the API answers 401 or 403, stop and tell the person: a translator makes a
-  key at `/account/keys` on the site.
+- Never look for a key anywhere else, never run `make translate` or
+  `scripts/translate`, and never read `secrets.env`, `config.toml` or
+  `~/.config/reconcile/` (CLAUDE.md §6). If the script says a variable is
+  not set, or the API answers 401 or 403, stop and tell the person: a
+  translator makes a key at `/account/keys` on the site, puts it in
+  `~/.config/reconcile/api-key`, and starts Claude Code with
+  `make translate`.
 - Never write the site's address into a file here. The repository is public.
 
 ## What you can and cannot do

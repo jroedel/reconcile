@@ -37,10 +37,10 @@ func TestATranslatorIsNamedForOneLanguage(t *testing.T) {
 	}
 
 	wantRedirect(t, s.admin.post("/admin/translators", url.Values{"email": {"ana@example.org"}, "lang": {"pt"}}), "/admin#translators")
-	wantBody(t, s.admin.get("/admin"), "ana@example.org", "Português")
+	wantBody(t, s.admin.get("/admin"), "ana@example.org", "Português", `href="/account/keys"`)
 
 	wantBody(t, ana.get("/account"), `href="/translations"`, `href="/account/keys"`)
-	wantBody(t, ana.get("/translations"), "Not translated yet")
+	wantBody(t, ana.get("/translations"), "Not translated yet", `href="/account/keys"`)
 
 	if rec := ana.get("/translations?in=es"); rec.Code != http.StatusNotFound {
 		t.Errorf("her Spanish: %d", rec.Code)

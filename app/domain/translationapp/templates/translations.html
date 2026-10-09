@@ -3,6 +3,7 @@
 <p class="crumbs"><a href="/account">{{t "Your account"}}</a></p>
 <h1>{{t "Translations"}}</h1>
 <p>{{t "Every translation here is already on the pages. Look them over: keep the words, change them, or send them back to Claude with a note saying what is wrong."}}</p>
+<p><a href="/account/keys">{{t "Your API keys"}}</a></p>
 
 {{if gt (len .Langs) 1}}<nav class="tabs" aria-label="{{t "Language"}}">
 {{range .Langs}}<a href="/translations?in={{.}}" lang="{{.}}"{{if eq . $p.Lang}} aria-current="page"{{end}}>{{.Name}}</a>

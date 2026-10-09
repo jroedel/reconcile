@@ -11,9 +11,9 @@
 #   scripts/reconcile-api GET '/api/v1/translations/pending?lang=es'
 #   scripts/reconcile-api PUT /api/v1/translations --json @batch.json
 #
-# Both come from the person's environment, set before Claude Code started,
-# and never from a file in or near this repository (CLAUDE.md, "One
-# exception: translations"). There is no default site: the repository is
+# Both come from the environment the person started Claude Code in, with
+# make translate (scripts/translate), and never from a file this script or
+# an agent reads (CLAUDE.md, "One exception: translations"). There is no default site: the repository is
 # public, and the address of the one that runs it belongs in secrets.env,
 # which nothing here reads.
 #
@@ -48,7 +48,7 @@ case "${path%%\?*}" in
 *) die "$path is not one of the translation endpoints. This calls those and the index, and nothing else" ;;
 esac
 
-[ -n "${RECONCILE_URL:-}" ] || die "RECONCILE_URL is not set. Ask the person to set it to the site's address in their environment, and start Claude Code again"
+[ -n "${RECONCILE_URL:-}" ] || die "RECONCILE_URL is not set. Ask the person to start Claude Code with: make translate"
 
 base="${RECONCILE_URL%/}"
 
@@ -61,7 +61,7 @@ curl_opts=(--silent --show-error --fail-with-body --request "$method")
 
 if [ -z "${RECONCILE_API_KEY:-}" ]; then
 	if [ "${path%/}" != /api/v1 ]; then
-		die "RECONCILE_API_KEY is not set. A translator makes a key at $base/account/keys and sets it in their environment; it is never written into a file here"
+		die "RECONCILE_API_KEY is not set. A translator makes a key at $base/account/keys, puts it in ~/.config/reconcile/api-key, and starts Claude Code with: make translate"
 	fi
 
 	exec curl "${curl_opts[@]}" "$@" "$base$path"

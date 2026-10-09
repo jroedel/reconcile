@@ -192,6 +192,10 @@ deploy-send-secrets: ## Deploy key and addresses to GitHub; config.toml to the s
 
 # ---------------------------------------------------------------- local dev
 
+.PHONY: translate
+translate: ## Start Claude Code for translating: the site from secrets.env, your API key from ~/.config/reconcile/api-key
+	@scripts/translate
+
 .PHONY: shell-test
 shell-test: ## Run the shell tests
 	@for t in scripts/*-test.sh; do \

@@ -236,7 +236,6 @@ Owners, bookkeepers and accountants can download it (the Export permission). It 
 
 ## Open items (do not block steps 1–8)
 
-- **PDF statements.** The server has poppler's `pdftotext` (checked 2026-10-09: 22.12); see `docs/pdf-statements.md`.
 - **Public hostname and From address.** Both go in `secrets.env`, never in a tracked file. The From address must be on a domain the Hetzner host DKIM-signs for, or sign-in codes land in spam and nobody can sign in.
 - **Disk.** Receipts and statements accumulate on the shared host. `make prod-status` should report the size of `files/`.
 

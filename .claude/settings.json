@@ -22,7 +22,15 @@
       "Bash(git push * HEAD:main*)",
       "Read(./secrets.env)",
       "Read(./secrets.env.bak)",
-      "Read(./config.toml)"
+      "Read(./config.toml)",
+      "Bash(make translate*)",
+      "Bash(scripts/translate)",
+      "Bash(scripts/translate *)",
+      "Bash(./scripts/translate)",
+      "Bash(./scripts/translate *)",
+      "Bash(bash scripts/translate)",
+      "Bash(bash scripts/translate *)",
+      "Read(~/.config/reconcile/**)"
     ]
   }
 }
