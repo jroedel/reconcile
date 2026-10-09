@@ -8,6 +8,13 @@ remember what a person decided, apply it when the next statement arrives,
 and turn the rest of the month into one screen instead of one page per
 charge.
 
+It builds on the kinds of money (`docs/plan.md`, "Kinds of money"): a
+category is income, an expense, a transfer or pass-through, so choosing a
+category says what the money was. A rule that sorts "CAPITAL ONE AUTOPAY"
+into "Transfers between our accounts" keeps the monthly card payment out of
+income and expenses on both accounts, which is the rule most accounts need
+first.
+
 ## Where things stand
 
 - A new transaction gets one split for its full amount, with no category and
@@ -24,7 +31,7 @@ charge.
 |---|---|
 | A matching rule at import | **Sorts the charge at once**, marked "sorted by rule" so it can be checked. A charge a person has sorted is never touched by a rule |
 | Where a rule lives | **Per account.** Each account has its own rules; who may make them is who may sort there (bookkeeper or owner) |
-| What a rule sets | **A category, a project, or both.** A rule naming a project stops applying when the project ends or is archived |
+| What a rule sets | **A category, a project, or both.** The category carries its kind, so a rule can sort a card payment as a transfer. A rule naming a project stops applying when the project ends or is archived |
 | Sorting a month at once | **Yes:** one page per account and month with every unsorted charge, the suggestion preselected, saved with one button |
 | Guesses from history | **Never applied on their own.** A suggestion only preselects; a person saves it |
 
@@ -81,7 +88,8 @@ A new domain, `rule` (`business/domain/rule/rulebus`, `stores/ruledb`).
 - **Suggestions:** learned per account from the transactions a person sorted
   (a split with a category and no `rule_id`), the eumaeus way: the same
   payee first, then a nearly-same name. At least 2 examples agreeing at
-  least 80%. Category only. Shown, with the sentence saying why ("3 of the
+  least 80%. Category only, and so its kind: a payee always sorted as
+  pass-through is suggested as pass-through. Shown, with the sentence saying why ("3 of the
   last 3 SHELL OIL charges were Fuel"), never stored.
 - **Who:** a rule is read and written by a bookkeeper or owner of the
   account; anybody else gets `ErrNotFound` for its account, as everywhere.
@@ -96,9 +104,9 @@ A new domain, `rule` (`business/domain/rule/rulebus`, `stores/ruledb`).
   it ticked makes or corrects the rule.
 - **`/accounts/{id}/sort?month=2026-07`, "Sort this month":** every unsorted
   charge of that month that is one part, in date order, each with its
-  date, description and amount, a category and a project choice
-  (preselected by rule or suggestion, marked as such), and the "always"
-  box. One **Save** at the foot sorts every row with a category or project
+  date, description and amount, a category choice grouped by kind and a
+  project choice (preselected by rule or suggestion, marked as such), and
+  the "always" box. One **Save** at the foot sorts every row with a category or project
   chosen and leaves the rest. Linked from "{n} not sorted yet" on the month
   list. Works without JavaScript; 100 rows a page.
 - **`/accounts/{id}/rules`:** each rule with what it sets, how many parts
@@ -110,7 +118,7 @@ A new domain, `rule` (`business/domain/rule/rulebus`, `stores/ruledb`).
 
 ## Build order
 
-Two pull requests:
+After the kinds of money (`docs/plan.md`, step 9), then two pull requests:
 
 1. **Rules.** `rulebus` and `ruledb`, `splits.rule_id`, applying at import
    and from the rules page, the rules page, the "always" box on the
