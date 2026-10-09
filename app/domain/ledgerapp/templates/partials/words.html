@@ -22,6 +22,10 @@
 {{- else if eq . "entry-file-type"}}{{t "The document must be a photo or a PDF."}}
 {{- else if eq . "entry-already"}}{{t "A transaction with that date, description and amount is in this account already. If this is another one, describe it so that the two can be told apart."}}
 {{- else if eq . "entry-locked"}}{{t "That day is in a reconciled period, so nothing can be entered on it. Reopen the statement that covers it first."}}
+{{- else if eq . "explain-taken"}}{{t "One of those transactions is already part of another explanation, or is explained itself, so nothing was changed. The list below is as it is now."}}
+{{- else if eq . "explain-elsewhere"}}{{t "Lines can come only from this organization's accounts that you may read. Choose among those listed."}}
+{{- else if eq . "explain-months"}}{{t "Choose the months to look in, the first no later than the last."}}
+{{- else if eq . "explain-note"}}{{t "The note is too long. Keep it under 500 characters."}}
 {{- else if eq . "unstable"}}{{t "This file could not be imported safely: reading it a second time did not give the same transactions. Nothing was imported, and the problem has been recorded for the developers. Meanwhile, try the same statement downloaded in another format."}}
 {{- else if eq . "same-file"}}{{t "This file was imported into this account already."}}
 {{- else if eq . "opening"}}{{t "The opening balance must be an amount, such as 1234.56, or left empty."}}
@@ -50,9 +54,46 @@
 {{- else}}{{t "Something went wrong at our end. Please try again in a few minutes."}}
 {{- end}}</p>{{end}}{{end}}
 
+{{/* The fields of an entry by hand, on an account's page and on an
+explanation's. */}}
+{{define "entry-fields"}}
+  <div class="field">
+    <label for="entry-date">{{t "Date"}}</label>
+    <input id="entry-date" name="date" type="date" required>
+  </div>
+  <div class="field">
+    <label for="entry-description">{{t "Description"}}</label>
+    <input id="entry-description" name="description" type="text" required maxlength="200">
+  </div>
+  <div class="field">
+    <label for="entry-amount">{{t "Amount"}}</label>
+    <input id="entry-amount" name="amount" type="text" inputmode="decimal" required>
+  </div>
+  <fieldset>
+    <legend>{{t "Which way"}}</legend>
+    <label class="choice"><input type="radio" name="direction" value="out" checked> {{t "Money out"}}</label>
+    <label class="choice"><input type="radio" name="direction" value="in"> {{t "Money in"}}</label>
+  </fieldset>
+  <div class="field">
+    <label for="entry-document">{{t "The document that shows it"}}</label>
+    <input id="entry-document" name="document" type="file" required accept="image/*,application/pdf">
+    <p class="hint">{{t "A photo or a PDF: a receipt, an invoice, or the email that says so."}}</p>
+  </div>
+{{end}}
+
+{{/* What a line of an explanation is cleared by: the transaction it
+explains, or, in an account the reader may not see, only that there is
+one. Given a dict of By, a *ledgerbus.Clearer, and Currency. */}}
+{{define "cleared"}}{{with .By}}<p class="hint"><span class="badge">{{t "cleared"}}</span>
+{{if .Hidden}}{{t "Part of what explains a transaction in an account you cannot see."}}
+{{else}}{{with .Transaction}}<a href="/transactions/{{.ID}}/explain">{{t "Part of what explains {description}, {amount} on {date}" "description" .Description "amount" (money .Amount $.Currency) "date" .PostedOn}}</a>{{end}}{{end}}</p>{{end}}{{end}}
+
 {{define "done"}}{{if .}}<p class="notice ok" role="status">
 {{- if eq . "sorted"}}{{t "Saved."}}
 {{- else if eq . "entered"}}{{t "Entered. Its document is kept with it."}}
+{{- else if eq . "entered-line"}}{{t "Entered, with its document, and added to the explanation."}}
+{{- else if eq . "gathered"}}{{t "The explanation is saved."}}
+{{- else if eq . "settled"}}{{t "Saved. The history keeps the note."}}
 {{- else if eq . "sorted-rule"}}{{t "Saved, and charges like it will be sorted the same way as their statements arrive."}}
 {{- else if eq . "removed"}}{{t "The statement and the transactions it brought in were removed. The file can be imported again."}}
 {{- else if eq . "reconciled"}}{{t "Reconciled. The transactions in its period are locked."}}

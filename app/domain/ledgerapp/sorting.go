@@ -39,6 +39,12 @@ type transactionView struct {
 	Done     string
 	Uploaded uploaded
 
+	// Explained is whether it has an explanation, and Settled whether that
+	// is settled; ClearedBy is the transaction it is a line of, if any.
+	Explained bool
+	Settled   bool
+	ClearedBy *ledgerbus.Clearer
+
 	sortForm
 }
 
@@ -157,6 +163,18 @@ func (a app) transactionPage(w http.ResponseWriter, r *http.Request, status int,
 	}
 
 	view.Receipts = on[id]
+
+	c, err := a.cfg.Ledger.Clearing(r.Context(), me.ID, []types.ID{id})
+	if err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
+	view.Settled, view.Explained = c.Explains[id]
+	if by, ok := c.By[id]; ok {
+		view.ClearedBy = &by
+	}
 
 	if view.CanReceipts {
 		if view.Waiting, err = a.waitingFor(r, me.ID, e.Transaction); err != nil {

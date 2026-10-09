@@ -13,3 +13,4 @@
 {{t "Receipts"}}
 {{t "Statement"}}
 {{t "Reconciled on"}}
+{{t "Cleared by"}}

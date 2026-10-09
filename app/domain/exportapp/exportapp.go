@@ -121,14 +121,7 @@ func (a app) download(w http.ResponseWriter, r *http.Request, build func(ctx con
 		return
 	}
 
-	text, err := a.cfg.Render.Text(mid.LangFrom(ctx), "export-columns", nil)
-	if err != nil {
-		a.failed(w, r, err)
-
-		return
-	}
-
-	kinds, err := a.kinds(mid.LangFrom(ctx))
+	words, err := a.words(mid.LangFrom(ctx))
 	if err != nil {
 		a.failed(w, r, err)
 
@@ -139,7 +132,7 @@ func (a app) download(w http.ResponseWriter, r *http.Request, build func(ctx con
 	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": p.Name}))
 	w.Header().Set("Cache-Control", "private, no-store")
 
-	if err := a.cfg.Export.Write(ctx, a.cfg.Now(), w, p, columns(text), kinds); err != nil {
+	if err := a.cfg.Export.Write(ctx, a.cfg.Now(), w, p, words); err != nil {
 		a.cfg.Log.Warn("a download was cut short", "request_id", web.RequestIDFrom(ctx), "user_id", me.ID.String(),
 			"name", p.Name, "error", err)
 
@@ -148,6 +141,31 @@ func (a app) download(w http.ResponseWriter, r *http.Request, build func(ctx con
 
 	a.cfg.Log.Info("the accountant's package was downloaded", "user_id", me.ID.String(), "path", r.URL.Path,
 		"rows", len(p.Rows), "files", len(p.Entries))
+}
+
+// words is what the package's files say, in the reader's language.
+func (a app) words(lang types.Lang) (exportbus.Words, error) {
+	var words exportbus.Words
+
+	for name, into := range map[string]*[]string{"export-columns": &words.Columns, "export-explanations": &words.Explanations} {
+		text, err := a.cfg.Render.Text(lang, name, nil)
+		if err != nil {
+			return exportbus.Words{}, err
+		}
+
+		*into = columns(text)
+	}
+
+	accepted, err := a.cfg.Render.Text(lang, "export-accepted", nil)
+	if err != nil {
+		return exportbus.Words{}, err
+	}
+
+	words.Accepted = strings.TrimSpace(accepted)
+
+	words.Kinds, err = a.kinds(lang)
+
+	return words, err
 }
 
 // kinds is the words for each kind of money in the kind column, in the

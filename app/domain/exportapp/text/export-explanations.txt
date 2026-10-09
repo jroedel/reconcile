@@ -1,0 +1,13 @@
+{{/* The header row of explanations.csv in the accountant's package, one
+     column to a line, in exportbus.ExplanationColumns' order. */ -}}
+{{t "Date"}}
+{{t "Account"}}
+{{t "Description"}}
+{{t "Amount"}}
+{{t "Line's date"}}
+{{t "Line's account"}}
+{{t "Line's description"}}
+{{t "Line's amount"}}
+{{t "Difference"}}
+{{t "Difference accepted"}}
+{{t "Note"}}

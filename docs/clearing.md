@@ -106,7 +106,9 @@ the transaction:
   difference and the note.
 
 **Storage.** `explanations(transaction_id PRIMARY KEY, note, accepted,
-created_by, created_at, updated_by, updated_at)` and
+sources, back_from, back_to, created_by, created_at, updated_by,
+updated_at)` -- `sources` and the two `back_` columns are the accounts and
+months the lines were last gathered from, for the next one like it -- and
 `explanation_lines(transaction_id PRIMARY KEY, explains, added_by,
 added_at)`, both `STRICT`, both going with their transactions (`ON DELETE
 CASCADE`), and history lines for made, changed and settled.
