@@ -134,6 +134,19 @@ JSON, so `mcpapp` changes once: an `image/*` answer becomes MCP image
 content. `list_waiting_receipts` says which are check images and which
 have their number.
 
+### As built (the fifth pull request, before the fourth)
+
+- Built before the sender (4), since twenty files a share already work
+  and this is what lets Claude read them.
+- **The page** is `receiptbus.File`, so whoever may see the receipt may
+  see it; a JPEG or PNG is its large picture (a photo too small to have
+  one is sent as it is), a WebP as it is, and a PDF or HEIC is refused
+  with 415 and the receipt's url, where a person can look at it.
+- **On `/mcp`** an answer whose type is `image/*` is an MCP image rather
+  than text (`mcpapp.answer`); every other answer is unchanged.
+- **`list_waiting_receipts`** gives `check_image` and `check` for the
+  images of checks, and nothing more for any other receipt.
+
 ## 6. Claude reads a check
 
 `POST /api/v1/receipts/{receipt}/check` `{number, payee, amount, date}` and

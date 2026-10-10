@@ -250,7 +250,7 @@ func New(cfg Config) (http.Handler, error) {
 	if cfg.BaseURL != "" {
 		apiapp.Routes(api, apiapp.Config{
 			Log: cfg.Log, Translations: cfg.Translations, Inbox: cfg.Ledger, BaseURL: cfg.BaseURL,
-			Books: apiapp.Books{Ledger: cfg.Ledger, Tenancy: cfg.Tenancy, Categories: cfg.Categories, Receipts: cfg.Receipts, History: cfg.History, Rules: cfg.Rules},
+			Books: apiapp.Books{Ledger: cfg.Ledger, Tenancy: cfg.Tenancy, Categories: cfg.Categories, Receipts: cfg.Receipts, History: cfg.History, Rules: cfg.Rules, Pictures: cfg.Files},
 		})
 	}
 
