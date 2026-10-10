@@ -94,7 +94,7 @@ All in existing stores except one new table; every later column arrives as
   `/api/v1`, which holds nothing but translations. **No endpoint under
   `/api/v1` may ever read an organization, account, project, statement,
   receipt or export**; a later API for those is a plan of its own, with
-  scopes. This is the line that keeps a key on a laptop from being a key to
+  scopes (`docs/books-api.md`). This is the line that keeps a key on a laptop from being a key to
   somebody's books.
 
 ## The API
