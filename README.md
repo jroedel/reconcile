@@ -27,6 +27,14 @@ accountant a package.
 [`docs/plan.md`](docs/plan.md) is the plan and the build order;
 [`docs/design.md`](docs/design.md) is how it should feel to use.
 
+## Using it from Claude
+
+Claude on claude.ai can connect to the site and read your books as you,
+seeing only what you can: [`docs/claude.md`](docs/claude.md) says how to
+connect it and what to ask. A Google Apps Script in your own account can
+send the statements your email brings to your inbox on the site:
+[`apps-script/gmail-inbox`](apps-script/gmail-inbox/README.md).
+
 ## Running it
 
 Go 1.26, no other toolchain.
