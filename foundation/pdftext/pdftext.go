@@ -34,6 +34,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -160,6 +161,59 @@ func Extract(ctx context.Context, pdf []byte) (string, error) {
 	}
 
 	return text, nil
+}
+
+// Producer returns the program that wrote a PDF, as its metadata says: a
+// bank's composition engine, or the browser that printed a page. It is one
+// of the things a document's layout is recognized by (docs/shapes.md), and
+// the only thing taken from the metadata: the title, the author and the
+// rest can name a person.
+//
+// It runs poppler's pdfinfo, from beside pdftotext, under the same turn,
+// deadline and cap as Extract. A PDF that names no producer is "".
+func Producer(ctx context.Context, pdf []byte) (string, error) {
+	text, err := binary()
+	if err != nil {
+		return "", err
+	}
+
+	path, err := exec.LookPath(filepath.Join(filepath.Dir(text), "pdfinfo"))
+	if err != nil {
+		return "", ErrUnavailable
+	}
+
+	select {
+	case one <- struct{}{}:
+		defer func() { <-one }()
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, Timeout)
+	defer cancel()
+
+	out, errOut := &capped{max: 64 << 10}, &capped{max: 4096}
+
+	cmd := exec.CommandContext(ctx, path, "-enc", "UTF-8", "-")
+	cmd.Stdin = bytes.NewReader(pdf)
+	cmd.Stdout = out
+	cmd.Stderr = errOut
+
+	if err := cmd.Run(); err != nil {
+		if strings.Contains(strings.ToLower(errOut.buf.String()), "password") {
+			return "", ErrPassword
+		}
+
+		return "", fmt.Errorf("%w: %w", ErrUnreadable, err)
+	}
+
+	for l := range strings.SplitSeq(out.buf.String(), "\n") {
+		if v, ok := strings.CutPrefix(l, "Producer:"); ok {
+			return strings.TrimSpace(v), nil
+		}
+	}
+
+	return "", nil
 }
 
 // capped keeps the first max bytes written to it and drops the rest, so

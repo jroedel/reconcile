@@ -59,6 +59,20 @@ func TestExtractKeepsTheLayout(t *testing.T) {
 	}
 }
 
+// The producer comes out of the metadata, and nothing else does.
+func TestProducer(t *testing.T) {
+	needPoppler(t)
+
+	got, err := pdftext.Producer(t.Context(), pdftexttest.Draw(pdftexttest.Row(60, 50, "Anything")))
+	if err != nil || got != pdftexttest.Producer {
+		t.Fatalf("Producer = %q, %v; want %q", got, err, pdftexttest.Producer)
+	}
+
+	if _, err := pdftext.Producer(t.Context(), []byte("not a PDF at all")); !errors.Is(err, pdftext.ErrUnreadable) {
+		t.Errorf("a file that is not a PDF: %v", err)
+	}
+}
+
 // A page with nothing on it is what a scan looks like to pdftotext.
 func TestExtractSaysAScanHasNoText(t *testing.T) {
 	needPoppler(t)

@@ -229,11 +229,13 @@ type Business struct {
 	files      Files
 	categories Categories
 	rules      Rules
+	shapes     Shapes
 }
 
-// NewBusiness constructs one.
-func NewBusiness(log *slog.Logger, store Storer, accounts Accounts, files Files, categories Categories, rules Rules) *Business {
-	return &Business{log: log, store: store, accounts: accounts, files: files, categories: categories, rules: rules}
+// NewBusiness constructs one. shapes may be nil, and then no layout is
+// recorded as seen (shapes.go).
+func NewBusiness(log *slog.Logger, store Storer, accounts Accounts, files Files, categories Categories, rules Rules, shapes Shapes) *Business {
+	return &Business{log: log, store: store, accounts: accounts, files: files, categories: categories, rules: rules, shapes: shapes}
 }
 
 // --- reading a file ---------------------------------------------------------
@@ -272,6 +274,12 @@ type Draft struct {
 	Account tenancybus.Account
 	File    filebus.File
 	Format  Format
+
+	// Shape is what the file was recognized as, and Proven whether its own
+	// figures -- not balances a person typed -- prove it was read whole
+	// (shapes.go).
+	Shape  importbus.Shape
+	Proven bool
 
 	// For a CSV: its header and first rows, the mapping in use, and
 	// whether it was remembered from an earlier file with the same header.
@@ -319,7 +327,7 @@ type Draft struct {
 
 // Ready reports whether importing would go ahead.
 func (d Draft) Ready() bool {
-	return !d.Unmapped && !d.HasEarlier && !d.Check.Failed() && len(d.Result.Records) > 0 && d.Statement.Locked == 0
+	return !d.Unmapped && !d.HasEarlier && !d.Check.Failed() && !d.Unproven() && len(d.Result.Records) > 0 && d.Statement.Locked == 0
 }
 
 // Prepare reads an uploaded file for an account. With opts nil it uses the
@@ -371,6 +379,8 @@ func (b *Business) Prepare(ctx context.Context, actor, accountID, fileID types.I
 	}
 
 	d.Check = verify(d.Result.Records, d.Opening, d.Closing, d.Result.Total, account.Kind == tenancybus.Card)
+	d.Proven = verify(d.Result.Records, d.Result.Opening, d.Result.Closing, d.Result.Total, account.Kind == tenancybus.Card).OK
+	b.seen(ctx, d)
 
 	if len(d.Result.Records) == 0 || d.Check.Failed() {
 		return d, nil
@@ -413,6 +423,7 @@ func (b *Business) read(ctx context.Context, d *Draft, data []byte, opts *Option
 
 		d.Result = res
 		d.Closing = res.Closing
+		d.Shape = recognize(OFX, "", res.Structure)
 
 		if opts != nil {
 			d.Opening = opts.Opening
@@ -449,6 +460,7 @@ func (b *Business) read(ctx context.Context, d *Draft, data []byte, opts *Option
 	}
 
 	d.Result = res
+	d.Shape = recognize(CSV, "", d.Inspection.Structure())
 
 	if opts != nil {
 		d.Opening, d.Closing = opts.Opening, opts.Closing
@@ -482,8 +494,19 @@ func (b *Business) readPDF(ctx context.Context, d *Draft, data []byte, opts *Opt
 		return ErrPDFUnreadable
 	}
 
+	// The producer is a help in telling layouts apart, and no more: a PDF
+	// whose metadata cannot be read is read all the same.
+	producer, err := pdftext.Producer(ctx, data)
+	if err != nil && ctx.Err() == nil {
+		b.log.Info("a PDF statement's producer could not be read", "file_id", d.File.ID.String(), "error", err)
+	}
+
 	res, err := pdfsource.Read(text)
+	d.Shape = recognize(PDF, producer, res.Structure)
+
 	if err != nil {
+		b.seen(ctx, *d)
+
 		return ErrPDFNoRows
 	}
 
@@ -666,6 +689,8 @@ func (b *Business) Import(ctx context.Context, now time.Time, actor, accountID, 
 		return Statement{}, ErrEmpty
 	case d.Check.Failed():
 		return Statement{}, ErrUnbalanced
+	case d.Unproven():
+		return Statement{}, ErrUnproven
 	case d.Statement.Locked > 0:
 		return Statement{}, ErrLocked
 	}

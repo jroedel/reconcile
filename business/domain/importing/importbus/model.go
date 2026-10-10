@@ -137,6 +137,11 @@ type Result struct {
 	// consolidated statement -- read as one Result each; Records and the
 	// rest above are then empty, and whoever imports it chooses one.
 	Accounts []Account
+
+	// Structure is the words the file used for its layout (shape.go), for
+	// recognizing it. The whole document's, on the Result a reader
+	// returns, and not on each of its Accounts.
+	Structure Structure
 }
 
 // Account is one account's part of a document that holds several.

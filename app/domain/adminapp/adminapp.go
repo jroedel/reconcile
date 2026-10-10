@@ -1,6 +1,7 @@
 // Package adminapp is the site administrator's page: the list of users, with
-// the power to stop one signing in, the translators, and the names of the
-// organizations and accounts that exist. Nothing about anybody's money --
+// the power to stop one signing in, the translators, the names of the
+// organizations and accounts that exist, and the layouts of statements
+// nobody has taught the site yet (shapebus). Nothing about anybody's money --
 // that takes a grant, like anybody else's (tenancybus).
 //
 // Translators are named here because naming one is the site's decision, not
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"github.com/jroedel/reconcile/app/sdk/mid"
+	"github.com/jroedel/reconcile/business/domain/shape/shapebus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/translation/translationbus"
 	"github.com/jroedel/reconcile/business/domain/user/userbus"
@@ -50,6 +52,11 @@ type Translators interface {
 	RemoveTranslator(ctx context.Context, who translationbus.Translator, userID types.ID, lang types.Lang) error
 }
 
+// Shapes is the part of shapebus this app uses.
+type Shapes interface {
+	Sightings(ctx context.Context) ([]shapebus.Sighting, error)
+}
+
 // Names is the part of tenancybus this app uses.
 type Names interface {
 	Names(ctx context.Context) ([]tenancybus.Org, []tenancybus.Account, error)
@@ -60,6 +67,7 @@ type Config struct {
 	Log    *slog.Logger
 	Users  Users
 	Names  Names
+	Shapes Shapes
 	Render Renderer
 
 	Translators Translators
@@ -104,6 +112,7 @@ type view struct {
 	Orgs        []tenancybus.Org
 	Accounts    []tenancybus.Account
 	Translators []translatorRow
+	Sightings   []shapebus.Sighting
 	Langs       []types.Lang
 	Me          types.ID
 	Problem     string
@@ -147,6 +156,13 @@ func (a app) render(w http.ResponseWriter, r *http.Request, status int, v view) 
 		return
 	}
 
+	sightings, err := a.cfg.Shapes.Sightings(r.Context())
+	if err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
 	named := map[types.ID]string{}
 	for _, u := range users {
 		named[u.ID] = u.Named()
@@ -157,6 +173,7 @@ func (a app) render(w http.ResponseWriter, r *http.Request, status int, v view) 
 	}
 
 	v.Users, v.Orgs, v.Accounts, v.Me, v.Langs = users, orgs, accounts, me.ID, types.Translated
+	v.Sightings = sightings
 
 	a.cfg.Render.Render(w, r, status, "admin", v)
 }
