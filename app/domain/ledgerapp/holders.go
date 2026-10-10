@@ -2,7 +2,7 @@ package ledgerapp
 
 import "net/http"
 
-// setByHolder turns "statements arrive one file per cardholder" on or off
+// setByHolder turns "statements arrive one file per holder" on or off
 // for an account (docs/clearing.md, 3). An owner's, because it changes what
 // every stored row of the account is.
 func (a app) setByHolder(w http.ResponseWriter, r *http.Request) {

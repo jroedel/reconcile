@@ -55,7 +55,7 @@ var (
 // description, amount, currency, the transaction's total, category, the
 // category's kind, project, memo, receipts, statement, the day its
 // period was reconciled, the transaction it is part of the explanation of
-// (docs/clearing.md, 2), the cardholder its file said made it (3),
+// (docs/clearing.md, 2), the holder its file said made it (3),
 // whether it was still pending (4), and the number of the check it paid
 // and to whom (docs/shapes.md, 3), last so that a sheet an accountant set
 // up for the earlier columns still reads them where they were.
@@ -154,7 +154,7 @@ type Row struct {
 	// of, when the reader may read its account.
 	ClearedBy ledgerbus.Transaction
 
-	// Holder is the cardholder the transaction's file said made it.
+	// Holder is the holder the transaction's file said made it.
 	Holder string
 
 	// Pending is a charge not posted yet, whose amount may still change.

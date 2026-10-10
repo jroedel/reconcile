@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS splits (
 `
 
 // A database from before sorting rules gains splits.rule_id, and a part
-// already there reads as one no rule sorted. From before cardholders,
+// already there reads as one no rule sorted. From before holders,
 // pending charges and check numbers too, it gains transactions.holder,
 // pending, check_number and payee, and the row names nobody, has posted,
 // and paid no check to anybody. And a statement from before layouts were

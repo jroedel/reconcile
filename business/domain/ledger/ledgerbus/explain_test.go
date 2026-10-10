@@ -256,22 +256,22 @@ func TestWhoSeesAnExplanation(t *testing.T) {
 		t.Errorf("the viewer settling: %v", err)
 	}
 
-	cardholder := w.user("cardholder@example.org")
-	w.grant(w.owner, types.AccountScope(w.card), "cardholder@example.org", tenancybus.Bookkeeper)
+	holder := w.user("holder@example.org")
+	w.grant(w.owner, types.AccountScope(w.card), "holder@example.org", tenancybus.Bookkeeper)
 
-	c, err := w.ledger.Clearing(ctx, cardholder, []types.ID{w.grocery.ID})
+	c, err := w.ledger.Clearing(ctx, holder, []types.ID{w.grocery.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	if by := c.By[w.grocery.ID]; !by.Hidden || !by.Transaction.ID.Zero() {
-		t.Errorf("the cardholder sees %+v", by)
+		t.Errorf("the holder sees %+v", by)
 	}
 
 	// A bookkeeper of the card may not gather into a payment of an
 	// account they cannot read, nor draw on one.
-	if _, err := w.ledger.Candidates(ctx, cardholder, w.august.ID, []types.ID{w.card}, "2026-08", "2026-08"); !errors.Is(err, ledgerbus.ErrNotFound) {
-		t.Errorf("the cardholder gathering: %v", err)
+	if _, err := w.ledger.Candidates(ctx, holder, w.august.ID, []types.ID{w.card}, "2026-08", "2026-08"); !errors.Is(err, ledgerbus.ErrNotFound) {
+		t.Errorf("the holder gathering: %v", err)
 	}
 
 	if _, err := w.ledger.Candidates(ctx, w.owner, w.august.ID, []types.ID{types.NewID()}, "2026-08", "2026-08"); !errors.Is(err, ledgerbus.ErrElsewhere) {

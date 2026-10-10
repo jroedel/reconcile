@@ -23,7 +23,7 @@ func needPoppler(t *testing.T) {
 }
 
 // printout draws a card's activity page as a browser prints it, with
-// invented charges: a header and an address on each page, the cardholder
+// invented charges: a header and an address on each page, the holder
 // in a column of their own, one row whose description went to the next
 // page, and the total at the end.
 func printout(total string) []byte {
@@ -70,7 +70,7 @@ func (w *world) save(actor types.ID, name string, data []byte) types.ID {
 }
 
 // A card's printed activity imports with its purchases as money out,
-// checked against the total it states, and with the cardholder kept as
+// checked against the total it states, and with the holder kept as
 // each part's memo.
 func TestAPrintedCardPageImports(t *testing.T) {
 	needPoppler(t)

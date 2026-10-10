@@ -25,7 +25,7 @@ import (
 //
 // A pending charge is taken by the first new row, in the file's order,
 // that is not pending, is dated on its day or up to PostWithin after, is
-// the same cardholder's (on an account split by cardholder), and whose
+// the same holder's (on an account split by holder), and whose
 // description is its own or contains it, or one is the other cut short
 // (alike, from eumaeus' containment). Of several, the likest wording,
 // then the nearest day. Each pending charge is taken once, and none in a

@@ -15,10 +15,10 @@ import (
 	"github.com/jroedel/reconcile/business/types/money"
 )
 
-// Statements split by cardholder (docs/clearing.md, 3).
+// Statements split by holder (docs/clearing.md, 3).
 
 // initHolders creates the table of accounts whose statements arrive one
-// file per cardholder: a row is the option on. The ledger's own table
+// file per holder: a row is the option on. The ledger's own table
 // rather than a column of accounts, because turning it on or off and
 // working out every row's identity again must be one transaction, and the
 // rows are the ledger's.
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS holder_accounts (
 `
 
 	if _, err := db.ExecContext(ctx, schema); err != nil {
-		return fmt.Errorf("creating the cardholder accounts table: %w", err)
+		return fmt.Errorf("creating the holder accounts table: %w", err)
 	}
 
 	return nil
@@ -51,7 +51,7 @@ func byHolder(ctx context.Context, q querier, account types.ID) (bool, error) {
 	case errors.Is(err, sql.ErrNoRows):
 		return false, nil
 	case err != nil:
-		return false, fmt.Errorf("reading the account's cardholder option: %w", err)
+		return false, fmt.Errorf("reading the account's holder option: %w", err)
 	}
 
 	return true, nil
@@ -69,13 +69,13 @@ func (s *Store) ByHolder(ctx context.Context, account types.ID) (bool, error) {
 // written back here rather than updated by one statement; eumaeus did the
 // same when its hash changed. Each statement's rows are numbered again
 // among the rows alike under the new setting, in the order they had: two
-// cardholders' identical coffees in one file were coffee 1 and coffee 2 to
-// an account that ignored cardholders, and are each one's coffee 1 to an
+// holders' identical coffees in one file were coffee 1 and coffee 2 to
+// an account that ignored holders, and are each one's coffee 1 to an
 // account that does not.
 func (s *Store) SetByHolder(ctx context.Context, account types.ID, on bool, by types.ID, ev eventbus.Event) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("starting to change the cardholder option: %w", err)
+		return fmt.Errorf("starting to change the holder option: %w", err)
 	}
 	defer tx.Rollback()
 
@@ -96,7 +96,7 @@ func (s *Store) SetByHolder(ctx context.Context, account types.ID, on bool, by t
 	}
 
 	if err != nil {
-		return fmt.Errorf("changing the cardholder option: %w", err)
+		return fmt.Errorf("changing the holder option: %w", err)
 	}
 
 	if err := rehash(ctx, tx, account, on); err != nil {
@@ -108,7 +108,7 @@ func (s *Store) SetByHolder(ctx context.Context, account types.ID, on bool, by t
 	}
 
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("changing the cardholder option: %w", err)
+		return fmt.Errorf("changing the holder option: %w", err)
 	}
 
 	return nil
@@ -185,12 +185,12 @@ WHERE account_id = ? ORDER BY statement_id, occurrence, rowid`, account.String()
 	return nil
 }
 
-// Holders is the cardholders the account's rows have named, by name.
+// Holders is the holders the account's rows have named, by name.
 func (s *Store) Holders(ctx context.Context, account types.ID) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT DISTINCT holder FROM transactions WHERE account_id = ? AND holder <> '' ORDER BY holder`, account.String())
 	if err != nil {
-		return nil, fmt.Errorf("reading the cardholders: %w", err)
+		return nil, fmt.Errorf("reading the holders: %w", err)
 	}
 	defer rows.Close()
 
@@ -199,7 +199,7 @@ SELECT DISTINCT holder FROM transactions WHERE account_id = ? AND holder <> '' O
 	for rows.Next() {
 		var h string
 		if err := rows.Scan(&h); err != nil {
-			return nil, fmt.Errorf("reading the cardholders: %w", err)
+			return nil, fmt.Errorf("reading the holders: %w", err)
 		}
 
 		out = append(out, h)
@@ -208,7 +208,7 @@ SELECT DISTINCT holder FROM transactions WHERE account_id = ? AND holder <> '' O
 	return out, rows.Err()
 }
 
-// HolderTotals is what each cardholder's rows come to from start up to,
+// HolderTotals is what each holder's rows come to from start up to,
 // not including, end, by name; rows that name nobody under "".
 func (s *Store) HolderTotals(ctx context.Context, account types.ID, start, end types.Date) ([]ledgerbus.HolderTotal, error) {
 	rows, err := s.db.QueryContext(ctx, `
@@ -216,7 +216,7 @@ SELECT holder, count(*), sum(amount) FROM transactions
 WHERE account_id = ? AND posted_on >= ? AND posted_on < ?
 GROUP BY holder ORDER BY holder`, account.String(), start.String(), end.String())
 	if err != nil {
-		return nil, fmt.Errorf("adding up the cardholders: %w", err)
+		return nil, fmt.Errorf("adding up the holders: %w", err)
 	}
 	defer rows.Close()
 
@@ -229,7 +229,7 @@ GROUP BY holder ORDER BY holder`, account.String(), start.String(), end.String()
 		)
 
 		if err := rows.Scan(&h.Holder, &h.Count, &sum); err != nil {
-			return nil, fmt.Errorf("adding up the cardholders: %w", err)
+			return nil, fmt.Errorf("adding up the holders: %w", err)
 		}
 
 		h.Sum = money.Amount(sum)

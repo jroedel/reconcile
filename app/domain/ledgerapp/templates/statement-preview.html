@@ -63,7 +63,7 @@
 
 {{if or $d.ByHolder $m.Holder}}
 <div class="field">
-  <label for="holder_column">{{t "Cardholder"}}</label>
+  <label for="holder_column">{{t "Holder"}}</label>
   <select id="holder_column" name="holder_column">{{range $v.Options $m.Holder true}}<option value="{{.}}"{{if eq . $m.Holder}} selected{{end}}>{{if .}}{{.}}{{else}}{{t "(none)"}}{{end}}</option>{{end}}</select>
   <p class="hint">{{t "For a card with several cards on it: the column that says whose card made each charge."}}</p>
 </div>
@@ -105,11 +105,11 @@
 {{if and $d.ByHolder $d.Unnamed}}
 <section class="card">
 <h2>{{t "Whose statement is this?"}}</h2>
-<p class="hint">{{t "This account's statements arrive one file per cardholder, and this file does not say whose it is. Say whose, so that two people's identical charges are kept as two. Leave it unsaid for a file of the whole card: it is then compared with every cardholder's."}}</p>
+<p class="hint">{{t "This account's statements arrive one file per holder, and this file does not say whose it is. Say whose, so that two holders' identical charges are kept as two. Leave it unsaid for a file of the whole account: it is then compared with every holder's."}}</p>
 <div class="field">
-  <label for="holder">{{t "Cardholder"}}</label>
+  <label for="holder">{{t "Holder"}}</label>
   <select id="holder" name="holder">
-    <option value="">{{t "(the whole card, or nobody in particular)"}}</option>
+    <option value="">{{t "(the whole account, or nobody in particular)"}}</option>
     {{range $d.Holders}}<option value="{{.}}"{{if eq . $d.Holder}} selected{{end}}>{{.}}</option>{{end}}
   </select>
 </div>

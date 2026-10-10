@@ -302,7 +302,7 @@ the books of are proposed.
 - **Imported together** only when nothing in it needs a person: it checks
   by the file's own figures, and the count rule set nothing aside, no row
   was skipped or left unplaced, and no row waits to be told its
-  cardholder (`Proposal.Unattended`). Each goes through the same `Import`
+  holder (`Proposal.Unattended`). Each goes through the same `Import`
   as a single file. Everything else stays on the list with a link to its
   own preview, which asks what it needs.
 - **The list keeps no state**: its files and the accounts chosen are in

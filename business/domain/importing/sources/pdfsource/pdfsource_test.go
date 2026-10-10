@@ -16,7 +16,7 @@ import (
 // browser, and a bank's statement with a running balance.
 
 // printout is a card's activity page as a browser prints it: a header and
-// a footer on every page, the cardholder in a column of their own, and a
+// a footer on every page, the holder in a column of their own, and a
 // row whose description was pushed onto the next page.
 const printout = `Example Card Services Account Activity                                  10/2/26, 4:15 PM
 
@@ -79,8 +79,8 @@ func TestAPrintedActivityPage(t *testing.T) {
 	for _, r := range res.Records {
 		got = append(got, row{r.Date.Format("2006-01-02"), r.Description, r.Memo, r.Amount.String(), r.Page})
 
-		// The person column is the cardholder, for an account split by
-		// cardholder (docs/clearing.md, 3).
+		// The person column is the holder, for an account split by
+		// holder (docs/clearing.md, 3).
 		if r.Holder != r.Memo {
 			t.Errorf("holder %q, memo %q", r.Holder, r.Memo)
 		}
@@ -281,7 +281,7 @@ func date(s string) time.Time {
 
 // A shop named for its website is a row, though the page's footer --
 // its address, a web address too -- is not. Here in the layout that puts
-// the cardholder before the description.
+// the holder before the description.
 func TestAShopNamedForItsWebsite(t *testing.T) {
 	text := `Example Card Services Account Activity                                  10/2/26, 4:15 PM
 

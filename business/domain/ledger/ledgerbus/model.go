@@ -96,7 +96,7 @@ type Statement struct {
 	Doubts []Doubt
 
 	// ByHolder is whether its rows' identities were made with their
-	// cardholders (ContentKey); the store refuses it if the account's
+	// holders (ContentKey); the store refuses it if the account's
 	// option has changed since. Not kept.
 	ByHolder bool
 
@@ -136,9 +136,9 @@ type Transaction struct {
 	// ExternalID is the bank's identifier (OFX's FITID), or empty.
 	ExternalID string
 
-	// Holder is the cardholder its file said made it, or empty. Kept
+	// Holder is the holder its file said made it, or empty. Kept
 	// whatever the account; part of the identity only on an account whose
-	// statements arrive one file per cardholder (ContentKey).
+	// statements arrive one file per holder (ContentKey).
 	Holder string
 
 	// CheckNumber is the number of the check it paid, when its file said
@@ -312,7 +312,7 @@ func transactions(account types.ID, recs []importbus.Record, byHolder bool) []Tr
 // file's records and nothing else.
 //
 // Exported for the store, which computes every stored row's again when an
-// account's cardholder option changes (ledgerdb.SetByHolder).
+// account's holder option changes (ledgerdb.SetByHolder).
 func Hash(t Transaction, byHolder bool) string {
 	h := sha256.Sum256([]byte(ContentKey(t, byHolder) + "\x00" + strconv.Itoa(max(t.Occurrence, 1))))
 
@@ -321,9 +321,9 @@ func Hash(t Transaction, byHolder bool) string {
 
 // ContentKey is what makes two rows indistinguishable to a bank export: the
 // same account, day, description and amount -- and, on an account whose
-// statements arrive one file per cardholder, the same cardholder. Two
+// statements arrive one file per holder, the same holder. Two
 // people who park in one garage on one day for one price are two charges
-// (docs/clearing.md, 3). A row with no cardholder has the same key either
+// (docs/clearing.md, 3). A row with no holder has the same key either
 // way, so a file for the whole card is matched as it always was.
 func ContentKey(t Transaction, byHolder bool) string {
 	key := t.AccountID.String() + "\x00" + t.PostedOn.String() + "\x00" +

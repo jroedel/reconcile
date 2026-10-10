@@ -127,7 +127,7 @@ func (r *reader) section(s string) bool {
 	r.open, r.check = -1, ""
 
 	// What the heading says, in the words the layout matched and no
-	// others: a heading may carry a cardholder's name beside them.
+	// others: a heading may carry a holder's name beside them.
 	var words []string
 
 	for _, re := range []*regexp.Regexp{v.pending, v.daily, v.stop, v.in, v.out} {

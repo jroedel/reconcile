@@ -29,7 +29,7 @@ type explainView struct {
 	Gathered bool
 
 	// Groups is the lines by account, with each account's sum, so that a
-	// missing cardholder or month shows as a missing group.
+	// missing holder or month shows as a missing group.
 	Groups []lineGroup
 
 	Note    string

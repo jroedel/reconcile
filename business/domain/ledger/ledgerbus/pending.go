@@ -20,7 +20,7 @@ import (
 //
 // So a row the document says is pending is stored marked so, and the
 // posted charge, when a later file brings it, takes its place rather than
-// joining it: a row of the same account (and cardholder) dated on the
+// joining it: a row of the same account (and holder) dated on the
 // pending one's day or up to PostWithin after, not pending itself, whose
 // description is the pending one's or contains it. Its date, amount and
 // description become the posted ones; what a person did to it -- its

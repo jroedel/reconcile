@@ -7,15 +7,15 @@ import (
 	"testing"
 )
 
-// Statements split by cardholder through the site (docs/clearing.md, 3):
+// Statements split by holder through the site (docs/clearing.md, 3):
 // two people's printouts, neither saying whose it is, each with the same
 // garage on the same day. Everything invented.
-func TestStatementsSplitByCardholder(t *testing.T) {
+func TestStatementsSplitByHolder(t *testing.T) {
 	e, _, _, signUpAs := sorted(t)
 
-	wantBody(t, e.owner.get(e.account+"/transactions"), "Statements arrive one file per cardholder")
+	wantBody(t, e.owner.get(e.account+"/transactions"), "Statements arrive one file per holder")
 	wantRedirect(t, e.owner.post(e.account+"/holders", url.Values{"on": {"1"}}), e.account+"/transactions?done=split-on")
-	wantBody(t, e.owner.get(e.account), "said its statements arrive one file per cardholder")
+	wantBody(t, e.owner.get(e.account), "said its statements arrive one file per holder")
 
 	month := func(name, content, holder string) {
 		t.Helper()
@@ -36,7 +36,7 @@ func TestStatementsSplitByCardholder(t *testing.T) {
 	month("ben.csv", "Date,Description,Amount,Balance\n2026-09-04,CITY GARAGE,-12.00,500.00\n2026-09-06,BAKERY,-4.00,496.00\n", "Ben")
 
 	rec := e.owner.get(e.account + "/transactions?month=2026-09")
-	wantBody(t, rec, "2 of 2 cardholders", "Ana", "Ben", "-$15.50", "-$16.00")
+	wantBody(t, rec, "2 of 2 holders", "Ana", "Ben", "-$15.50", "-$16.00")
 
 	body := rec.Body.String()
 	if n := strings.Count(body, ">CITY GARAGE<"); n != 2 {
@@ -47,7 +47,7 @@ func TestStatementsSplitByCardholder(t *testing.T) {
 	wantRedirect(t, e.owner.post(e.org+"/people", url.Values{"email": {"bookkeeper@example.org"}, "role": {"bookkeeper"}}), e.org+"?done=granted")
 	bookkeeper := signUpAs("bookkeeper@example.org")
 
-	if body := bookkeeper.get(e.account + "/transactions").Body.String(); strings.Contains(body, "Statements arrive one file per cardholder") {
+	if body := bookkeeper.get(e.account + "/transactions").Body.String(); strings.Contains(body, "Statements arrive one file per holder") {
 		t.Error("a bookkeeper is offered the option")
 	}
 

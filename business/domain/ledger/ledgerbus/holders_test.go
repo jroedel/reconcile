@@ -12,10 +12,10 @@ import (
 	"github.com/jroedel/reconcile/business/types/money"
 )
 
-// Statements split by cardholder (docs/clearing.md, 3). The cardholders,
+// Statements split by holder (docs/clearing.md, 3). The holders,
 // shops and amounts are invented.
 
-// addAs imports a file that names no cardholder as the given one's, as a
+// addAs imports a file that names no holder as the given one's, as a
 // person answers the preview's question.
 func (w *world) addAs(actor, account types.ID, name string, data []byte, holder string) ledgerbus.Statement {
 	w.t.Helper()
@@ -42,7 +42,7 @@ func withHolders(rows ...string) []byte {
 	return []byte("Date,Description,Amount,Card Member\n" + strings.Join(rows, "\n") + "\n")
 }
 
-func TestCardholdersAreKeptApart(t *testing.T) {
+func TestHoldersAreKeptApart(t *testing.T) {
 	w := newWorld(t)
 	ctx := t.Context()
 	me := w.user("treasurer@example.org")
@@ -72,7 +72,7 @@ func TestCardholdersAreKeptApart(t *testing.T) {
 	}
 
 	if d, _ := w.preview(me, card, "ana-later.csv", ana); len(d.Holders) != 2 || d.Holders[0] != "Ana" {
-		t.Errorf("the cardholders offered: %q", d.Holders)
+		t.Errorf("the holders offered: %q", d.Holders)
 	}
 
 	// Ana's again, later and wider: only what is new.
@@ -81,13 +81,13 @@ func TestCardholdersAreKeptApart(t *testing.T) {
 	}
 
 	// A file of the whole card, worded otherwise and naming nobody, is
-	// compared with every cardholder's: both garage charges are here.
+	// compared with every holder's: both garage charges are here.
 	if st := w.add(me, card, "card.csv", csvOf("2026-09-04,CITY GARAGE #12,-12.00", "2026-09-04,CITY GARAGE #12,-12.00")); counts(st) != [3]int{0, 2, 2} {
 		t.Errorf("the whole card: %v", counts(st))
 	}
 
-	// The month by cardholder, and who is missing next month.
-	m, err := w.ledger.Cardholders(ctx, me, card, "2026-09")
+	// The month by holder, and who is missing next month.
+	m, err := w.ledger.Holders(ctx, me, card, "2026-09")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,11 +96,11 @@ func TestCardholdersAreKeptApart(t *testing.T) {
 		t.Errorf("September: %+v", m)
 	}
 
-	if m, _ := w.ledger.Cardholders(ctx, me, card, "2026-10"); m.Present() != 0 || m.MissingNames() != "Ana, Ben" {
+	if m, _ := w.ledger.Holders(ctx, me, card, "2026-10"); m.Present() != 0 || m.MissingNames() != "Ana, Ben" {
 		t.Errorf("October: %+v", m)
 	}
 
-	// Off, every row's identity is worked out again without cardholders:
+	// Off, every row's identity is worked out again without holders:
 	// Ben's garage is then Ana's to a new file, as it would have been.
 	if err := w.ledger.SetByHolder(ctx, now, me, card, false); err != nil {
 		t.Fatal(err)
@@ -110,8 +110,8 @@ func TestCardholdersAreKeptApart(t *testing.T) {
 		t.Errorf("Ben's later month, the option off: %v", counts(st))
 	}
 
-	if m, _ := w.ledger.Cardholders(ctx, me, card, "2026-09"); len(m.Totals) != 0 {
-		t.Errorf("the month by cardholder with the option off: %+v", m)
+	if m, _ := w.ledger.Holders(ctx, me, card, "2026-09"); len(m.Totals) != 0 {
+		t.Errorf("the month by holder with the option off: %+v", m)
 	}
 
 	// And on again, the same: what is stored is found.
@@ -140,7 +140,7 @@ func TestCardholdersAreKeptApart(t *testing.T) {
 	}
 }
 
-// Without the option, a cardholder column is read and kept, and is part of
+// Without the option, a holder column is read and kept, and is part of
 // nothing: two people's identical charges in two files are one, as on any
 // account that is not split.
 func TestWithoutTheOptionNothingChanges(t *testing.T) {
@@ -160,7 +160,7 @@ func TestWithoutTheOptionNothingChanges(t *testing.T) {
 	}
 
 	if d, _ := w.preview(me, card, "plain.csv", csvOf("2026-09-20,X,-1.00")); d.ByHolder || d.Unnamed != 0 {
-		t.Errorf("a plain account's preview asks about cardholders: %+v", d)
+		t.Errorf("a plain account's preview asks about holders: %+v", d)
 	}
 }
 
@@ -183,7 +183,7 @@ func TestWhoMaySplitAnAccount(t *testing.T) {
 		t.Errorf("a stranger: %v", err)
 	}
 
-	if _, err := w.ledger.Cardholders(ctx, stranger, card, "2026-09"); !errors.Is(err, ledgerbus.ErrNotFound) {
+	if _, err := w.ledger.Holders(ctx, stranger, card, "2026-09"); !errors.Is(err, ledgerbus.ErrNotFound) {
 		t.Errorf("a stranger's month: %v", err)
 	}
 
