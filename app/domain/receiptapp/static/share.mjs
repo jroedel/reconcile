@@ -60,7 +60,7 @@ const REMEMBER = "reconcile-share-to";
   }
 
   const shared = q.get("shared");
-  const max = Number(form?.dataset.max) || 20;
+  const max = Number(form?.dataset.max) || 60;
   if (form && location.pathname === PAGE && /^[0-9]+$/.test(shared || "") && Number(shared) > 0 && Number(shared) <= max) {
     await fill(form);
   }

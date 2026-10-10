@@ -390,3 +390,50 @@ func TestDetailsAreChecked(t *testing.T) {
 	}
 
 }
+
+// A photo sent again is known by its bytes: the inbox holds it, until the
+// receipt it is on is removed. Another inbox, and other bytes, do not;
+// and an inbox somebody cannot read is not found.
+func TestAnInboxKnowsAPhotoSentAgain(t *testing.T) {
+	w := newWorld(t)
+	project := types.ProjectScope(w.project)
+
+	first := w.upload(w.pilgrim, "IMG_0001.jpg", photo+"hostel", receiptbus.Accept)
+
+	added, err := w.receipts.Add(w.ctx, now, w.pilgrim, project, []types.ID{first}, false, receiptbus.Details{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	again := w.upload(w.pilgrim, "IMG_0001.jpg", photo+"hostel", receiptbus.Accept)
+	other := w.upload(w.pilgrim, "IMG_0002.jpg", photo+"bus", receiptbus.Accept)
+
+	for name, c := range map[string]struct {
+		home types.Scope
+		file types.ID
+		want bool
+	}{
+		"the same photo, sent again": {project, again, true},
+		"another photo":              {project, other, false},
+	} {
+		if got, err := w.receipts.Holds(w.ctx, w.pilgrim, c.home, c.file); err != nil || got != c.want {
+			t.Errorf("%s: %v, %v", name, got, err)
+		}
+	}
+
+	if got, err := w.receipts.Holds(w.ctx, w.owner, types.AccountScope(w.account), w.upload(w.owner, "IMG_0001.jpg", photo+"hostel", receiptbus.Accept)); err != nil || got {
+		t.Errorf("the account's inbox holds the project's photo: %v, %v", got, err)
+	}
+
+	if _, err := w.receipts.SetRemoved(w.ctx, now, w.pilgrim, added[0].ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, err := w.receipts.Holds(w.ctx, w.pilgrim, project, again); err != nil || got {
+		t.Errorf("a removed receipt still holds its photo: %v, %v", got, err)
+	}
+
+	if _, err := w.receipts.Holds(w.ctx, w.stranger, project, w.upload(w.stranger, "x.jpg", photo+"x", receiptbus.Accept)); !errors.Is(err, receiptbus.ErrNotFound) {
+		t.Errorf("a stranger: %v", err)
+	}
+}

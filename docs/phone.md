@@ -151,6 +151,31 @@ are fifty small requests, each of which can fail and be retried alone.
 Check images and receipts go through the same uploads they do from a
 form, so nothing about them changes on the server.
 
+### As built (the fourth pull request)
+
+- **`send.mjs`** on the share page sends each file to
+  `POST /receipts/share/one`, where first and then the file, and opens the
+  inbox when the last has an answer, with what happened in the query the
+  inbox reads after an upload of its own (and `already`). Up to 60 files a
+  share (`MaxShare`); the inbox's own form keeps its 20.
+- **Sending again is safe**: a file whose bytes a receipt in the inbox
+  has, not removed, is "already" and nothing is added
+  (`receiptbus.Holds`). The page also remembers what has been answered,
+  and Add after a failure sends only the rest.
+- **A refusal** is a code -- `kind`, `big`, `none`, `to` -- that the page
+  says in its own words, which the server writes on `#send-words` with
+  their placeholders left in; a dropped connection or a server error is
+  tried again for about five minutes, and a session that ran out stops
+  the share and says so.
+- **Shrinking** (`shrink.mjs`, `jpeg.mjs`) is stewards', unchanged: a
+  camera JPEG past 4096 pixels is scaled to it, upright and with its EXIF;
+  anything else, a screenshot included, goes as it is. Tested under Node
+  (`make test-js`) and in Chrome.
+- **Sides named after their check**, shared together, go one a request,
+  so each is a check image of its own, both attached to the check; the
+  inbox's form still makes them one. The accountant's package names each
+  page apart.
+
 ## 5. Claude sees a receipt
 
 `GET /api/v1/receipts/{receipt}/image?page=` and `get_receipt_image`,

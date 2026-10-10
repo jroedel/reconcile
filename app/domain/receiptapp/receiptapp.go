@@ -52,6 +52,7 @@ var UploadPatterns = []string{
 	"POST /accounts/{id}/checks",
 	"POST " + SharePath,
 	"POST " + sharedPath,
+	"POST " + SendPath,
 }
 
 // The limits on one upload. A phone's photo is three to eight megabytes;
@@ -109,6 +110,7 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	handle(UploadPatterns[3], a.uploadChecks)
 	handle(UploadPatterns[4], a.share)
 	handle(UploadPatterns[5], a.shared)
+	handle(UploadPatterns[6], a.sendOne)
 	a.shareRoutes(mux, guard)
 	handle("GET /receipts/{id}", a.receipt)
 	handle("GET /receipts/{id}/files/{n}", a.file)
@@ -496,12 +498,17 @@ type uploaded struct {
 	WrongKind []string
 	TooBig    []string
 	Cut       bool
+
+	// Already is how many of a share sent a file at a time were in the
+	// inbox already (sendOne), and were not added again.
+	Already int
 }
 
 func uploadedFrom(q url.Values) uploaded {
 	n, _ := strconv.Atoi(q.Get("n"))
+	already, _ := strconv.Atoi(q.Get("already"))
 
-	return uploaded{Added: n, WrongKind: q["kind"], TooBig: q["big"], Cut: q.Get("cut") == "1"}
+	return uploaded{Added: n, WrongKind: q["kind"], TooBig: q["big"], Cut: q.Get("cut") == "1", Already: already}
 }
 
 // --- an inbox ---------------------------------------------------------------
