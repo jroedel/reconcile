@@ -240,6 +240,17 @@ func TestClaudeReadsChecksThroughMCP(t *testing.T) {
 
 	wantBody(t, e.owner.get("/transactions/"+field(paid, "id").(string)), "memo: Summer work, July", "The check was written on 2026-06-29")
 
+	// A page opened before the memo and the day written were on the form
+	// sends neither; what is stored stays.
+	if rec := e.owner.post("/receipts/"+shots[0]+"/details", url.Values{
+		"amount": {"120.00"}, "spent_on": {"2026-07-02"}, "merchant": {"Hilltop Plumbing"}, "note": {"from an old tab"},
+	}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("saving from an old page: %d\n%s", rec.Code, rec.Body)
+	}
+
+	wantBody(t, e.owner.get("/receipts/"+shots[0]), "Memo: Summer work, July.", "Written on 2026-06-29.", "from an old tab")
+	wantBody(t, e.owner.get("/transactions/"+field(paid, "id").(string)), "memo: Summer work, July", "The check was written on 2026-06-29")
+
 	wantBody(t, e.owner.get(e.account), "read the image of check 1176, for 120.00", "read the image of check 1190, for 45.50",
 		"was written on 2026-06-29, for “Summer work, July”")
 

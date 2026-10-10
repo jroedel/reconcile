@@ -917,6 +917,29 @@ func (a app) details(w http.ResponseWriter, r *http.Request) {
 		WrittenOn: strings.TrimSpace(r.PostForm.Get("written_on")),
 	}
 
+	// A form without the check's fields at all -- a page from before they
+	// were there, still open in a tab -- keeps what is stored rather than
+	// taking it away. A field sent empty is a person emptying it.
+	_, hasMemo := r.PostForm["memo"]
+	_, hasWritten := r.PostForm["written_on"]
+
+	if !hasMemo || !hasWritten {
+		v, err := a.cfg.Receipts.Receipt(r.Context(), me.ID, id)
+		if err != nil {
+			a.failed(w, r, err)
+
+			return
+		}
+
+		if !hasMemo {
+			typed.Memo = v.Receipt.Memo
+		}
+
+		if !hasWritten {
+			typed.WrittenOn = v.Receipt.WrittenOn.String()
+		}
+	}
+
 	d, problem := typed.parse()
 	if problem != "" {
 		a.receiptPage(w, r, http.StatusUnprocessableEntity, &typed, problem)
