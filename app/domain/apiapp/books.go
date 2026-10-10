@@ -85,6 +85,7 @@ type Receipts interface {
 	File(ctx context.Context, actor, id types.ID, n int) (filebus.File, error)
 	ReadCheck(ctx context.Context, now time.Time, actor, id types.ID, rd receiptbus.CheckReading) (receiptbus.Receipt, error)
 	Detach(ctx context.Context, actor, receiptID, transactionID types.ID) (receiptbus.Receipt, error)
+	OutstandingChecks(ctx context.Context, actor, accountID types.ID, by types.Date) (receiptbus.Outstanding, error)
 }
 
 // History is what a person changed through a key.
@@ -147,8 +148,8 @@ func (a app) bookEndpoints() []Endpoint {
 		},
 		{
 			Method: http.MethodGet, Path: Prefix + "/accounts/{account}/months", Scope: read, Tool: "get_account_months",
-			Summary: "An account month by month: reconciled, imported (every day in a statement), partial (and which days are in none), missing (no statement), or still going; with each month's statements, transactions and how many are not sorted yet.",
-			Returns: "{account, months: [{month, state, gaps: [{from, to}], statements: [{id, name}], transactions, unsorted}]}, newest first.",
+			Summary: "An account month by month: reconciled, imported (every day in a statement), partial (and which days are in none), missing (no statement), or still going; with each month's statements, transactions and how many are not sorted yet. And its checks outstanding: images of checks read, with their number, that no statement has paid yet, and their total.",
+			Returns: "{account, months: [{month, state, gaps: [{from, to}], statements: [{id, name}], transactions, unsorted}], outstanding_checks: {checks: [receipt], total, unpriced}}, months newest first; unpriced is how many checks have no amount yet, which the total leaves out.",
 			handler: a.accountMonths,
 		},
 		{
@@ -320,19 +321,24 @@ type txOut struct {
 	// shown on the site in place of the bank's Description; Described is
 	// the key a program wrote it through, until a person saves it on the
 	// web. Description stays the bank's, since it is what rules read.
-	OwnDescription string        `json:"own_description,omitempty"`
-	Described      string        `json:"own_description_through,omitempty"`
-	Payee          string        `json:"payee,omitempty"`
-	Amount         money.Amount  `json:"amount"`
-	Currency       string        `json:"currency"`
-	Balance        *money.Amount `json:"balance,omitempty"`
-	Holder         string        `json:"holder,omitempty"`
-	Check          string        `json:"check,omitempty"`
-	Pending        bool          `json:"pending,omitempty"`
-	Sorted         bool          `json:"sorted"`
-	Parts          []partOut     `json:"parts"`
-	Receipts       *int          `json:"receipts,omitempty"`
-	URL            string        `json:"url"`
+	OwnDescription string `json:"own_description,omitempty"`
+	Described      string `json:"own_description_through,omitempty"`
+	Payee          string `json:"payee,omitempty"`
+
+	// CheckMemo and Written are what a check's image says it was for and
+	// the day it was written; Date stays the day it cleared.
+	CheckMemo string        `json:"check_memo,omitempty"`
+	Written   string        `json:"written,omitempty"`
+	Amount    money.Amount  `json:"amount"`
+	Currency  string        `json:"currency"`
+	Balance   *money.Amount `json:"balance,omitempty"`
+	Holder    string        `json:"holder,omitempty"`
+	Check     string        `json:"check,omitempty"`
+	Pending   bool          `json:"pending,omitempty"`
+	Sorted    bool          `json:"sorted"`
+	Parts     []partOut     `json:"parts"`
+	Receipts  *int          `json:"receipts,omitempty"`
+	URL       string        `json:"url"`
 }
 
 type spanOut struct {
@@ -489,7 +495,7 @@ func (rd *reader) tx(t ledgerbus.Transaction, a tenancybus.Account) txOut {
 
 	out := txOut{
 		ID: t.ID.String(), Account: t.AccountID.String(), Date: t.PostedOn.String(), Description: t.Description,
-		OwnDescription: t.OwnDescription, Described: t.OwnVia, Payee: t.Payee, Amount: t.Amount, Currency: a.Currency, Holder: t.Holder, Check: t.CheckNumber,
+		OwnDescription: t.OwnDescription, Described: t.OwnVia, Payee: t.Payee, CheckMemo: t.CheckMemo, Written: t.WrittenOn.String(), Amount: t.Amount, Currency: a.Currency, Holder: t.Holder, Check: t.CheckNumber,
 		Pending: t.Pending, Sorted: t.Sorted(), Parts: []partOut{}, URL: rd.url("/transactions/" + t.ID.String()),
 	}
 
@@ -928,7 +934,15 @@ func (a app) accountMonths(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	rd.done(w, r, map[string]any{"account": id.String(), "months": months, "url": rd.url("/accounts/" + id.String() + "/months")})
+	out, err := a.books.Receipts.OutstandingChecks(r.Context(), rd.me, id, types.Date{})
+	if a.bookRefused(w, r, err, "account") {
+		return
+	}
+
+	rd.done(w, r, map[string]any{
+		"account": id.String(), "months": months, "url": rd.url("/accounts/" + id.String() + "/months"),
+		"outstanding_checks": map[string]any{"checks": rd.receipts(out.Checks), "total": out.Total, "unpriced": out.Unpriced},
+	})
 }
 
 func (a app) listStatements(w http.ResponseWriter, r *http.Request) {
@@ -1208,6 +1222,14 @@ func (rd *reader) receipts(list []receiptbus.Receipt) []map[string]any {
 		if rc.CheckImage {
 			m["check_image"] = true
 			m["check"] = rc.Check
+
+			if rc.Memo != "" {
+				m["memo"] = rc.Memo
+			}
+
+			if !rc.WrittenOn.Zero() {
+				m["written"] = rc.WrittenOn.String()
+			}
 		}
 
 		out = append(out, m)

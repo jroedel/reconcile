@@ -30,7 +30,7 @@ var _ receiptbus.Storer = (*Store)(nil)
 
 // Expected is what CheckSchema verifies at startup and on every /healthz.
 var Expected = sqldb.Expected{
-	"receipts":      {"id", "account_id", "project_id", "uploaded_by", "spent_on", "amount", "merchant", "note", "created_at", "removed_at", "check_number", "check_image"},
+	"receipts":      {"id", "account_id", "project_id", "uploaded_by", "spent_on", "amount", "merchant", "note", "created_at", "removed_at", "check_number", "check_image", "check_memo", "check_written_on"},
 	"receipt_files": {"receipt_id", "position", "file_id"},
 	"receipt_links": {"receipt_id", "transaction_id", "linked_by", "linked_at"},
 }
@@ -102,7 +102,14 @@ CREATE INDEX IF NOT EXISTS receipt_links_transaction ON receipt_links (transacti
 		return fmt.Errorf("marking the check images: %w", err)
 	}
 
-	return nil
+	// A check image's memo line and the day written on it (issue #71),
+	// later columns once more: empty for every receipt until a check is
+	// read, and for every receipt that is not a check's.
+	if err := sqldb.AddColumn(ctx, db, "receipts", "check_memo", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+
+	return sqldb.AddColumn(ctx, db, "receipts", "check_written_on", "TEXT NOT NULL DEFAULT ''")
 }
 
 func home(s types.Scope) (account, project any) {
@@ -152,10 +159,10 @@ func (s *Store) Create(ctx context.Context, receipts []receiptbus.Receipt, ev ev
 			account, project := home(r.Home)
 
 			if _, err := tx.ExecContext(ctx, `
-INSERT INTO receipts (id, account_id, project_id, uploaded_by, spent_on, amount, merchant, note, created_at, check_number, check_image)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+INSERT INTO receipts (id, account_id, project_id, uploaded_by, spent_on, amount, merchant, note, created_at, check_number, check_image, check_memo, check_written_on)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				r.ID.String(), account, project, r.UploadedBy.String(), r.SpentOn.String(), amountOf(r.Details),
-				r.Merchant, r.Note, r.CreatedAt.UnixMilli(), r.Check, r.CheckImage); err != nil {
+				r.Merchant, r.Note, r.CreatedAt.UnixMilli(), r.Check, r.CheckImage, r.Memo, r.WrittenOn.String()); err != nil {
 				return fmt.Errorf("storing a receipt: %w", err)
 			}
 
@@ -222,8 +229,8 @@ func (s *Store) Update(ctx context.Context, r receiptbus.Receipt, ev *eventbus.E
 
 	return s.inTx(ctx, ev, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `
-UPDATE receipts SET spent_on = ?, amount = ?, merchant = ?, note = ?, removed_at = ? WHERE id = ?`,
-			r.SpentOn.String(), amountOf(r.Details), r.Merchant, r.Note, removed, r.ID.String()); err != nil {
+UPDATE receipts SET spent_on = ?, amount = ?, merchant = ?, note = ?, check_memo = ?, check_written_on = ?, removed_at = ? WHERE id = ?`,
+			r.SpentOn.String(), amountOf(r.Details), r.Merchant, r.Note, r.Memo, r.WrittenOn.String(), removed, r.ID.String()); err != nil {
 			return fmt.Errorf("changing a receipt: %w", err)
 		}
 
@@ -235,8 +242,8 @@ UPDATE receipts SET spent_on = ?, amount = ?, merchant = ?, note = ?, removed_at
 func (s *Store) SaveCheck(ctx context.Context, r receiptbus.Receipt, ev *eventbus.Event) error {
 	return s.inTx(ctx, ev, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `
-UPDATE receipts SET check_number = ?, spent_on = ?, amount = ?, merchant = ?, note = ? WHERE id = ? AND check_image = 1`,
-			r.Check, r.SpentOn.String(), amountOf(r.Details), r.Merchant, r.Note, r.ID.String()); err != nil {
+UPDATE receipts SET check_number = ?, spent_on = ?, amount = ?, merchant = ?, note = ?, check_memo = ?, check_written_on = ? WHERE id = ? AND check_image = 1`,
+			r.Check, r.SpentOn.String(), amountOf(r.Details), r.Merchant, r.Note, r.Memo, r.WrittenOn.String(), r.ID.String()); err != nil {
 			return fmt.Errorf("numbering a check's image: %w", err)
 		}
 
@@ -343,7 +350,8 @@ func marks(n int) string {
 // files and links: three queries whatever the count.
 func (s *Store) load(ctx context.Context, where string, args ...any) ([]receiptbus.Receipt, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT r.id, r.account_id, r.project_id, r.uploaded_by, r.spent_on, r.amount, r.merchant, r.note, r.created_at, r.removed_at, r.check_number, r.check_image
+SELECT r.id, r.account_id, r.project_id, r.uploaded_by, r.spent_on, r.amount, r.merchant, r.note, r.created_at, r.removed_at, r.check_number, r.check_image,
+       r.check_memo, r.check_written_on
 FROM receipts r WHERE `+where+` ORDER BY r.created_at DESC, r.rowid DESC`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("reading receipts: %w", err)
@@ -470,18 +478,20 @@ func scan(row scanner) (receiptbus.Receipt, error) {
 	var (
 		r                receiptbus.Receipt
 		id, by, spent    string
+		written          string
 		account, project sql.NullString
 		amount, removed  sql.NullInt64
 		at               int64
 	)
 
-	if err := row.Scan(&id, &account, &project, &by, &spent, &amount, &r.Merchant, &r.Note, &at, &removed, &r.Check, &r.CheckImage); err != nil {
+	if err := row.Scan(&id, &account, &project, &by, &spent, &amount, &r.Merchant, &r.Note, &at, &removed, &r.Check, &r.CheckImage, &r.Memo, &written); err != nil {
 		return r, fmt.Errorf("reading a receipt: %w", err)
 	}
 
-	var e [4]error
+	var e [5]error
 	r.ID, e[0] = types.ParseID(id)
 	r.UploadedBy, e[1] = types.ParseID(by)
+	r.WrittenOn, e[4] = types.ParseDate(written)
 
 	if account.Valid {
 		r.Home.Kind = types.ScopeAccount

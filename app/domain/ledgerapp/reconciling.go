@@ -37,6 +37,11 @@ type statementView struct {
 	// is when somebody looks.
 	Receipts []receiptbus.Receipt
 
+	// Outstanding is the account's checks written by the end of the period
+	// that no statement has paid yet: what the bank's closing balance
+	// leaves out, beside it as the treasurer compares it with the paper.
+	Outstanding receiptbus.Outstanding
+
 	Form statementForm
 }
 
@@ -102,6 +107,14 @@ func (a app) statementPage(w http.ResponseWriter, r *http.Request, status int, f
 	}
 
 	if err := a.belonging(r, me.ID, &view); err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
+	_, end := st.Period()
+
+	if view.Outstanding, err = a.cfg.Receipts.OutstandingChecks(ctx, me.ID, st.AccountID, end); err != nil {
 		a.failed(w, r, err)
 
 		return
@@ -251,6 +264,10 @@ type monthsView struct {
 	// LastMonth is the month before this one, "2026-07": what the download
 	// form offers first, because the end of a month is when it is wanted.
 	LastMonth string
+
+	// Outstanding is the account's checks written and not yet cleared,
+	// whenever written.
+	Outstanding receiptbus.Outstanding
 }
 
 // months is an account's months, each with how it stands: the page a
@@ -287,6 +304,12 @@ func (a app) months(w http.ResponseWriter, r *http.Request) {
 	// someone far from it, and the month still going is shown as such
 	// rather than as missing, so a day early or late costs nothing.
 	if view.Months, err = a.cfg.Ledger.Coverage(ctx, me.ID, id, types.DateOf(a.cfg.Now())); err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
+	if view.Outstanding, err = a.cfg.Receipts.OutstandingChecks(ctx, me.ID, id, types.Date{}); err != nil {
 		a.failed(w, r, err)
 
 		return

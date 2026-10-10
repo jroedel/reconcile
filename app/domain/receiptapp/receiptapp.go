@@ -693,10 +693,13 @@ type receiptView struct {
 
 type detailsForm struct {
 	SpentOn, Amount, Merchant, Note string
+
+	// Memo and WrittenOn are a check image's alone.
+	Memo, WrittenOn string
 }
 
 func formOf(d receiptbus.Details) detailsForm {
-	f := detailsForm{SpentOn: d.SpentOn.String(), Merchant: d.Merchant, Note: d.Note}
+	f := detailsForm{SpentOn: d.SpentOn.String(), Merchant: d.Merchant, Note: d.Note, Memo: d.Memo, WrittenOn: d.WrittenOn.String()}
 	if d.HasAmount {
 		f.Amount = d.Amount.String()
 	}
@@ -906,10 +909,12 @@ func (a app) details(w http.ResponseWriter, r *http.Request) {
 	}
 
 	typed := detailsForm{
-		SpentOn:  strings.TrimSpace(r.PostForm.Get("spent_on")),
-		Amount:   strings.TrimSpace(r.PostForm.Get("amount")),
-		Merchant: strings.TrimSpace(r.PostForm.Get("merchant")),
-		Note:     strings.TrimSpace(r.PostForm.Get("note")),
+		SpentOn:   strings.TrimSpace(r.PostForm.Get("spent_on")),
+		Amount:    strings.TrimSpace(r.PostForm.Get("amount")),
+		Merchant:  strings.TrimSpace(r.PostForm.Get("merchant")),
+		Note:      strings.TrimSpace(r.PostForm.Get("note")),
+		Memo:      strings.TrimSpace(r.PostForm.Get("memo")),
+		WrittenOn: strings.TrimSpace(r.PostForm.Get("written_on")),
 	}
 
 	d, problem := typed.parse()
@@ -982,7 +987,16 @@ func (a app) number(w http.ResponseWriter, r *http.Request) {
 
 // parse reads the details as typed, or names the field that is not one.
 func (f detailsForm) parse() (receiptbus.Details, string) {
-	d := receiptbus.Details{Merchant: f.Merchant, Note: f.Note}
+	d := receiptbus.Details{Merchant: f.Merchant, Note: f.Note, Memo: f.Memo}
+
+	if f.WrittenOn != "" {
+		on, err := types.ParseDate(f.WrittenOn)
+		if err != nil {
+			return d, "written_on"
+		}
+
+		d.WrittenOn = on
+	}
 
 	if f.SpentOn != "" {
 		on, err := types.ParseDate(f.SpentOn)

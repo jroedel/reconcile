@@ -2,7 +2,7 @@
 {{define "content"}}{{$v := .Data}}{{$r := $v.View.Receipt}}
 {{if $v.HomePath}}<p class="crumbs"><a href="{{$v.HomePath}}/receipts">{{t "Receipts"}} · {{$v.HomeName}}</a></p>{{end}}
 <h1>{{if $r.Check}}{{t "Check {number}" "number" $r.Check}}{{else if $r.CheckImage}}{{t "A check"}}{{else}}{{with $r.Label}}{{.}}{{else}}{{t "A receipt"}}{{end}}{{end}}</h1>
-{{if $r.CheckImage}}<p>{{if $r.Waiting}}{{if $r.Check}}{{t "The image of a check, waiting for the transaction that paid it: the check has not cleared, its statement is not imported yet, or several transactions in the account have its number."}}{{else}}{{t "The image of a check whose number has not been said. Once it has, the image is attached to the transaction with that number."}}{{end}}{{else}}{{t "The image of a check, attached to the transaction that paid it by its number."}}{{end}}{{with $r.Merchant}} {{t "Paid to {payee}." "payee" .}}{{end}}</p>{{end}}
+{{if $r.CheckImage}}<p>{{if $r.Waiting}}{{if $r.Check}}{{t "The image of a check, waiting for the transaction that paid it: the check has not cleared, its statement is not imported yet, or several transactions in the account have its number."}}{{else}}{{t "The image of a check whose number has not been said. Once it has, the image is attached to the transaction with that number."}}{{end}}{{else}}{{t "The image of a check, attached to the transaction that paid it by its number."}}{{end}}{{with $r.Merchant}} {{t "Paid to {payee}." "payee" .}}{{end}}{{with $r.Memo}} {{t "Memo: {memo}." "memo" .}}{{end}}{{if not $r.WrittenOn.Zero}} {{t "Written on {date}." "date" $r.WrittenOn}}{{end}}</p>{{end}}
 <p class="hint">{{if $v.UploadedBy}}{{t "Added by {who} on {date}." "who" $v.UploadedBy "date" ($r.CreatedAt.Format "2006-01-02")}}{{else}}{{t "Added on {date}." "date" ($r.CreatedAt.Format "2006-01-02")}}{{end}}</p>
 {{template "done" $v.Done}}
 {{template "problem" $v.Problem}}
@@ -53,6 +53,10 @@
   <div class="field"><label for="amount">{{t "Amount"}}</label><input id="amount" name="amount" type="text" inputmode="decimal" value="{{$v.Typed.Amount}}"></div>
   <div class="field"><label for="spent_on">{{t "Date"}}</label><input id="spent_on" name="spent_on" type="date" value="{{$v.Typed.SpentOn}}"></div>
   <div class="field"><label for="merchant">{{if $r.CheckImage}}{{t "Paid to"}}{{else}}{{t "Shop"}}{{end}}</label><input id="merchant" name="merchant" type="text" maxlength="100" value="{{$v.Typed.Merchant}}">{{if $r.CheckImage}}<p class="hint">{{t "Whom the check was written to. It is written on the transaction too, where sorting rules and suggestions read it."}}</p>{{end}}</div>
+  {{if $r.CheckImage}}
+  <div class="field"><label for="memo">{{t "Memo"}}</label><input id="memo" name="memo" type="text" maxlength="100" value="{{$v.Typed.Memo}}"><p class="hint">{{t "What the check's memo line says it was for."}}</p></div>
+  <div class="field"><label for="written_on">{{t "Date written"}}</label><input id="written_on" name="written_on" type="date" value="{{$v.Typed.WrittenOn}}"><p class="hint">{{t "The date written on the check, which may be days before it cleared. Both are written on the transaction too."}}</p></div>
+  {{end}}
   <div class="field"><label for="note">{{t "Note"}}</label><input id="note" name="note" type="text" maxlength="500" value="{{$v.Typed.Note}}"></div>
   <button type="submit">{{t "Save"}}</button>
 </form>

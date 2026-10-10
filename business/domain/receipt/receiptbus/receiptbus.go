@@ -118,6 +118,12 @@ type Details struct {
 	HasAmount bool
 	Merchant  string
 	Note      string
+
+	// Memo and WrittenOn are a check image's alone: what its memo line
+	// says, and the day written on it. SpentOn is the day it cleared once
+	// it is attached (matched), so the day written is kept apart.
+	Memo      string
+	WrittenOn types.Date
 }
 
 // Link is a receipt's attachment to one transaction.
@@ -151,6 +157,7 @@ type Ledger interface {
 	Matching(ctx context.Context, accounts []types.ID, amount money.Amount, on types.Date, days int) ([]ledgerbus.Transaction, error)
 	WithCheck(ctx context.Context, account types.ID, number string) ([]ledgerbus.Transaction, error)
 	SetPayee(ctx context.Context, now time.Time, actor, id types.ID, payee string) (ledgerbus.Transaction, error)
+	SetWritten(ctx context.Context, now time.Time, actor, id types.ID, memo string, on types.Date) (ledgerbus.Transaction, error)
 }
 
 // Files is where the receipts' bytes are (filebus).
@@ -319,6 +326,8 @@ func (d Details) check() error {
 		return Invalid{Field: "merchant", Err: fmt.Errorf("at most %d characters", MaxMerchant)}
 	case utf8.RuneCountInString(d.Note) > MaxNote:
 		return Invalid{Field: "note", Err: fmt.Errorf("at most %d characters", MaxNote)}
+	case utf8.RuneCountInString(d.Memo) > ledgerbus.MaxCheckMemo:
+		return Invalid{Field: "memo", Err: fmt.Errorf("at most %d characters", ledgerbus.MaxCheckMemo)}
 	}
 
 	return nil
@@ -760,6 +769,11 @@ func (b *Business) SetDetails(ctx context.Context, now time.Time, actor, id type
 
 	if err := d.check(); err != nil {
 		return r, err
+	}
+
+	d.Memo = strings.Join(strings.Fields(d.Memo), " ")
+	if !r.CheckImage {
+		d.Memo, d.WrittenOn = "", types.Date{}
 	}
 
 	before := r

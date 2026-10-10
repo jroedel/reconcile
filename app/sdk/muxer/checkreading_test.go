@@ -5,6 +5,7 @@ import (
 	"image/jpeg"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -177,7 +178,7 @@ func TestClaudeReadsChecksThroughMCP(t *testing.T) {
 		}
 	}
 
-	res, text := call("read_check", map[string]any{"receipt": shots[0], "number": "1176", "amount": "120.00", "payee": "Hilltop Plumbing", "date": "2026-06-30"})
+	res, text := call("read_check", map[string]any{"receipt": shots[0], "number": "1176", "amount": "120.00", "payee": "Hilltop Plumbing", "date": "2026-06-30", "memo": "Summer work"})
 	if res.IsError || !strings.Contains(text, `"attached": true`) || !strings.Contains(text, `"check": "1176"`) {
 		t.Fatalf("read_check 1176: %s", text)
 	}
@@ -187,7 +188,7 @@ func TestClaudeReadsChecksThroughMCP(t *testing.T) {
 		t.Errorf("a misread: %s", text)
 	}
 
-	res, text = call("read_check", map[string]any{"receipt": shots[2], "number": "1190", "amount": "45.50", "payee": "Diocesan Office"})
+	res, text = call("read_check", map[string]any{"receipt": shots[2], "number": "1190", "amount": "45.50", "payee": "Diocesan Office", "date": "2026-07-05", "memo": "Cleaning"})
 	if res.IsError || !strings.Contains(text, `"attached": false`) {
 		t.Errorf("a check not cleared: %s", text)
 	}
@@ -197,8 +198,50 @@ func TestClaudeReadsChecksThroughMCP(t *testing.T) {
 		t.Errorf("reading an attached check again: %s", text)
 	}
 
-	wantBody(t, e.owner.get(e.account+"/transactions?month=2026-07"), "Paid to Hilltop Plumbing")
-	wantBody(t, e.owner.get(e.account), "read the image of check 1176, for 120.00", "read the image of check 1190, for 45.50")
+	wantBody(t, e.owner.get(e.account+"/transactions?month=2026-07"), "Paid to Hilltop Plumbing", "Memo: Summer work")
+
+	// The day it was written stays beside the day it cleared, and the check
+	// not cleared is outstanding: on the account's months, on the
+	// statement whose period it was written in, and to Claude.
+	acct := strings.TrimPrefix(e.account, "/accounts/")
+
+	var paid any
+	for _, tx := range list(t, s.get(t, "/api/v1/accounts/"+acct+"/transactions?month=2026-07", key), "transactions") {
+		if field(tx, "check") == "1176" {
+			paid = tx
+		}
+	}
+
+	if field(paid, "check_memo") != "Summer work" || field(paid, "written") != "2026-06-30" || field(paid, "date") != "2026-07-02" {
+		t.Fatalf("check 1176 to Claude: %v", paid)
+	}
+
+	wantBody(t, e.owner.get("/transactions/"+field(paid, "id").(string)), "The check was written on 2026-06-30 and cleared on 2026-07-02.")
+	wantBody(t, e.owner.get(e.account+"/months"), "Checks outstanding", "Check 1190", "written 2026-07-05", "memo: Cleaning", "Checks outstanding: 1, for $45.50 in all.")
+
+	statement := field(list(t, s.get(t, "/api/v1/accounts/"+acct+"/statements", key), "statements")[0], "id").(string)
+	wantBody(t, e.owner.get("/statements/"+statement), "Checks written by 2026-07-09", "Check 1190")
+
+	months := s.get(t, "/api/v1/accounts/"+acct+"/months", key)
+	if out := field(months, "outstanding_checks"); field(out, "total") != "45.50" || len(field(out, "checks").([]any)) != 1 || field(field(out, "checks").([]any)[0], "memo") != "Cleaning" {
+		t.Errorf("the outstanding checks to Claude: %v", out)
+	}
+
+	// A person corrects the memo and the day on the image's page, and the
+	// transaction follows, with a line in the account's history.
+	wantBody(t, e.owner.get("/receipts/"+shots[0]), "Memo: Summer work.", "Written on 2026-06-30.", `name="written_on"`)
+
+	if rec := e.owner.post("/receipts/"+shots[0]+"/details", url.Values{
+		"amount": {"120.00"}, "spent_on": {"2026-07-02"}, "merchant": {"Hilltop Plumbing"}, "note": {""},
+		"memo": {"Summer work, July"}, "written_on": {"2026-06-29"},
+	}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("correcting the check: %d\n%s", rec.Code, rec.Body)
+	}
+
+	wantBody(t, e.owner.get("/transactions/"+field(paid, "id").(string)), "memo: Summer work, July", "The check was written on 2026-06-29")
+
+	wantBody(t, e.owner.get(e.account), "read the image of check 1176, for 120.00", "read the image of check 1190, for 45.50",
+		"was written on 2026-06-29, for “Summer work, July”")
 
 	_, text = call("list_changes", map[string]any{})
 	if !strings.Contains(text, "receipt.check_read") {

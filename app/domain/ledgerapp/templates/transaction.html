@@ -3,7 +3,8 @@
 <p class="crumbs"><a href="{{$v.Back}}">{{$e.Account.Name}}</a></p>
 <h1>{{if $t.Shown}}{{$t.Shown}}{{else}}{{t "A transaction with no description"}}{{end}}</h1>
 {{if $t.OwnDescription}}<p class="hint">{{if $t.Description}}{{t "The bank calls it {description}." "description" $t.Description}}{{else}}{{t "The bank gave it no description."}}{{end}}</p>{{end}}
-<p>{{$t.PostedOn}}{{with $t.Holder}} · {{.}}{{end}}{{with $t.CheckNumber}} · {{t "Check number {number}" "number" .}}{{end}}{{with $t.Payee}} · {{t "paid to {payee}" "payee" .}}{{end}} · <span class="money {{if lt $t.Amount 0}}out{{else}}in{{end}}">{{money $t.Amount $cur}}</span></p>
+<p>{{$t.PostedOn}}{{with $t.Holder}} · {{.}}{{end}}{{with $t.CheckNumber}} · {{t "Check number {number}" "number" .}}{{end}}{{with $t.Payee}} · {{t "paid to {payee}" "payee" .}}{{end}}{{with $t.CheckMemo}} · {{t "memo: {memo}" "memo" .}}{{end}} · <span class="money {{if lt $t.Amount 0}}out{{else}}in{{end}}">{{money $t.Amount $cur}}</span></p>
+{{if not $t.WrittenOn.Zero}}<p class="hint">{{t "The check was written on {written} and cleared on {date}." "written" $t.WrittenOn "date" $t.PostedOn}}</p>{{end}}
 {{if $t.Pending}}<p class="notice"><span class="badge">{{t "pending"}}</span> {{t "This charge had not posted when its file was read. When a later statement posts it, it takes its final date and amount here, and keeps its parts, receipts and explanation."}}</p>{{end}}
 {{template "cleared" (dict "By" $v.ClearedBy "Currency" $cur)}}
 {{if $v.Explained}}<p><a href="/transactions/{{$t.ID}}/explain">{{t "What makes up this amount"}}</a> {{if $v.Settled}}<span class="badge ok">{{t "explained"}}</span>{{else}}<span class="badge">{{t "open"}}</span>{{end}}</p>

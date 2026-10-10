@@ -72,6 +72,9 @@ Start with the month in front of you, in your own words:
   may account for it.
 - "Which receipts are waiting for a match?" Each with the charges it may
   belong to.
+- "Which checks haven't cleared?" The checks whose images were read and
+  that no statement has paid yet, with whom each was paid to, what for,
+  the day it was written, and their total.
 - "How does the pilgrimage stand?" A project's income and expenses, from
   every account it draws on.
 

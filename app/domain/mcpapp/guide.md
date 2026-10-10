@@ -98,18 +98,24 @@ each waits as the image of a check until its number is said.
    are waiting for you; those with a `check` are waiting for the bank.
 2. **get_receipt_image** on each, and read it: the number (top right, and
    again in the line of digits at the foot, where the account's numbers are
-   too -- never repeat those), whom it is paid to, the amount, and the date.
-   The bank's app often prints the number, amount and date beside the image
-   as well; where they agree with the check, so much the better. Where the
-   amount in figures and in words differ, the words are what the bank paid.
-3. **read_check** with what you read. Attached means the bank's amount for
-   that number is yours. A refusal gives both amounts and changes nothing:
-   look at the image again, and if you still read the same, leave it for the
-   person. Waiting means the check has not cleared, or its statement is not
-   imported; it is attached when it is, if the amounts agree.
-   The memo line ("Summer work", "Cleaning") says what it was for: on an
-   attached check whose transaction has no `own_description` yet, propose
-   it, and with the person's yes, **set_description**.
+   too -- never repeat those), whom it is paid to, the amount, the date
+   written on it, and its memo line ("Cleaning", "Summer work"), if it has
+   one. The bank's app often prints the number, amount and date beside the
+   image as well; where they agree with the check, so much the better, but
+   the date the app prints is usually the day it cleared, and the one to
+   give is the one written on the check. Where the amount in figures and in
+   words differ, the words are what the bank paid.
+3. **read_check** with what you read, the memo included. Attached means the
+   bank's amount for that number is yours. A refusal gives both amounts and
+   changes nothing: look at the image again, and if you still read the
+   same, leave it for the person. Waiting means the check has not cleared,
+   or its statement is not imported; it is attached when it is, if the
+   amounts agree, and until then it is among the account's checks
+   outstanding (**get_account_months**, `outstanding_checks`).
+   The memo and the day written are kept on the transaction beside its
+   payee, shown in the month; there is no need to repeat the memo as its
+   description. **set_description** is for when the person wants other
+   words for it.
 4. Say how many were attached, which wait for the bank, and which you could
    not read or the bank disagreed with, each with its `url`. A
    screenshot that is not a check at all is the person's to remove.

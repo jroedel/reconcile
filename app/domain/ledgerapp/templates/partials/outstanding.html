@@ -1,0 +1,16 @@
+{{/* outstanding is an account's checks written and not yet cleared: those
+whose image was read here, on no transaction yet, each for the amount it
+was written for. .Out is a receiptbus.Outstanding, .Currency the
+account's. */}}
+{{define "outstanding"}}{{with .Out}}{{if .Checks}}
+<h2 id="outstanding">{{t "Checks outstanding"}}</h2>
+<p class="hint">{{if .By.Zero}}{{t "Checks whose image was read here and that no statement has paid yet. The bank's balance does not count them until they clear."}}{{else}}{{t "Checks written by {date} whose image was read here and that no statement has paid yet. The bank's balance does not count them until they clear." "date" .By}}{{end}}</p>
+<ul class="list">
+{{range .Checks}}<li><a href="/receipts/{{.ID}}">{{t "Check {number}" "number" .Check}}</a>
+{{- if .WrittenOn.Zero}} · {{t "day written not read"}}{{else}} · {{t "written {date}" "date" .WrittenOn}}{{end}}
+{{- with .Merchant}} · {{t "paid to {payee}" "payee" .}}{{end}}
+{{- with .Memo}} · {{t "memo: {memo}" "memo" .}}{{end}} ·
+{{if .HasAmount}}<span class="money">{{money .Amount $.Currency}}</span>{{else}}<span class="badge">{{t "no amount yet"}}</span>{{end}}</li>
+{{end}}</ul>
+<p>{{t "Checks outstanding: {n}, for {total} in all." "n" (len .Checks) "total" (money .Total $.Currency)}}{{if .Unpriced}} {{t "{n} of them have no amount yet, and are not in the total." "n" .Unpriced}}{{end}}</p>
+{{end}}{{end}}{{end}}

@@ -149,6 +149,12 @@ type Transaction struct {
 	// check's image (checks.go), or "".
 	Payee string
 
+	// CheckMemo is what a check's memo line says it was for, and WrittenOn
+	// the day written on it -- not the day it cleared, which is PostedOn --
+	// as read off its image (checks.go); "" and zero until somebody has.
+	CheckMemo string
+	WrittenOn types.Date
+
 	// OwnDescription is what a person, or their program, wrote it was --
 	// "Summer work" for "Check 1322" -- or "" (describe.go). Description
 	// stays the bank's; pages show this one in its place (Shown).

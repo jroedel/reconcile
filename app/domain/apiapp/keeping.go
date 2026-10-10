@@ -135,12 +135,13 @@ func (a app) keepEndpoints() []Endpoint {
 		},
 		{
 			Method: http.MethodPost, Path: Prefix + "/receipts/{receipt}/check", Scope: write, Tool: "read_check",
-			Summary: "Say what the image of a check says, after looking at it with get_receipt_image: its number, whom it was paid to, its amount and its date. It is attached to the account's transaction with that number when the bank's amount for it is the amount you read; when the amounts differ nothing changes, and the answer says both, so look again. A check that has not cleared waits with what you read, and is attached when the statement that lists it is imported, if the amounts agree. Only for a waiting check image (list_waiting_receipts, check_image).",
+			Summary: "Say what the image of a check says, after looking at it with get_receipt_image: its number, whom it was paid to, its amount, its date and its memo. It is attached to the account's transaction with that number when the bank's amount for it is the amount you read; when the amounts differ nothing changes, and the answer says both, so look again. A check that has not cleared waits with what you read, and is attached when the statement that lists it is imported, if the amounts agree. Only for a waiting check image (list_waiting_receipts, check_image).",
 			Body: &Body{Encoding: "json", Fields: []Field{
 				{Name: "number", Type: "string", Required: true, Description: "The check's number, as printed at its top right and again in the line of digits at its foot."},
 				{Name: "amount", Type: "string", Required: true, Description: "The amount in figures, such as \"120.00\": what it was written for, never negative. Where the figures and the words disagree, the words are what the bank pays."},
 				{Name: "payee", Type: "string", Description: fmt.Sprintf("Whom it is paid to, as written on the \"Pay to the order of\" line; at most %d characters. Written on the transaction too.", ledgerbus.MaxPayee)},
-				{Name: "date", Type: "string", Description: "The date written on it, YYYY-MM-DD, if it can be read."},
+				{Name: "date", Type: "string", Description: "The date written on it, YYYY-MM-DD, if it can be read: kept as the day it was written, which may be days before it cleared."},
+				{Name: "memo", Type: "string", Description: fmt.Sprintf("What its memo line says it was for (\"Cleaning\", \"Summer work\"), if it has one; at most %d characters. Written on the transaction too.", ledgerbus.MaxCheckMemo)},
 			}},
 			Returns: "{receipt, attached, transaction}; transaction is the one it was attached to, when it was", handler: a.readCheck,
 		},
@@ -723,6 +724,7 @@ func (a app) readCheck(w http.ResponseWriter, r *http.Request) {
 		Amount *money.Amount `json:"amount"`
 		Payee  string        `json:"payee"`
 		Date   string        `json:"date"`
+		Memo   string        `json:"memo"`
 	}
 
 	if !a.body(w, r, &in) {
@@ -735,7 +737,7 @@ func (a app) readCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rd := receiptbus.CheckReading{Number: in.Number, Payee: in.Payee, Amount: *in.Amount}
+	rd := receiptbus.CheckReading{Number: in.Number, Payee: in.Payee, Amount: *in.Amount, Memo: in.Memo}
 
 	if in.Date != "" {
 		on, err := types.ParseDate(in.Date)
