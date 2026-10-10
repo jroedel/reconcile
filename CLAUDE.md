@@ -225,6 +225,19 @@ The books endpoints (`docs/books-api.md`) are for a person's own Claude on
 claude.ai, acting as them. An agent working in this repository never calls
 them: not to read, not to test, not to check a change.
 
+**Another exception: dependency bumps merge themselves.** Dependabot's
+weekly pull requests, and the Go version workflow's on a `go-<version>`
+branch, are merged and deployed by `.github/workflows/dependabot-merge.yml`
+once they are a day old with every check green. Nobody reviews them, because
+for a bump the review was only a click: CI already decides whether it builds,
+tests and scans clean, and the deploy rolls back a binary that does not
+answer. That workflow is the one thing that merges without a person, and it
+takes only pull requests those two bots opened. It is not a way round the
+rule: an agent still never merges a pull request, its own or a bot's; never
+pushes a commit to one of those branches, because the workflow checks who
+opened a pull request and not who wrote its commits; never names a branch of
+its own `go-…`; and never dispatches either workflow.
+
 `.claude/settings.json` denies these commands, so the rule holds even when it
 is forgotten. Do not work around a denial — a denied command is the answer.
 
