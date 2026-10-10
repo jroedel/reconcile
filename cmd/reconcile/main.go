@@ -32,6 +32,8 @@ import (
 	"github.com/jroedel/reconcile/business/domain/receipt/stores/receiptdb"
 	"github.com/jroedel/reconcile/business/domain/rule/rulebus"
 	"github.com/jroedel/reconcile/business/domain/rule/stores/ruledb"
+	"github.com/jroedel/reconcile/business/domain/shape/shapebus"
+	"github.com/jroedel/reconcile/business/domain/shape/stores/shapedb"
 	"github.com/jroedel/reconcile/business/domain/tenancy/stores/tenancydb"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/translation/stores/translationdb"
@@ -149,7 +151,8 @@ func run() error {
 	files := filebus.NewBusiness(log, filedb.NewStore(db), bytes)
 	categories := categorybus.NewBusiness(log, categorydb.NewStore(db), tenancy)
 	rules := rulebus.NewBusiness(log, ruledb.NewStore(db), tenancy, categories)
-	ledger := ledgerbus.NewBusiness(log, ledgerdb.NewStore(db), tenancy, files, categories, rules)
+	shapes := shapebus.NewBusiness(log, shapedb.NewStore(db))
+	ledger := ledgerbus.NewBusiness(log, ledgerdb.NewStore(db), tenancy, files, categories, rules, shapes)
 	receipts := receiptbus.NewBusiness(log, receiptdb.NewStore(db), tenancy, ledger, files)
 	budgets := budgetbus.NewBusiness(log, budgetdb.NewStore(db), tenancy, ledger, categories)
 	export := exportbus.NewBusiness(log, tenancy, ledger, receipts, categories, files)
@@ -166,6 +169,7 @@ func run() error {
 		History:    history,
 		Files:      files,
 		Ledger:     ledger,
+		Shapes:     shapes,
 		Categories: categories,
 		Rules:      rules,
 		Budgets:    budgets,
@@ -210,6 +214,7 @@ func prepare(ctx context.Context, db *sql.DB) error {
 		{"the budgets", budgetdb.Init},
 		{"the statements and transactions", ledgerdb.Init},
 		{"the receipts", receiptdb.Init},
+		{"the layouts of statements seen", shapedb.Init},
 	} {
 		if err := step.init(ctx, db); err != nil {
 			return fmt.Errorf("preparing %s: %w", step.what, err)
@@ -239,6 +244,7 @@ func expectedSchema() sqldb.Expected {
 		budgetdb.Expected,
 		ledgerdb.Expected,
 		receiptdb.Expected,
+		shapedb.Expected,
 	} {
 		maps.Copy(expected, store)
 	}

@@ -191,6 +191,8 @@ func problem(err error) string {
 		return "empty"
 	case errors.Is(err, ledgerbus.ErrUnbalanced):
 		return "unbalanced"
+	case errors.Is(err, ledgerbus.ErrUnproven):
+		return "unproven"
 	case errors.Is(err, ledgerbus.ErrSameFile):
 		return "same-file"
 	case errors.Is(err, ledgerbus.ErrUnstable):

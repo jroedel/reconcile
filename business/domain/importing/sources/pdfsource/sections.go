@@ -20,43 +20,39 @@ import (
 // beginning and ending balance -- a "consolidated" statement for everything
 // a customer has at the bank.
 //
-// None of this is one bank's. The words below are what such headings say
-// in English, Spanish and Portuguese; a heading is recognized by its words
-// and by standing alone, outside the description's column, so that a
-// description that mentions a deposit is never taken for one.
+// None of this is one bank's. The words are a Layout's -- General's are what
+// such headings say in English, Spanish and Portuguese -- and a heading is
+// recognized by its words and by standing alone, outside the description's
+// column, so that a description that mentions a deposit is never taken for
+// one.
 
 // direction is which way a section's money went: into the account (1), out
 // of it (-1), or not said (0).
 type direction int
 
-var (
-	dailyHeading = regexp.MustCompile(`(?i)\b(daily (ending )?balances?|saldos? di[áa]rios?)\b`)
-	stopHeading  = regexp.MustCompile(`(?i)\b(summary|detail|information|messages?|disclosures?|interest|resumo|resumen|detalle|detalhe)\b`)
-	inHeading    = regexp.MustCompile(`(?i)\b(deposits?|additions|credits|money in|dep[óo]sitos|cr[ée]ditos|entradas|abonos)\b`)
-	outHeading   = regexp.MustCompile(`(?i)\b(withdrawals?|checks? paid|debits|fees|service charges|money out|purchases|retiros|saques|d[ée]bitos|tarifas|cargos|cheques? (pagos|pagados|compensados))\b`)
-	checkHeading = regexp.MustCompile(`(?i)\b(checks? paid|cheques? (pagos|pagados|compensados))\b`)
-
-	// pendingHeading is a section of charges not yet posted, which says
-	// nothing of their direction.
-	pendingHeading = regexp.MustCompile(`(?i)^(pending|pendentes?|pendientes?)\b|\bpending (transactions|charges|purchases|activity|authorizations)\b|\b(transa[çc][õo]es|lan[çc]amentos) pendentes\b|\b(transacciones|movimientos) pendientes\b`)
-
-	// accountNumber is a line that names the account the lines after it
-	// are about; "Primary account" on a consolidated statement's every
-	// page is not one.
-	accountNumber = regexp.MustCompile(`(?i)\b(account (number|no\.?|#)|n[úu]mero de (la )?(cuenta|conta)|conta n[º°o.]?)\s*:?\s*([0-9][0-9 \-]{3,}[0-9])`)
-)
-
 // account starts the part of the document a line names, when it names an
-// account other than the one being read. The first number named is the
-// first part's; a number repeated on every page, as a single account's
-// statement does, starts nothing.
+// account other than the one being read (Layout.AccountNumber). The first
+// number named is the first part's; a number repeated on every page, as a
+// single account's statement does, starts nothing.
 func (r *reader) account(s string) bool {
-	m := accountNumber.FindStringSubmatch(s)
+	m := r.v.account.FindStringSubmatchIndex(s)
 	if m == nil {
 		return false
 	}
 
-	digits := strings.NewReplacer(" ", "", "-", "").Replace(m[len(m)-1])
+	// The label, without the number, is the layout's.
+	n := len(m) - 2
+	if m[n] < 0 {
+		return false
+	}
+
+	importbus.Add(&r.st.Frame, strings.TrimRight(s[m[0]:m[n]], " :"))
+
+	digits := strings.NewReplacer(" ", "", "-", "").Replace(s[m[n]:m[n+1]])
+	if len(digits) < 4 {
+		return false
+	}
+
 	last4 := digits[len(digits)-4:]
 
 	switch {
@@ -109,25 +105,38 @@ func (r *reader) section(s string) bool {
 		return false
 	}
 
-	in, out := inHeading.MatchString(t), outHeading.MatchString(t)
+	v := r.v
+	in, out := v.in.MatchString(t), v.out.MatchString(t)
 	r.held = false
 
 	switch {
-	case pendingHeading.MatchString(t):
+	case v.pending.MatchString(t):
 		r.dir, r.checks, r.daily, r.held = 0, false, false, true
-	case dailyHeading.MatchString(t):
+	case v.daily.MatchString(t):
 		r.dir, r.checks, r.daily = 0, false, true
-	case stopHeading.MatchString(t), in && out:
+	case v.stop.MatchString(t), in && out:
 		r.dir, r.checks, r.daily = 0, false, false
 	case in:
 		r.dir, r.checks, r.daily = 1, false, false
 	case out:
-		r.dir, r.checks, r.daily = -1, checkHeading.MatchString(t), false
+		r.dir, r.checks, r.daily = -1, v.checks.MatchString(t), false
 	default:
 		return false
 	}
 
 	r.open, r.check = -1, ""
+
+	// What the heading says, in the words the layout matched and no
+	// others: a heading may carry a cardholder's name beside them.
+	var words []string
+
+	for _, re := range []*regexp.Regexp{v.pending, v.daily, v.stop, v.in, v.out} {
+		if w := re.FindString(t); w != "" && !slices.Contains(words, w) {
+			words = append(words, w)
+		}
+	}
+
+	importbus.Add(&r.st.Sections, strings.Join(words, " "))
 
 	return true
 }

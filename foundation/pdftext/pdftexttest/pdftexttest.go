@@ -47,11 +47,15 @@ func toFloat(v any) float64 {
 	panic(fmt.Sprintf("pdftexttest: %v is not a position", v))
 }
 
+// Producer is what every drawn PDF's metadata says wrote it.
+const Producer = "pdftexttest 1.0"
+
 // Draw makes a PDF of the pages, in 9-point Helvetica.
 //
 // The smallest file a PDF reader accepts: a catalog, a page tree, one font,
 // and a page and its content stream for each page, with the cross-reference
-// table that says where each object starts.
+// table that says where each object starts -- and the metadata's producer,
+// which is how a layout is told apart (pdftext.Producer).
 func Draw(pages ...Page) []byte {
 	var objects []string
 
@@ -64,6 +68,7 @@ func Draw(pages ...Page) []byte {
 	catalog := add("") // filled in once the page tree's number is known
 	tree := add("")
 	font := add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>")
+	info := add("<< /Producer (" + Producer + ") >>")
 
 	var kids []string
 
@@ -100,7 +105,7 @@ func Draw(pages ...Page) []byte {
 		fmt.Fprintf(&buf, "%010d 00000 n \n", off)
 	}
 
-	fmt.Fprintf(&buf, "trailer\n<< /Size %d /Root %d 0 R >>\nstartxref\n%d\n%%%%EOF\n", len(objects)+1, catalog, xref)
+	fmt.Fprintf(&buf, "trailer\n<< /Size %d /Root %d 0 R /Info %d 0 R >>\nstartxref\n%d\n%%%%EOF\n", len(objects)+1, catalog, info, xref)
 
 	return buf.Bytes()
 }

@@ -28,6 +28,7 @@
 {{- else if eq . "explain-note"}}{{t "The note is too long. Keep it under 500 characters."}}
 {{- else if eq . "not-pending"}}{{t "That charge has posted, so it is not removed this way. A posted charge goes with its statement."}}
 {{- else if eq . "release-locked"}}{{t "That pending charge is in a reconciled period, so it cannot be removed. Reopen the statement that covers it first."}}
+{{- else if eq . "unproven"}}{{t "This PDF's layout is new to this site, and nothing in it shows that every row was read, so it cannot be imported. Download the statement from your bank's website as CSV or OFX instead, if it offers them."}}
 {{- else if eq . "which-account"}}{{t "This file holds the statements of several accounts. Choose which of them is this account, below."}}
 {{- else if eq . "unstable"}}{{t "This file could not be imported safely: reading it a second time did not give the same transactions. Nothing was imported, and the problem has been recorded for the developers. Meanwhile, try the same statement downloaded in another format."}}
 {{- else if eq . "same-file"}}{{t "This file was imported into this account already."}}

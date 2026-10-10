@@ -34,6 +34,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -150,6 +151,35 @@ type Inspection struct {
 	// Detected is the mapping guessed from the header and the sample,
 	// including the separator and whether amounts use a decimal comma.
 	Detected Mapping
+}
+
+var numbered = regexp.MustCompile(`\d{3}`)
+
+// Structure is the export's layout (importbus.Structure): its column
+// headings, each a word of its own. Only when the date and amount columns were recognized by their
+// headings, since otherwise the line taken for the header may be a row,
+// with a payee and an amount in it.
+func (in Inspection) Structure() importbus.Structure {
+	var st importbus.Structure
+
+	m := in.Detected
+	if m.Date == "" || m.Amount == "" && m.Debit == "" && m.Credit == "" {
+		return st
+	}
+
+	// Nor when a heading has a number in it. A file with no header row has
+	// its first row taken for one, and a row can pass the test above by
+	// accident -- "Update fee" has "date" in it -- but its date and its
+	// amount have digits, and a heading has none to speak of.
+	if slices.ContainsFunc(in.Header, numbered.MatchString) {
+		return st
+	}
+
+	for _, h := range in.Header {
+		importbus.Add(&st.Frame, "column "+h)
+	}
+
+	return st
 }
 
 // sampleRows is how many rows the mapping screen previews.

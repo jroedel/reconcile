@@ -19,6 +19,7 @@
 package ofxsource
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/jroedel/reconcile/business/domain/importing/importbus"
@@ -32,7 +33,7 @@ func Read(data []byte) (importbus.Result, error) {
 		return importbus.Result{}, err
 	}
 
-	var res importbus.Result
+	res := importbus.Result{Structure: structure(data)}
 
 	// A download usually holds one statement, but a bank that exports
 	// several accounts at once produces more, and they would all land in the
@@ -116,6 +117,31 @@ func Looks(head []byte) bool {
 	upper := strings.ToUpper(string(head))
 
 	return strings.Contains(upper, "<OFX>") || strings.Contains(upper, "OFXHEADER")
+}
+
+var (
+	org = regexp.MustCompile(`(?i)<ORG>\s*([^<\r\n]+)`)
+	xml = regexp.MustCompile(`^\s*(<\?xml|<\?OFX)`)
+)
+
+// structure is what an OFX file's layout is (importbus.Structure): which of
+// the format's two dialects it is in, and the institution's name for
+// itself. Everything else about OFX is the standard's.
+func structure(data []byte) importbus.Structure {
+	var st importbus.Structure
+
+	dialect := "ofx sgml"
+	if xml.Match(data[:min(len(data), 256)]) {
+		dialect = "ofx xml"
+	}
+
+	importbus.Add(&st.Frame, dialect)
+
+	if m := org.FindSubmatch(data); m != nil {
+		importbus.Add(&st.Frame, "org "+string(m[1]))
+	}
+
+	return st
 }
 
 // readBalance reads the ledger balance. One with no date is not usable: a

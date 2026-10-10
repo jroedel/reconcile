@@ -37,6 +37,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
 	"github.com/jroedel/reconcile/business/domain/rule/rulebus"
+	"github.com/jroedel/reconcile/business/domain/shape/shapebus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/translation/translationbus"
 	"github.com/jroedel/reconcile/business/domain/user/userbus"
@@ -70,6 +71,7 @@ type Config struct {
 	Budgets    *budgetbus.Business
 	Receipts   *receiptbus.Business
 	Export     *exportbus.Business
+	Shapes     *shapebus.Business
 
 	// Translations is the interface's strings, which the API fills.
 	Translations *translationbus.Business
@@ -107,7 +109,7 @@ const maxJSON = 1 << 20
 func New(cfg Config) (http.Handler, error) {
 	if cfg.Log == nil || cfg.DB == nil || cfg.Render == nil || cfg.Users == nil || cfg.Tenancy == nil || cfg.History == nil ||
 		cfg.Files == nil || cfg.Ledger == nil || cfg.Categories == nil || cfg.Rules == nil || cfg.Budgets == nil || cfg.Receipts == nil || cfg.Export == nil ||
-		cfg.Translations == nil {
+		cfg.Shapes == nil || cfg.Translations == nil {
 		return nil, errors.New("the muxer needs a logger, a database, a renderer, and every domain's business")
 	}
 
@@ -206,6 +208,7 @@ func New(cfg Config) (http.Handler, error) {
 			Log:    cfg.Log,
 			Users:  cfg.Users,
 			Names:  cfg.Tenancy,
+			Shapes: cfg.Shapes,
 			Render: cfg.Render,
 
 			Translators: cfg.Translations,

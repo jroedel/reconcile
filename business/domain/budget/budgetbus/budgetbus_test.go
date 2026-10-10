@@ -80,7 +80,7 @@ func newWorld(t *testing.T) *world {
 	ten := tenancybus.NewBusiness(log, tenancydb.NewStore(db), userbus.NewBusiness(log, users))
 	files := filebus.NewBusiness(log, filedb.NewStore(db), bytes)
 	cats := categorybus.NewBusiness(log, categorydb.NewStore(db), ten)
-	ledger := ledgerbus.NewBusiness(log, ledgerdb.NewStore(db), ten, files, cats, rulebus.NewBusiness(log, ruledb.NewStore(db), ten, cats))
+	ledger := ledgerbus.NewBusiness(log, ledgerdb.NewStore(db), ten, files, cats, rulebus.NewBusiness(log, ruledb.NewStore(db), ten, cats), nil)
 
 	return &world{
 		t: t, ledger: ledger, ten: ten, cats: cats, files: files, users: users,

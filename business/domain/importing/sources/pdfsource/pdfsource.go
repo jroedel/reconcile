@@ -54,15 +54,37 @@ var ErrNoRows = errors.New("no transaction could be found in the PDF")
 const maxContinuations = 3
 
 // Read reads the text of a statement PDF into records, with the balances
-// and the total it states.
+// and the total it states, by the General layout.
 func Read(text string) (importbus.Result, error) {
+	return read(text, general)
+}
+
+// ReadAs reads it by a layout declared for it (layout.go).
+func ReadAs(text string, l Layout) (importbus.Result, error) {
+	v, err := l.compile()
+	if err != nil {
+		return importbus.Result{}, err
+	}
+
+	return read(text, v)
+}
+
+// read is Read by a compiled layout. The document's Structure comes back
+// even when no row could be read, since a layout nothing can be read from
+// is the one most worth knowing about (docs/shapes.md, 1).
+func read(text string, v *vocabulary) (importbus.Result, error) {
 	doc := split(text)
 	doc.dayFirst = dayFirst(doc.lines)
-	start, end, stated := period(doc.lines)
+	start, end, stated, form := period(doc.lines)
 	doc.start, doc.end = start, end
 	doc.furniture = furniture(doc.pages)
+	doc.noise = v.noise
 
-	r := reader{doc: doc}
+	r := reader{doc: doc, v: v}
+	if form != "" {
+		importbus.Add(&r.st.Frame, "period "+form)
+	}
+
 	r.read()
 
 	// Each account's rows on their own, and the parts with none -- a
@@ -84,12 +106,15 @@ func Read(text string) (importbus.Result, error) {
 
 	switch len(accounts) {
 	case 0:
-		return importbus.Result{}, ErrNoRows
+		return importbus.Result{Structure: r.st}, ErrNoRows
 	case 1:
-		return accounts[0].Result, nil
+		out := accounts[0].Result
+		out.Structure = r.st
+
+		return out, nil
 	}
 
-	out := importbus.Result{Accounts: accounts}
+	out := importbus.Result{Accounts: accounts, Structure: r.st}
 	if stated {
 		out.Start, out.End = start, end
 	}
@@ -112,6 +137,9 @@ type document struct {
 	dayFirst   bool
 	start, end time.Time
 	furniture  map[string]bool
+
+	// noise is the layout's lines that are furniture wherever they are.
+	noise *regexp.Regexp
 }
 
 // split cuts the text into pages at pdftotext's form feeds, and the pages
@@ -175,13 +203,6 @@ func indent(s string) int {
 
 // --- page furniture -----------------------------------------------------------
 
-// always is furniture wherever it is: a page count, an address, and a
-// table's "continued".
-//
-// The marks some banks hide in the text around each part of a statement,
-// "*start*deposits and additions", are not on the page at all.
-var always = regexp.MustCompile(`(?i)(\bpage \d+ of \d+\b|^page \d+$|https?://|\bwww\.|^\(?continued\b|^\*(start|end)\*)`)
-
 // furniture is the lines a document repeats on its pages' edges, by their
 // shape: the first and last few lines of each page that are not rows, with
 // every number taken out, so that "Page 1" and "Page 2", or a header that
@@ -244,7 +265,7 @@ func shape(s string) string {
 }
 
 func (d document) isFurniture(s string) bool {
-	return always.MatchString(strings.TrimSpace(s)) || len(d.pages) > 1 && d.furniture[shape(s)]
+	return d.noise.MatchString(strings.TrimSpace(s)) || len(d.pages) > 1 && d.furniture[shape(s)]
 }
 
 // --- reading ------------------------------------------------------------------
@@ -266,6 +287,11 @@ type heading struct {
 type reader struct {
 	doc document
 	res importbus.Result
+
+	// v is the layout's words, and st what the document was seen to use
+	// of them.
+	v  *vocabulary
+	st importbus.Structure
 
 	// table is the last line of headings, and cols where its middle
 	// columns are on the current page.
@@ -373,7 +399,7 @@ func (r *reader) learn(page []line) {
 	full := map[int][]int{}
 
 	for _, l := range page {
-		if h, ok := headings(l.text); ok {
+		if h, ok := r.v.headings(l.text); ok {
 			r.table = &h
 			r.tcols = nil
 
@@ -447,7 +473,8 @@ func (r *reader) line(l line) {
 	lone := r.hasLone
 	r.hasLone = false
 
-	if _, ok := headings(s); ok {
+	if _, ok := r.v.headings(s); ok {
+		importbus.Add(&r.st.Frame, r.v.headingWords(s))
 		r.open = -1
 
 		return
@@ -504,17 +531,6 @@ func (r *reader) line(l line) {
 	r.continuation(s)
 }
 
-// markers are the descriptions of rows that state a balance rather than
-// move money.
-var (
-	openingLabel = regexp.MustCompile(`(?i)\b(previous|beginning|opening|starting) (statement )?balance\b|\bbalance (brought )?forward\b`)
-	closingLabel = regexp.MustCompile(`(?i)\b(new|ending|closing) (statement )?balance\b`)
-	totalLabel   = regexp.MustCompile(`(?i)\b(total|net) activity\b`)
-
-	// pendingLabel is a total of what has not posted yet.
-	pendingLabel = regexp.MustCompile(`(?i)\bpending (purchases|charges|transactions|activity|total|amount)\b|\b(compras|transa[çc][õo]es|lan[çc]amentos) pendentes\b|\b(compras|transacciones|cargos) pendientes\b`)
-)
-
 // row takes a line that is a row.
 func (r *reader) row(l line, rw row) {
 	r.open = -1
@@ -542,13 +558,16 @@ func (r *reader) row(l line, rw row) {
 	last := rw.figures[len(rw.figures)-1].amount
 
 	switch {
-	case openingLabel.MatchString(desc):
+	case r.v.opening.MatchString(desc):
+		importbus.Add(&r.st.Frame, r.v.opening.FindString(desc))
+
 		if !r.res.Opening.Known {
 			r.res.Opening = importbus.Balance{Amount: last, AsOf: date, Known: true}
 		}
 
 		return
-	case closingLabel.MatchString(desc):
+	case r.v.closing.MatchString(desc):
+		importbus.Add(&r.st.Frame, r.v.closing.FindString(desc))
 		r.res.Closing = importbus.Balance{Amount: last, AsOf: date, Known: true}
 
 		return
@@ -633,7 +652,10 @@ func (r *reader) continuation(s string) {
 // a summary box puts several on a line -- "New balance $1,234.56  Minimum
 // payment $25.00" -- and the one after the label is the label's.
 func (r *reader) stated(s string) {
-	at := func(re *regexp.Regexp) (money.Amount, bool) {
+	// A label that is followed by an amount is one the layout uses: the
+	// label's words go in its structure, in the frame unless only some
+	// months print it.
+	at := func(re *regexp.Regexp, into *[]string) (money.Amount, bool) {
 		loc := re.FindStringIndex(s)
 		if loc == nil {
 			return 0, false
@@ -645,23 +667,28 @@ func (r *reader) stated(s string) {
 		}
 
 		a, err := parseFigure(m[1])
+		if err == nil {
+			importbus.Add(into, s[loc[0]:loc[1]])
+		}
 
 		return a, err == nil
 	}
 
-	if a, ok := at(openingLabel); ok && !r.res.Opening.Known {
+	v, frame := r.v, &r.st.Frame
+
+	if a, ok := at(v.opening, frame); ok && !r.res.Opening.Known {
 		r.res.Opening = importbus.Balance{Amount: a, AsOf: r.doc.start, Known: true}
 	}
 
-	if a, ok := at(closingLabel); ok && !r.res.Closing.Known {
+	if a, ok := at(v.closing, frame); ok && !r.res.Closing.Known {
 		r.res.Closing = importbus.Balance{Amount: a, AsOf: r.doc.end, Known: true}
 	}
 
-	if a, ok := at(totalLabel); ok && !r.res.Total.Known {
+	if a, ok := at(v.total, frame); ok && !r.res.Total.Known {
 		r.res.Total = importbus.Total{Amount: a, Known: true}
 	}
 
-	if a, ok := at(pendingLabel); ok && !r.res.Pending.Known {
+	if a, ok := at(v.pendingTotal, &r.st.Sections); ok && !r.res.Pending.Known {
 		r.res.Pending = importbus.Total{Amount: a, Known: true}
 	}
 }
@@ -678,18 +705,11 @@ func clip(s string) string {
 
 // --- headings -----------------------------------------------------------------
 
-var (
-	dateHeading   = regexp.MustCompile(`(?i)\bdate\b`)
-	descHeading   = regexp.MustCompile(`(?i)^(transaction )?(description|details|payee|merchant|narrative|transaction)\b`)
-	amountHeading = regexp.MustCompile(`(?i)\b(amount|debits?|credits?|withdrawals?|deposits?|charges?|payments?|balance|money)\b`)
-	personHeading = regexp.MustCompile(`(?i)^(name|card ?member|card ?holder|member|employee|user|spender)\b`)
-)
-
 // headings reads a line of column headings: a date, a description, and
 // the amounts, each apart.
-func headings(s string) (table, bool) {
+func (v *vocabulary) headings(s string) (table, bool) {
 	cs := cells(s, 0)
-	if len(cs) < 3 || !dateHeading.MatchString(cs[0].s) {
+	if len(cs) < 3 || !v.dateHeading.MatchString(cs[0].s) {
 		return table{}, false
 	}
 
@@ -702,17 +722,40 @@ func headings(s string) (table, bool) {
 
 	for _, c := range cs {
 		switch {
-		case !pastDate && dateHeading.MatchString(c.s):
+		case !pastDate && v.dateHeading.MatchString(c.s):
 			continue
-		case amountHeading.MatchString(c.s) && !descHeading.MatchString(c.s):
+		case v.amountHeading.MatchString(c.s) && !v.descHeading.MatchString(c.s):
 			amounts = true
 		case amounts:
 		default:
 			pastDate = true
-			hasDesc = hasDesc || descHeading.MatchString(c.s)
-			t.middle = append(t.middle, heading{col: c.col, person: personHeading.MatchString(c.s)})
+			hasDesc = hasDesc || v.descHeading.MatchString(c.s)
+			t.middle = append(t.middle, heading{col: c.col, person: v.personHeading.MatchString(c.s)})
 		}
 	}
 
 	return t, hasDesc && amounts
+}
+
+// headingWords is a line of column headings as the layout's structure
+// keeps it: the words of each heading the layout recognized, and "…" for
+// one it did not, which might be anything.
+func (v *vocabulary) headingWords(s string) string {
+	var out []string
+
+	for _, c := range cells(s, 0) {
+		word := "…"
+
+		for _, re := range []*regexp.Regexp{v.dateHeading, v.descHeading, v.amountHeading, v.personHeading} {
+			if w := re.FindString(c.s); w != "" {
+				word = w
+
+				break
+			}
+		}
+
+		out = append(out, word)
+	}
+
+	return strings.Join(out, " | ")
 }

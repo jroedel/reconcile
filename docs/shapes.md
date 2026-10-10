@@ -52,6 +52,45 @@ imported." When a declared shape stops matching -- the bank changed its
 layout -- its files become new, the sighting appears, and the general
 reader carries them meanwhile when it can.
 
+### As built (the first pull request)
+
+- **The signature** is a hash of the format, the producer and the
+  layout's **frame**: the words every month of it prints -- its column
+  headings, its labels for the opening and closing balance, the total and
+  the account number, and the form of its period line ("M #, # through
+  M #, #"). Section headings are kept beside it but are not part of it,
+  since a month without checks has no "Checks paid" heading and is still
+  the same layout; the pending total's label likewise. Checked locally on
+  the treasurer's real files, without them entering the repository: 26
+  months of a consolidated checking statement are one signature, with 9
+  to 11 section headings among them, and 12 printed card activity pages
+  are another.
+- **Only words the reader's own patterns matched** are kept, never a
+  whole line: a heading's matched words, a label's, a column heading's
+  (an unrecognized column is "…"), each lower-cased with every digit a
+  "#". A cardholder's name beside a heading, a payee, an amount or an
+  account's digits cannot come with them. A CSV's column headings are kept
+  only when its date and amount columns were found by name and no heading
+  has three digits in a row, since a file without a header row has a row
+  taken for one; OFX gives its dialect and its `ORG`.
+- **The producer** is the only thing taken from a PDF's metadata
+  (`pdftext.Producer`, poppler's `pdfinfo`), digits taken out, so that an
+  engine's next version is the same layout. The author and title can name
+  a person and are never read.
+- **Proven** is a check of the rows against the document's own figures
+  alone, apart from the check the preview shows, which includes balances a
+  person typed. A new PDF layout needs it; the preview then offers no
+  balances to type, and says why it cannot be imported and that the
+  administrator can see the layout arrived.
+- **Sightings** (`business/domain/shape`) count files by their content
+  hash, so a file previewed many times, or sent by two people, is one;
+  a file is "balanced" once any preview of it was proven. They belong to
+  no account or organization. The administrator's page lists them, most
+  files first.
+- **The general reader's words** are `pdfsource.General`, a `Layout`;
+  `pdfsource.ReadAs` reads by another. Its JSON form and the matcher that
+  chooses a declaration are the next pull request.
+
 ## 2. Declaring a shape
 
 A declaration is data, not code: what the reader already decides in Go,

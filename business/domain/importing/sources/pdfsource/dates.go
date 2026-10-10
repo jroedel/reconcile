@@ -186,7 +186,12 @@ var connectors = map[string]bool{"to": true, "through": true, "thru": true, "unt
 // them. Its end is also what gives a year to rows that print none. With no
 // period stated, the year before the latest date with a year stands in
 // for that, and stated is false: it is no period to put on a statement.
-func period(lines []line) (start, end time.Time, stated bool) {
+//
+// form is how the period was written, for the layout's structure: each
+// date's letters an "M" and its digits a "#", and what stood between them
+// -- "M #, # through M #, #" -- so that every month of one layout writes
+// it the same.
+func period(lines []line) (start, end time.Time, stated bool, form string) {
 	df := dayFirst(lines)
 
 	for _, l := range lines {
@@ -209,7 +214,9 @@ func period(lines []line) (start, end time.Time, stated bool) {
 			end := time.Date(b.y, b.m, b.d, 0, 0, 0, 0, time.UTC)
 
 			if !end.Before(start) && end.Sub(start) < 400*24*time.Hour {
-				return start, end, true
+				form := dateForm(l.text[locs[i][0]:locs[i][1]]) + " " + between + " " + dateForm(l.text[locs[i+1][0]:locs[i+1][1]])
+
+				return start, end, true, form
 			}
 		}
 	}
@@ -228,8 +235,18 @@ func period(lines []line) (start, end time.Time, stated bool) {
 	}
 
 	if latest.IsZero() {
-		return time.Time{}, time.Time{}, false
+		return time.Time{}, time.Time{}, false, ""
 	}
 
-	return latest.AddDate(-1, 0, 0), latest, false
+	return latest.AddDate(-1, 0, 0), latest, false, ""
+}
+
+var (
+	letterRuns = regexp.MustCompile(`[A-Za-z]+`)
+	numberRuns = regexp.MustCompile(`\d+`)
+)
+
+// dateForm is a date as its layout writes it, with no date in it.
+func dateForm(s string) string {
+	return numberRuns.ReplaceAllString(letterRuns.ReplaceAllString(s, "M"), "#")
 }

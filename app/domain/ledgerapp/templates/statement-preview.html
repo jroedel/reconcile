@@ -153,9 +153,10 @@
     {{if $c.OK}}<p class="notice ok">{{t "The rows add up to the total the document states. No row is missing."}}</p>
     {{else}}<p class="notice" role="alert">{{t "The rows add up to {expected}, but the document says they total {stated}. A row may be missing, or one could not be read." "expected" (money $c.Expected $cur) "stated" (money $c.Stated $cur)}}</p>{{end}}
     <p class="hint">{{t "It states no balances. Type the opening and closing balances from the statement to check it against them instead."}}</p>
-  {{else}}
+  {{else if not $d.Unproven}}
     <p>{{t "This file has no balance on each row. Type the opening and closing balances from the statement to check it, or import it unchecked."}}</p>
   {{end}}
+  {{if not $d.Unproven}}
   <div class="field">
     <label for="opening">{{t "Opening balance"}}</label>
     <input id="opening" name="opening" type="text" inputmode="decimal" value="{{$v.Opening}}">
@@ -164,6 +165,12 @@
     <label for="closing">{{t "Closing balance"}}</label>
     <input id="closing" name="closing" type="text" inputmode="decimal" value="{{$v.Closing}}">
   </div>
+  {{end}}
+{{end}}
+{{if and $pdf $d.Result.Records (not $c.Failed)}}
+  {{if not $d.Shape.New}}<p class="hint">{{t "Read as: {layout}" "layout" $d.Shape.Declared}}</p>
+  {{else if $d.Proven}}<p class="hint">{{t "This layout of statement is new to this site, so it was read by the general reader. Its own figures balance, which shows every row was read, so it can be imported."}}</p>
+  {{else}}<p class="notice" role="alert">{{t "This layout of statement is new to this site, and it states nothing to check that every row was read: no balance on its rows, no opening and closing balance, no total. So it cannot be imported. The site's administrator can see that a statement laid out like this arrived, though never what is in it, so that the site can be taught to read it. Meanwhile, download the statement from your bank's website as CSV or OFX, if it offers them."}}</p>{{end}}
 {{end}}
 {{if $d.Statement.ID.String}}<p>{{t "{new} new transactions, and {already} that are here already and will be left as they are." "new" $d.Statement.Added "already" $d.Statement.Already}}</p>
 {{with $d.Statement.Doubts}}

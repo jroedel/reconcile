@@ -66,4 +66,18 @@
 {{if .Accounts}}<ul class="list">{{range .Accounts}}<li>{{.Name}}{{if .Archived}} <span class="badge">{{t "archived"}}</span>{{end}}</li>{{end}}</ul>
 {{else}}<p class="hint">{{t "None yet."}}</p>{{end}}
 </section>
+
+<section class="card" id="layouts">
+<h2>{{t "Statement layouts seen"}}</h2>
+<p>{{t "Layouts of statements that people have uploaded and that no built-in description covers. Each was read by the general reader. Only the words its layout uses are kept: never a transaction, an amount, a name or a number, and never whose file it was."}}</p>
+{{if .Sightings}}<ul class="list">
+{{range .Sightings}}<li>
+  <div class="who-line"><strong>{{.Format}}</strong>{{with .Producer}} <span class="hint">{{.}}</span>{{end}} <code>{{.Signature}}</code></div>
+  <p class="hint">{{t "Files: {files}. Balanced by their own figures: {balanced}. First seen {first}, last seen {last}." "files" .Files "balanced" .Balanced "first" (.First.Format "2006-01-02") "last" (.Last.Format "2006-01-02")}}</p>
+  {{if .Frame}}<p>{{t "In every file:"}} {{range $i, $w := .Frame}}{{if $i}} · {{end}}<code>{{$w}}</code>{{end}}</p>{{end}}
+  {{if .Sections}}<p>{{t "Sections:"}} {{range $i, $w := .Sections}}{{if $i}} · {{end}}<code>{{$w}}</code>{{end}}</p>{{end}}
+</li>
+{{end}}</ul>
+{{else}}<p class="hint">{{t "None yet."}}</p>{{end}}
+</section>
 {{end}}{{end}}
