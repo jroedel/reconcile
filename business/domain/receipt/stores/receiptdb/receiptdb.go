@@ -33,9 +33,11 @@ var Expected = sqldb.Expected{
 	"receipts":      {"id", "account_id", "project_id", "uploaded_by", "spent_on", "amount", "merchant", "note", "created_at", "removed_at", "check_number", "check_image", "check_memo", "check_written_on"},
 	"receipt_files": {"receipt_id", "position", "file_id"},
 	"receipt_links": {"receipt_id", "transaction_id", "linked_by", "linked_at"},
+	"check_inbox":   {"id", "user_id", "file_id", "added_at", "removed_at", "filed_at", "receipt_id"},
 }
 
-// Init creates the tables. After ledgerdb and filedb, which they reference.
+// Init creates the tables. After userdb, ledgerdb and filedb, which they
+// reference.
 //
 // The inbox is two columns, as a category's owner is, so that each is a
 // foreign key; exactly one is set. A link goes with its transaction (ON
@@ -109,7 +111,13 @@ CREATE INDEX IF NOT EXISTS receipt_links_transaction ON receipt_links (transacti
 		return err
 	}
 
-	return sqldb.AddColumn(ctx, db, "receipts", "check_written_on", "TEXT NOT NULL DEFAULT ''")
+	if err := sqldb.AddColumn(ctx, db, "receipts", "check_written_on", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+
+	// A person's own check inbox (inbox.go): a new table, not a later
+	// column, so it needs nothing but its own CREATE.
+	return initInbox(ctx, db)
 }
 
 func home(s types.Scope) (account, project any) {
@@ -156,32 +164,41 @@ func (s *Store) inTx(ctx context.Context, ev *eventbus.Event, fn func(tx *sql.Tx
 func (s *Store) Create(ctx context.Context, receipts []receiptbus.Receipt, ev eventbus.Event) error {
 	return s.inTx(ctx, &ev, func(tx *sql.Tx) error {
 		for _, r := range receipts {
-			account, project := home(r.Home)
-
-			if _, err := tx.ExecContext(ctx, `
-INSERT INTO receipts (id, account_id, project_id, uploaded_by, spent_on, amount, merchant, note, created_at, check_number, check_image, check_memo, check_written_on)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-				r.ID.String(), account, project, r.UploadedBy.String(), r.SpentOn.String(), amountOf(r.Details),
-				r.Merchant, r.Note, r.CreatedAt.UnixMilli(), r.Check, r.CheckImage, r.Memo, r.WrittenOn.String()); err != nil {
-				return fmt.Errorf("storing a receipt: %w", err)
-			}
-
-			for i, f := range r.Files {
-				if _, err := tx.ExecContext(ctx, `INSERT INTO receipt_files (receipt_id, position, file_id) VALUES (?, ?, ?)`,
-					r.ID.String(), i, f.ID.String()); err != nil {
-					return fmt.Errorf("storing a receipt's file: %w", err)
-				}
-			}
-
-			for _, l := range r.Links {
-				if err := link(ctx, tx, r.ID, l); err != nil {
-					return err
-				}
+			if err := insert(ctx, tx, r); err != nil {
+				return err
 			}
 		}
 
 		return nil
 	})
+}
+
+// insert stores one new receipt with its files and links.
+func insert(ctx context.Context, tx *sql.Tx, r receiptbus.Receipt) error {
+	account, project := home(r.Home)
+
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO receipts (id, account_id, project_id, uploaded_by, spent_on, amount, merchant, note, created_at, check_number, check_image, check_memo, check_written_on)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.ID.String(), account, project, r.UploadedBy.String(), r.SpentOn.String(), amountOf(r.Details),
+		r.Merchant, r.Note, r.CreatedAt.UnixMilli(), r.Check, r.CheckImage, r.Memo, r.WrittenOn.String()); err != nil {
+		return fmt.Errorf("storing a receipt: %w", err)
+	}
+
+	for i, f := range r.Files {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO receipt_files (receipt_id, position, file_id) VALUES (?, ?, ?)`,
+			r.ID.String(), i, f.ID.String()); err != nil {
+			return fmt.Errorf("storing a receipt's file: %w", err)
+		}
+	}
+
+	for _, l := range r.Links {
+		if err := link(ctx, tx, r.ID, l); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 type execer interface {

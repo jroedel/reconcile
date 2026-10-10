@@ -6,7 +6,9 @@
 // volunteer with a role on nothing else can put it -- or straight onto a
 // transaction. Until it is attached to one it is waiting. Attaching is a
 // person's decision: suggestions are offered (the same amount, within a few
-// days), and nothing is attached on its own.
+// days), and nothing is attached on its own. The images of checks may also
+// wait in their uploader's own check inbox until each is filed under its
+// account (inbox.go).
 //
 // # Who may see one
 //
@@ -60,6 +62,10 @@ var (
 
 	// ErrRemoved is attaching a receipt that was removed.
 	ErrRemoved = errors.New("the receipt was removed")
+
+	// ErrFiled is filing a check from a person's own inbox that is filed
+	// already, or removed (inbox.go).
+	ErrFiled = errors.New("the check was filed already")
 )
 
 // The actions written into an inbox's history. Attaching is not one: the
@@ -72,6 +78,10 @@ const (
 	// CheckRead is a check's image read through the API (ReadCheck): what
 	// Claude says a check is, which the history keeps beside who said it.
 	CheckRead eventbus.Action = "receipt.check_read"
+
+	// Filed is a check's image filed into an account from its uploader's
+	// own check inbox (inbox.go), by them on its page or by their Claude.
+	Filed eventbus.Action = "receipt.filed"
 )
 
 // Accept is the kinds of file a receipt may be.
@@ -196,6 +206,17 @@ type Storer interface {
 	// and the history when there is a line to write, in one transaction
 	// (checks.go).
 	SaveCheck(ctx context.Context, r Receipt, ev *eventbus.Event) error
+
+	// The check inbox of a person (inbox.go): adding to it, reading it,
+	// asking whether it holds some bytes, removing one and bringing it
+	// back, and filing one, which makes it a receipt with its history in
+	// one transaction, or is ErrFiled when it is not waiting.
+	AddInboxChecks(ctx context.Context, checks []InboxCheck) error
+	InboxChecks(ctx context.Context, user types.ID) ([]InboxCheck, error)
+	InboxCheckByID(ctx context.Context, id types.ID) (InboxCheck, error)
+	InboxHolds(ctx context.Context, user types.ID, sha256 string) (bool, error)
+	SetInboxCheckRemoved(ctx context.Context, id types.ID, at time.Time) error
+	FileInboxCheck(ctx context.Context, id types.ID, r Receipt, ev eventbus.Event) error
 }
 
 // Business is the set of operations on receipts.

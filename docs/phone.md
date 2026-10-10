@@ -29,6 +29,7 @@ transaction that paid it, and this plan takes them in order:
 | Who reads a check | **Claude**, through two MCP tools: one that shows a receipt's image, one that says what a check is. The site does no OCR of its own |
 | What Claude sees of a check | **The whole image**, the MICR line included. That line prints the routing and account number, which then reach claude.ai; it also prints the check's number, a second reading to hold the first to. The person's own Claude, acting as them, may see what they may see on the site |
 | How a reading is checked | **By the bank's amount.** Claude's reading of a check is accepted only when the amount it read is the amount of the account's transaction with that number. A misread digit becomes a refusal Claude reports, never a check on the wrong transaction |
+| A stack from several accounts (2026-10-10, issue #72) | **A person's own check inbox**, for the images of checks only, beside an account's check images, which stay. Each check is filed under its account afterwards: by Claude, from the account number on its face, or by the person, choosing the account (8) |
 
 ## 1. Checks that wait
 
@@ -272,9 +273,82 @@ and cleared on the 24th showed the 24th, and its memo line ("Cleaning",
   needs a plan of its own: how two spellings of one payee become one, and
   whose the W-9 flag is.
 
+## 8. A person's own check inbox
+
+Every way in so far asks for the account first. A treasurer with three
+checking accounts has one stack of checks at a month's end, and sorting it
+by account before sharing it is the work the stack was meant to save --
+when every check already says its account, in the line of digits at its
+foot.
+
+**Why a person's inbox, and why only checks.** An inbox that only its
+uploader can see is a place where a receipt can be stranded: forgotten,
+or left behind by somebody who loses their role, where nobody else -- not
+the treasurer, not the site administrator -- will ever find it. That is
+the design's test failing a month later (`docs/design.md`). So ordinary
+receipts keep going into an account's or a project's inbox, where the
+treasurer sees what a volunteer put there. A check is the exception: its
+account is printed on it, and its uploader, or their Claude, files it the
+same day. An account's check images stay too, for somebody with several
+accounts and no Claude who would rather choose there.
+
+**Why not a receipt with a third kind of home.** A receipt's home is an
+account or a project, held by a CHECK in the table that SQLite can drop
+only by rebuilding it, and every page that names a receipt's inbox would
+learn a kind of inbox only one person may see. The statement inbox
+already has the right shape (`docs/books-api.md`, "The inbox"): a
+person's list of files, each becoming something in an account when it is
+filed.
+
+- **Getting in**: "Your checks, from any account" first on the share page,
+  for anybody who may add receipts to an account; a form on the inbox's
+  own page, `/checks`, linked from the front page and from an account's
+  check images. Sending again is safe, by content.
+- **Filing by Claude**: `read_check` on one of these takes the account
+  number as printed. Its last four digits are compared with those the
+  site keeps of each account the person may add receipts to: one account,
+  and it is filed there and read as a check image of that account, held
+  to the bank's amount; none, or several, or only accounts the person may
+  read, and nothing moves, with the reason. Everything that can refuse is
+  asked before anything moves.
+- **Filing by a person**: on `/checks`, an account for each, and a number
+  if they like, as adding it to the account's check images would.
+- **Nobody else** sees them, the site administrator included, until they
+  are filed; then they are receipts of the account like any other.
+
+### As built
+
+- **`check_inbox`** (`receiptdb/inbox.go`): an image, whose it is, when it
+  was added, removed and filed, and the receipt it became. A new table,
+  not a later column. A filed item keeps pointing at its receipt, so the
+  page can say where each went.
+- **`receiptbus/inbox.go`**: `AddToCheckInbox`, `CheckInbox`,
+  `CheckInboxHolds`, `InboxCheckFile`, `SetInboxCheckRemoved` (while it
+  waits), `FileInboxCheck` and `ReadInboxCheck`. Filing is one
+  transaction that claims the item with `UPDATE … WHERE filed_at IS NULL`,
+  so the person's filing and their Claude's at the same moment make one
+  receipt; the second is `ErrFiled`.
+- **The account number** goes no further than the comparison. It is not
+  stored or logged, and a refusal names the account by its last four
+  digits, as the site does. **The routing number is not asked for**: the
+  site keeps none for an account, so it would be a field that checks
+  nothing.
+- **The history**: filing writes `receipt.filed` in the account's,
+  "filed the image of check 1176 here from their own checks", with the key
+  it came through; Claude's reading adds its `receipt.check_read` line
+  after it.
+- **The API** keeps one routine for Claude rather than adding tools:
+  `list_waiting_receipts` lists these after the receipts, `your_checks`
+  true, with an id `get_receipt_image` and `read_check` take as they take
+  a receipt's; `read_check` gains `account_number`, needed for these
+  only.
+- **The pages** are under `/checks`: `/receipts/checks/{id}/image` would
+  overlap `/receipts/{id}/files/{n}` with neither more specific, which the
+  muxer refuses.
+
 ## Build order
 
-Six pull requests after this plan, each useful when merged:
+Pull requests after this plan, each useful when merged:
 
 1. **Checks that wait** (1).
 2. **Matched when the check clears** (2).
@@ -283,3 +357,5 @@ Six pull requests after this plan, each useful when merged:
 4. **A photo a request** (4).
 5. **Claude sees a receipt** (5).
 6. **Claude reads a check** (6).
+7. **What else a check says**, and the checks outstanding (7), from issue #71.
+8. **A person's own check inbox** (8), after the plan, from issue #72.

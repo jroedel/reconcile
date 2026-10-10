@@ -109,6 +109,10 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 	admin.post("/sign-in/first", url.Values{"email": {"admin@example.org"}, "secret": {secret}})
 
 	orgID := strings.TrimPrefix(e.org, "/orgs/")
+	accountID := strings.TrimPrefix(e.account, "/accounts/")
+
+	// A check in the owner's own checks, which are nobody else's.
+	check := checked(t, e.owner)
 
 	gets := []string{
 		e.org, e.account, e.project, e.ownAccount, e.ownProject,
@@ -124,6 +128,7 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		e.account + "/export?from=2026-07&to=2026-07", e.ownAccount + "/export?from=2026-07&to=2026-07",
 		e.project + "/export", e.ownProject + "/export",
 		e.account + "/receipts", e.project + "/receipts", e.ownAccount + "/receipts", e.ownProject + "/receipts",
+		check + "/image", check + "/image/small",
 	}
 
 	type write struct {
@@ -145,6 +150,8 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		{e.org + "/budget/copy?year=2027", nil},
 		{e.org + "/budget/year-start", url.Values{"month": {"7"}}},
 		{inboxed(t, h, e.owner), nil},
+		{check + "/file", url.Values{"account": {accountID}}},
+		{check + "/remove", url.Values{"removed": {"1"}}},
 	}
 
 	for _, account := range []string{e.account, e.ownAccount} {

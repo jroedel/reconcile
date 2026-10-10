@@ -35,14 +35,19 @@ type Overviewer interface {
 
 // view is the front page's data. Overview is empty for somebody signed out.
 // Waiter is the receipts waiting for a match (receiptbus): the overview says
-// how many, so that a treasurer sees there is matching to do.
+// how many, so that a treasurer sees there is matching to do; and the
+// person's own checks waiting to be filed under their accounts.
 type Waiter interface {
 	Waiting(ctx context.Context, actor types.ID) ([]receiptbus.Receipt, error)
+	CheckInbox(ctx context.Context, actor types.ID) (receiptbus.CheckInbox, error)
 }
 
 type view struct {
 	Overview tenancybus.Overview
 	Waiting  int
+
+	// Checks is how many of the person's own checks wait to be filed.
+	Checks int
 }
 
 // Routes mounts the front page. {$} so that it is "/" and nothing else; every
@@ -68,6 +73,12 @@ func Routes(mux *http.ServeMux, log *slog.Logger, render Renderer, overview Over
 				v.Waiting = len(waiting)
 			} else {
 				log.Error("the waiting receipts could not be read", "request_id", web.RequestIDFrom(r.Context()), "error", err)
+			}
+
+			if checks, err := receipts.CheckInbox(r.Context(), u.ID); err == nil {
+				v.Checks = len(checks.Waiting)
+			} else {
+				log.Error("the person's own checks could not be read", "request_id", web.RequestIDFrom(r.Context()), "error", err)
 			}
 		}
 

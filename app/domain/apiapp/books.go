@@ -86,6 +86,13 @@ type Receipts interface {
 	ReadCheck(ctx context.Context, now time.Time, actor, id types.ID, rd receiptbus.CheckReading) (receiptbus.Receipt, error)
 	Detach(ctx context.Context, actor, receiptID, transactionID types.ID) (receiptbus.Receipt, error)
 	OutstandingChecks(ctx context.Context, actor, accountID types.ID, by types.Date) (receiptbus.Outstanding, error)
+
+	// The person's own check inbox (receiptbus, inbox.go): its checks are
+	// among the waiting ones, by an id that get_receipt_image and
+	// read_check take as they take a receipt's.
+	CheckInbox(ctx context.Context, actor types.ID) (receiptbus.CheckInbox, error)
+	InboxCheckFile(ctx context.Context, actor, id types.ID, n int) (filebus.File, error)
+	ReadInboxCheck(ctx context.Context, now time.Time, actor, id types.ID, rd receiptbus.CheckReading, face receiptbus.OnFace) (receiptbus.Receipt, error)
 }
 
 // History is what a person changed through a key.
@@ -243,8 +250,8 @@ func (a app) bookEndpoints() []Endpoint {
 		},
 		{
 			Method: http.MethodGet, Path: Prefix + "/receipts/waiting", Scope: read, Tool: "list_waiting_receipts",
-			Summary: "Receipts waiting for a match in the inboxes you may see, each with the transactions it may belong to: the same amount within a few days, in accounts you may attach receipts on.",
-			Returns: "{receipts: [{id, spent_on, amount, merchant, note, pages, uploaded, url, check_image, check, suggestions: [transaction]}]}; check_image is true for the image of a check, and check its number once somebody has said it",
+			Summary: "Receipts waiting for a match in the inboxes you may see, each with the transactions it may belong to: the same amount within a few days, in accounts you may attach receipts on. Also the images of checks in your own checks (your_checks true), shared from any account and waiting to be filed under the one they are drawn on: read each with read_check and the account number printed on it.",
+			Returns: "{receipts: [{id, spent_on, amount, merchant, note, pages, uploaded, url, check_image, check, your_checks, suggestions: [transaction]}]}; check_image is true for the image of a check, and check its number once somebody has said it; your_checks is true for one in your own checks, which is in no account yet",
 			handler: a.waitingReceipts,
 		},
 		{
@@ -601,6 +608,7 @@ func (a app) bookRefused(w http.ResponseWriter, r *http.Request, err error, what
 	part, isPart := errors.AsType[ledgerbus.Invalid](err)
 	receipt, isReceipt := errors.AsType[receiptbus.Invalid](err)
 	differs, isDiffers := errors.AsType[receiptbus.AmountDiffers](err)
+	unknown, isUnknown := errors.AsType[receiptbus.AccountUnknown](err)
 
 	switch {
 	case err == nil:
@@ -617,6 +625,10 @@ func (a app) bookRefused(w http.ResponseWriter, r *http.Request, err error, what
 		web.WriteJSON(w, http.StatusConflict, web.Problem("", "That check's image is attached to a transaction already. If it is on the wrong one, detach_receipt it first, then read it again."))
 	case isDiffers:
 		web.WriteJSON(w, http.StatusConflict, web.Problem("amount", fmt.Sprintf("The bank paid check %s for %s, and you read %s. Nothing was changed. Look at the image again: one of the number's digits or the amount's is misread. If the image really says %s, tell the person rather than reading it again.", differs.Number, differs.Bank, differs.Read, differs.Read)))
+	case errors.Is(err, receiptbus.ErrFiled):
+		web.WriteJSON(w, http.StatusConflict, web.Problem("", "That check was filed under its account already, or the person removed it from their checks. list_waiting_receipts says what is still waiting."))
+	case isUnknown:
+		web.WriteJSON(w, http.StatusConflict, web.Problem("account_number", accountUnknown(unknown)))
 	case isReceipt:
 		web.WriteJSON(w, http.StatusUnprocessableEntity, web.Problem(receipt.Field, "The "+receipt.Field+" will not do: "+receipt.Err.Error()+"."))
 	case isPart:
@@ -637,6 +649,20 @@ func (a app) bookRefused(w http.ResponseWriter, r *http.Request, err error, what
 	}
 
 	return true
+}
+
+// accountUnknown is why a check in the person's own checks was not filed
+// by the account number read off it. It names the account by its last
+// four digits, as the site does, and never says the number back.
+func accountUnknown(e receiptbus.AccountUnknown) string {
+	switch {
+	case e.ReadOnly:
+		return fmt.Sprintf("The account ending %s is one the person may only read, so the check was not filed. Nothing was changed. Tell them: somebody who keeps that account's books can give them a role that adds receipts, or file it themselves.", e.Last4)
+	case e.Matches > 1:
+		return fmt.Sprintf("%d of the person's accounts end %s, so which one the check is drawn on is not certain, and it was not filed. Nothing was changed. Tell the person; they can choose the account for it on their checks' page.", e.Matches, e.Last4)
+	}
+
+	return fmt.Sprintf("No account the person may add receipts to ends %s. Nothing was changed. Look at the line of digits at the check's foot again: the account number is the group after the routing number. If it really ends %s, tell the person: the account may not be on the site, or its last four digits not set on its page.", e.Last4, e.Last4)
 }
 
 // pathID reads an identifier from the path, answering 404 itself when it
@@ -1553,6 +1579,19 @@ func (a app) waitingReceipts(w http.ResponseWriter, r *http.Request) {
 		out[i]["suggestions"] = rd.txs(suggestions[rc.ID], tenancybus.Account{})
 	}
 
+	mine, err := a.books.Receipts.CheckInbox(r.Context(), rd.me)
+	if a.bookRefused(w, r, err, "receipt") {
+		return
+	}
+
+	for _, c := range mine.Waiting {
+		out = append(out, map[string]any{
+			"id": c.ID.String(), "merchant": "", "note": "", "pages": 1,
+			"uploaded": c.AddedAt.UTC().Format(time.RFC3339), "url": rd.url("/checks"),
+			"check_image": true, "check": "", "your_checks": true, "suggestions": []any{},
+		})
+	}
+
 	rd.done(w, r, map[string]any{"receipts": out})
 }
 
@@ -1579,8 +1618,16 @@ func (a app) receiptImage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rd := a.reader(r)
+	at := rd.url("/receipts/" + id.String())
 
+	// A receipt's page, or else the image of a check in the person's own
+	// checks, which is in no account yet.
 	f, err := a.books.Receipts.File(r.Context(), rd.me, id, page-1)
+	if errors.Is(err, receiptbus.ErrNotFound) {
+		f, err = a.books.Receipts.InboxCheckFile(r.Context(), rd.me, id, page-1)
+		at = rd.url("/checks")
+	}
+
 	if a.bookRefused(w, r, err, "receipt, or no such page of it") {
 		return
 	}
@@ -1604,7 +1651,7 @@ func (a app) receiptImage(w http.ResponseWriter, r *http.Request) {
 		pic, err = a.books.Pictures.Open(f)
 	default:
 		web.WriteJSON(w, http.StatusUnsupportedMediaType, web.Problem("page",
-			fmt.Sprintf("That page is a %s, which cannot be shown as an image here. A person can look at it on the receipt's page: %s", kindName(f.ContentType), rd.url("/receipts/"+id.String()))))
+			fmt.Sprintf("That page is a %s, which cannot be shown as an image here. A person can look at it on the receipt's page: %s", kindName(f.ContentType), at)))
 
 		return
 	}

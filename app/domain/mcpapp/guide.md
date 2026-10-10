@@ -92,10 +92,14 @@ what the person's role lets them change; the tools you have say which.
 
 "Read the checks I shared", "match this month's checks": the person
 screenshots checks from their bank's app and shares them to Reconcile, where
-each waits as the image of a check until its number is said.
+each waits as the image of a check until its number is said: in an
+account's check images, or in their own checks, a stack from any of their
+accounts that nobody else sees until each is filed under its account.
 
 1. **list_waiting_receipts**: those with `check_image` true and no `check`
    are waiting for you; those with a `check` are waiting for the bank.
+   Those with `your_checks` true are in the person's own checks, and are
+   in no account yet.
 2. **get_receipt_image** on each, and read it: the number (top right, and
    again in the line of digits at the foot, where the account's numbers are
    too -- never repeat those), whom it is paid to, the amount, the date
@@ -116,6 +120,13 @@ each waits as the image of a check until its number is said.
    payee, shown in the month; there is no need to repeat the memo as its
    description. **set_description** is for when the person wants other
    words for it.
+   For one in the person's own checks, give `account_number` too: the
+   group of digits after the routing number in the line at the check's
+   foot. It is filed under the account whose last four digits it ends in,
+   then read there. When no account of theirs ends like it, or several
+   do, nothing moves and the answer says why; tell the person, by the
+   last four digits only, and they can choose the account on their
+   checks' page.
 4. Say how many were attached, which wait for the bank, and which you could
    not read or the bank disagreed with, each with its `url`. A
    screenshot that is not a check at all is the person's to remove.

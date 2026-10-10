@@ -135,13 +135,14 @@ func (a app) keepEndpoints() []Endpoint {
 		},
 		{
 			Method: http.MethodPost, Path: Prefix + "/receipts/{receipt}/check", Scope: write, Tool: "read_check",
-			Summary: "Say what the image of a check says, after looking at it with get_receipt_image: its number, whom it was paid to, its amount, its date and its memo. It is attached to the account's transaction with that number when the bank's amount for it is the amount you read; when the amounts differ nothing changes, and the answer says both, so look again. A check that has not cleared waits with what you read, and is attached when the statement that lists it is imported, if the amounts agree. Only for a waiting check image (list_waiting_receipts, check_image).",
+			Summary: "Say what the image of a check says, after looking at it with get_receipt_image: its number, whom it was paid to, its amount, its date and its memo. It is attached to the account's transaction with that number when the bank's amount for it is the amount you read; when the amounts differ nothing changes, and the answer says both, so look again. A check that has not cleared waits with what you read, and is attached when the statement that lists it is imported, if the amounts agree. Only for a waiting check image (list_waiting_receipts, check_image). One in the person's own checks (your_checks) also needs account_number: it is filed under the account that number ends like, then read there; when no account, or more than one, ends like it, nothing changes and the answer says why.",
 			Body: &Body{Encoding: "json", Fields: []Field{
 				{Name: "number", Type: "string", Required: true, Description: "The check's number, as printed at its top right and again in the line of digits at its foot."},
 				{Name: "amount", Type: "string", Required: true, Description: "The amount in figures, such as \"120.00\": what it was written for, never negative. Where the figures and the words disagree, the words are what the bank pays."},
 				{Name: "payee", Type: "string", Description: fmt.Sprintf("Whom it is paid to, as written on the \"Pay to the order of\" line; at most %d characters. Written on the transaction too.", ledgerbus.MaxPayee)},
 				{Name: "date", Type: "string", Description: "The date written on it, YYYY-MM-DD, if it can be read: kept as the day it was written, which may be days before it cleared."},
 				{Name: "memo", Type: "string", Description: fmt.Sprintf("What its memo line says it was for (\"Cleaning\", \"Summer work\"), if it has one; at most %d characters. Written on the transaction too.", ledgerbus.MaxCheckMemo)},
+				{Name: "account_number", Type: "string", Description: "For a check in the person's own checks (your_checks), and needed there: the account number in the line of digits at the check's foot, the group after the routing number, as printed. Only its last four digits are compared, with those the site keeps of each account; the number is not stored. Never repeat it to the person beyond those four."},
 			}},
 			Returns: "{receipt, attached, transaction}; transaction is the one it was attached to, when it was", handler: a.readCheck,
 		},
@@ -725,6 +726,10 @@ func (a app) readCheck(w http.ResponseWriter, r *http.Request) {
 		Payee  string        `json:"payee"`
 		Date   string        `json:"date"`
 		Memo   string        `json:"memo"`
+
+		// AccountNumber is the account a check in the person's own
+		// checks is drawn on, as its face prints it (receiptbus.OnFace).
+		AccountNumber string `json:"account_number"`
 	}
 
 	if !a.body(w, r, &in) {
@@ -753,7 +758,13 @@ func (a app) readCheck(w http.ResponseWriter, r *http.Request) {
 	rdr := a.reader(r)
 	ctx := r.Context()
 
+	// A check image in an account, or else one in the person's own checks,
+	// which its account number files first.
 	rc, err := a.books.Receipts.ReadCheck(ctx, time.Now(), rdr.me, id, rd)
+	if errors.Is(err, receiptbus.ErrNotFound) {
+		rc, err = a.books.Receipts.ReadInboxCheck(ctx, time.Now(), rdr.me, id, rd, receiptbus.OnFace{Account: in.AccountNumber})
+	}
+
 	if a.bookRefused(w, r, err, "receipt") {
 		return
 	}

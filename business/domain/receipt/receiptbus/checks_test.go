@@ -41,7 +41,15 @@ func TestNumberFromName(t *testing.T) {
 func (w *world) checking() types.ID {
 	w.t.Helper()
 
-	acct, err := w.ten.CreateAccount(w.ctx, now, w.owner, w.org, tenancybus.AccountFields{Name: "Parish checking", Kind: "checking"})
+	return w.checkingEnding("Parish checking", "")
+}
+
+// checkingEnding is checking, named, with the last four digits of its
+// number.
+func (w *world) checkingEnding(name, last4 string) types.ID {
+	w.t.Helper()
+
+	acct, err := w.ten.CreateAccount(w.ctx, now, w.owner, w.org, tenancybus.AccountFields{Name: name, Kind: "checking", Last4: last4})
 	if err != nil {
 		w.t.Fatal(err)
 	}
