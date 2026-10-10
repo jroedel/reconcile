@@ -1,8 +1,8 @@
-{{define "title"}}{{with .Data.View.Receipt.Check}}{{t "Check {number}" "number" .}}{{else}}{{with .Data.View.Receipt.Label}}{{.}}{{else}}{{t "A receipt"}}{{end}}{{end}}{{end}}
+{{define "title"}}{{$r := .Data.View.Receipt}}{{if $r.Check}}{{t "Check {number}" "number" $r.Check}}{{else if $r.CheckImage}}{{t "A check"}}{{else}}{{with $r.Label}}{{.}}{{else}}{{t "A receipt"}}{{end}}{{end}}{{end}}
 {{define "content"}}{{$v := .Data}}{{$r := $v.View.Receipt}}
 {{if $v.HomePath}}<p class="crumbs"><a href="{{$v.HomePath}}/receipts">{{t "Receipts"}} · {{$v.HomeName}}</a></p>{{end}}
-<h1>{{if $r.Check}}{{t "Check {number}" "number" $r.Check}}{{else}}{{with $r.Label}}{{.}}{{else}}{{t "A receipt"}}{{end}}{{end}}</h1>
-{{if $r.Check}}<p>{{t "The image of a check, attached to the transaction that paid it by its number."}}{{with $r.Merchant}} {{t "Paid to {payee}." "payee" .}}{{end}}</p>{{end}}
+<h1>{{if $r.Check}}{{t "Check {number}" "number" $r.Check}}{{else if $r.CheckImage}}{{t "A check"}}{{else}}{{with $r.Label}}{{.}}{{else}}{{t "A receipt"}}{{end}}{{end}}</h1>
+{{if $r.CheckImage}}<p>{{if $r.Waiting}}{{if $r.Check}}{{t "The image of a check, waiting for the transaction that paid it: the check has not cleared, its statement is not imported yet, or several transactions in the account have its number."}}{{else}}{{t "The image of a check whose number has not been said. Once it has, the image is attached to the transaction with that number."}}{{end}}{{else}}{{t "The image of a check, attached to the transaction that paid it by its number."}}{{end}}{{with $r.Merchant}} {{t "Paid to {payee}." "payee" .}}{{end}}</p>{{end}}
 <p class="hint">{{if $v.UploadedBy}}{{t "Added by {who} on {date}." "who" $v.UploadedBy "date" ($r.CreatedAt.Format "2006-01-02")}}{{else}}{{t "Added on {date}." "date" ($r.CreatedAt.Format "2006-01-02")}}{{end}}</p>
 {{template "done" $v.Done}}
 {{template "problem" $v.Problem}}
@@ -34,6 +34,17 @@
 {{end}}
 </section>
 
+{{if and $v.View.CanEdit $r.CheckImage $r.Waiting}}
+<section class="card" id="number">
+<h2>{{t "Check number"}}</h2>
+<form method="post" action="/receipts/{{$r.ID}}/number">
+  <div class="field"><label for="check-number">{{t "Check number"}}</label><input id="check-number" name="number" type="text" inputmode="numeric" maxlength="12" required value="{{$r.Check}}">
+  <p class="hint">{{t "As printed on the check, usually at its top right."}}</p></div>
+  <button type="submit">{{t "Save"}}</button>
+</form>
+</section>
+{{end}}
+
 {{if $v.View.CanEdit}}
 <section class="card">
 <h2>{{t "Details"}}</h2>
@@ -41,7 +52,7 @@
 <form method="post" action="/receipts/{{$r.ID}}/details">
   <div class="field"><label for="amount">{{t "Amount"}}</label><input id="amount" name="amount" type="text" inputmode="decimal" value="{{$v.Typed.Amount}}"></div>
   <div class="field"><label for="spent_on">{{t "Date"}}</label><input id="spent_on" name="spent_on" type="date" value="{{$v.Typed.SpentOn}}"></div>
-  <div class="field"><label for="merchant">{{if $r.Check}}{{t "Paid to"}}{{else}}{{t "Shop"}}{{end}}</label><input id="merchant" name="merchant" type="text" maxlength="100" value="{{$v.Typed.Merchant}}">{{if $r.Check}}<p class="hint">{{t "Whom the check was written to. It is written on the transaction too, where sorting rules and suggestions read it."}}</p>{{end}}</div>
+  <div class="field"><label for="merchant">{{if $r.CheckImage}}{{t "Paid to"}}{{else}}{{t "Shop"}}{{end}}</label><input id="merchant" name="merchant" type="text" maxlength="100" value="{{$v.Typed.Merchant}}">{{if $r.CheckImage}}<p class="hint">{{t "Whom the check was written to. It is written on the transaction too, where sorting rules and suggestions read it."}}</p>{{end}}</div>
   <div class="field"><label for="note">{{t "Note"}}</label><input id="note" name="note" type="text" maxlength="500" value="{{$v.Typed.Note}}"></div>
   <button type="submit">{{t "Save"}}</button>
 </form>

@@ -205,6 +205,7 @@ func TestReceiptsAreAsPrivateAsTheirInbox(t *testing.T) {
 
 	for path, form := range map[string]url.Values{
 		receipt + "/details": {"merchant": {"Mine"}},
+		receipt + "/number":  {"number": {"1176"}},
 		receipt + "/attach":  {"transaction": {strings.Repeat("a", 32)}},
 		receipt + "/detach":  {"transaction": {strings.Repeat("a", 32)}},
 		receipt + "/remove":  {"removed": {"1"}},

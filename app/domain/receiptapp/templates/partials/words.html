@@ -7,6 +7,8 @@
 {{- else if eq . "merchant"}}{{t "The shop's name can be at most {max} characters." "max" 100}}
 {{- else if eq . "note"}}{{t "The note can be at most {max} characters." "max" 500}}
 {{- else if eq . "attached"}}{{t "The receipt is attached to a transaction. Take it off the transaction first."}}
+{{- else if eq . "removed"}}{{t "The receipt was removed. Bring it back first."}}
+{{- else if eq . "number"}}{{t "A check number is digits, such as 1176."}}
 {{- else}}{{t "Something went wrong at our end. Please try again in a few minutes."}}
 {{- end}}</p>{{end}}{{end}}
 
@@ -16,6 +18,7 @@
 {{- else if eq . "detached"}}{{t "Taken off the transaction. If it is on no other, it is waiting for a match again."}}
 {{- else if eq . "removed"}}{{t "Removed. It is under Removed receipts below, and can be brought back."}}
 {{- else if eq . "restored"}}{{t "Brought back. It is waiting for a match."}}
+{{- else if eq . "numbered"}}{{t "Saved. It is attached as soon as one transaction in the account is this check."}}
 {{- end}}</p>{{end}}{{end}}{{end}}
 
 {{define "uploaded"}}
@@ -45,9 +48,9 @@
 
 {{define "receipt-line"}}
 <a href="/receipts/{{.ID}}" class="receipt-line">{{template "thumb" .}}
-<span><strong>{{if .Check}}{{t "Check {number}" "number" .Check}}{{with .Merchant}} · {{t "paid to {payee}" "payee" .}}{{end}}{{else}}{{with .Label}}{{.}}{{else}}{{t "A receipt"}}{{end}}{{end}}</strong>
+<span><strong>{{if .Check}}{{t "Check {number}" "number" .Check}}{{else if .CheckImage}}{{t "A check"}}{{else}}{{with .Label}}{{.}}{{else}}{{t "A receipt"}}{{end}}{{end}}{{if .CheckImage}}{{with .Merchant}} · {{t "paid to {payee}" "payee" .}}{{end}}{{end}}</strong>
 {{if gt (len .Files) 1}}<br><span class="hint">{{t "{n} pages" "n" (len .Files)}}</span>{{end}}
-<br><span class="hint">{{if .HasAmount}}{{.Amount}}{{else}}{{t "no amount yet"}}{{end}} · {{if .SpentOn.String}}{{.SpentOn}}{{else}}{{t "no date yet"}}{{end}}</span>
+<br><span class="hint">{{if and .CheckImage .Waiting}}{{if .Check}}{{t "waiting for the transaction that paid it"}}{{else}}{{t "its number not yet said"}}{{end}}{{else}}{{if .HasAmount}}{{.Amount}}{{else}}{{t "no amount yet"}}{{end}} · {{if .SpentOn.String}}{{.SpentOn}}{{else}}{{t "no date yet"}}{{end}}{{end}}</span>
 {{with .Note}}<br><span class="hint">{{.}}</span>{{end}}</span></a>
 {{end}}
 

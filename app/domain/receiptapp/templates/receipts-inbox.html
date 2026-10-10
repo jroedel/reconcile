@@ -13,17 +13,16 @@
 <section class="card" id="checks">
 <h2>{{t "Check images"}}</h2>
 {{if $v.CheckAdded}}<p class="notice ok" role="status">{{t "{n} check images added, each attached to the transaction that paid its check." "n" $v.CheckAdded}}</p>{{end}}
+{{if $v.CheckWaiting}}<p class="notice ok" role="status">{{t "{n} check images are waiting below, for their number or for the transaction that paid them. Open one to say its number." "n" $v.CheckWaiting}}</p>{{end}}
 {{with $v.CheckProblem}}<p class="notice" role="alert">
-{{- if eq . "none"}}{{t "No transaction in this account is check {number}, so nothing was added. Import the statement that lists the check first, then add its image again." "number" $v.CheckNumber}}
-{{- else if eq . "several"}}{{t "Several transactions in this account are check {number}, so nothing was added. Add its image from the right transaction's page instead." "number" $v.CheckNumber}}
-{{- else if eq . "number"}}{{t "Say the check's number, or name each file after its check, such as 1176-front.jpg. Nothing was added."}}
+{{- if eq . "number"}}{{t "A check number is digits, such as 1176. Nothing was added."}}
 {{- else if eq . "payee"}}{{t "Say whom a check was paid to one check at a time, in at most {max} characters. Nothing was added." "max" 100}}
 {{- else}}{{t "Choose the image of a check. Nothing was added."}}{{end}}</p>{{end}}
 <form method="post" action="{{$v.Path}}/checks" enctype="multipart/form-data" class="upload">
   <div class="field">
     <label for="check-files">{{t "Photos or PDFs of checks"}}</label>
     <input id="check-files" name="files" type="file" multiple required accept="image/*,application/pdf">
-    <p class="hint">{{t "One check at a time, front and back, with its number below. Or several checks at once, each file named after its check, such as 1176-front.jpg and 1176-back.jpg. Each check is attached to the transaction with its number."}}</p>
+    <p class="hint">{{t "One check at a time, front and back, with its number below. Or several checks at once: a file named after its check, such as 1176-front.jpg, is attached to the transaction with that number, and any other waits below until its number is said."}}</p>
   </div>
   <div class="field">
     <label for="check-number">{{t "Check number (optional)"}}</label>
