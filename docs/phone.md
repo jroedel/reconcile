@@ -80,10 +80,21 @@ An import that brings a check number a waiting image of the same account
 already has attaches it, as typing the number would have. It is
 `ledgerbus.Import`'s last step, after the statement is stored, and so the
 bulk import and the API's `import_from_inbox` do it too. The ledger knows
-nothing of receipts: main gives it a function to call with the account and
-what was imported (`ledgerbus.Imported`), and receiptbus is that function.
+nothing of receipts: main gives it a function to call with the account
+(`ledgerbus.AfterImport`), and `receiptbus.MatchChecks` is that function.
 Matching that fails is logged and never undoes the import, which has
 already happened; the image is still waiting and can be numbered again.
+
+### As built (the second pull request)
+
+- `ledger.OnImport(receipts.MatchChecks)` in main, and in the tests that
+  build the site, after both are made. `MatchChecks` looks at the
+  account's waiting check images with a number, and attaches each whose
+  number now has one transaction, as numbering it on its page would,
+  payee and all. The importer is who attached it.
+- Somebody who may import may attach receipts (a bookkeeper's role has
+  both), so nothing is skipped for want of a permission in practice; if it
+  were, nothing would be matched and nothing would fail.
 
 ## 3. The installable app
 

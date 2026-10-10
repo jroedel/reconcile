@@ -134,6 +134,21 @@ func TestCheckImages(t *testing.T) {
 	wantRedirect(t, e.owner.post(shot+"/number", url.Values{"number": {"1177"}}), shot+"?done=attached")
 	wantBody(t, e.owner.get(shot), "Check 1177", "attached to the transaction that paid it by its number")
 
+	// Check 1190 clears: the import of its statement attaches the image
+	// that was waiting for it.
+	august := uploaded(t, e.owner, e.account, "august.csv", "Date,Description,Amount,Balance,Check Number\n"+
+		"2026-08-03,CHECK,-50.00,800.00,1190\n")
+	form = columns("import")
+	form.Set("check", "Check Number")
+
+	if rec := e.owner.post(august, form); rec.Code != http.StatusSeeOther {
+		t.Fatalf("importing August: %d", rec.Code)
+	}
+
+	if body := e.owner.get(e.account + "/receipts").Body.String(); strings.Contains(body, "waiting for the transaction that paid it") {
+		t.Error("check 1190 still waits after its statement was imported")
+	}
+
 	zipped := e.owner.get(e.account + "/export?from=2026-07&to=2026-07")
 	files := unzipped(t, zipped.Body.Bytes())
 

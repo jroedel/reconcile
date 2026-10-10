@@ -240,3 +240,58 @@ func TestChecksWait(t *testing.T) {
 		t.Errorf("the pilgrim: %v", err)
 	}
 }
+
+// A check photographed before it cleared waits with its number, and the
+// import of the statement that lists it attaches it, with the bank's date
+// and amount and whom it was paid to on the transaction. A check whose
+// number the import does not bring, and one with two transactions, still
+// wait.
+func TestChecksMatchWhenTheyClear(t *testing.T) {
+	w := newWorld(t)
+	acct := w.checking()
+
+	image := func(name string) types.ID { return w.upload(w.owner, name, photo+name, receiptbus.Accept) }
+
+	early, err := w.receipts.AddChecks(w.ctx, now, w.owner, acct, []types.ID{image("1190-front.jpg"), image("1190-back.jpg")}, "", "Hilltop Plumbing")
+	if err != nil || len(early) != 1 || !early[0].Waiting() {
+		t.Fatalf("check 1190: %+v, %v", early, err)
+	}
+
+	later, err := w.receipts.AddChecks(w.ctx, now, w.owner, acct, []types.ID{image("1192.jpg"), image("1180.jpg")}, "", "")
+	if err != nil || len(later) != 2 {
+		t.Fatalf("checks 1192 and 1180: %+v, %v", later, err)
+	}
+
+	const august = "Date,Description,Amount,Balance,Check Number\n" +
+		"2026-08-03,CHECK,-50.00,778.00,1190\n" +
+		"2026-08-04,CHECK,-25.00,753.00,1191\n"
+
+	f := w.upload(w.owner, "august.csv", august, nil)
+
+	d, err := w.ledger.Prepare(w.ctx, w.owner, acct, f, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := w.ledger.Import(w.ctx, now, w.owner, acct, f, ledgerbus.Options{Mapping: d.Mapping}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := w.receipts.Receipt(w.ctx, w.owner, early[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if r := got.Receipt; r.Waiting() || r.Amount.String() != "50.00" || r.SpentOn.String() != "2026-08-03" || len(got.Transactions) != 1 {
+		t.Fatalf("check 1190 after the import: %+v", got)
+	}
+
+	if c := got.Transactions[0]; c.CheckNumber != "1190" || c.Payee != "Hilltop Plumbing" {
+		t.Errorf("check 1190's transaction: %+v", c)
+	}
+
+	in, err := w.receipts.Inbox(w.ctx, w.owner, types.AccountScope(acct))
+	if err != nil || len(in.Matched) != 1 || len(in.Waiting) != 2 {
+		t.Errorf("the inbox: %d matched, %d waiting, %v", len(in.Matched), len(in.Waiting), err)
+	}
+}
