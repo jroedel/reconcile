@@ -1,0 +1,202 @@
+# Merge Dependabot's pull requests, and go-version.yml's, once they have sat
+# for a day with every check green, then deploy, then say so if the deploy
+# failed. Taken from eumaeus.
+#
+# Dependency bumps are not a person's job. CI already decides whether a bump
+# builds, tests, vets and scans clean; the deploy already repeats the tests,
+# gates on /healthz and rolls back a binary that does not answer. What was
+# left for a person was to click merge, and clicking merge is not judgement.
+# This does the click. CLAUDE.md's section 6 says so too, so that the rule
+# that a person merges everything and this file do not disagree.
+#
+# It takes two kinds of pull request and nothing else: those Dependabot opened,
+# and those the Go version workflow opened, which are by app/github-actions on
+# a branch named go-<major>.<minor>.<patch>. A pull request an agent or a
+# person opened never matches either, however green and however old.
+#
+# # Why a day
+#
+# A day is long enough for a bad release to be yanked or followed by a fix,
+# and for you to see the pull request in the list if you happened to look. It
+# is not a review window: nobody is expected to review these. It is a buffer.
+#
+# # Why a workflow and not GitHub's auto-merge
+#
+# GitHub's own auto-merge waits on required status checks, which come with
+# branch protection, and somebody has to switch it on for each pull request;
+# it has no notion of "a day old". This is the same behaviour with the
+# repository's own token, the wait included, and no settings to keep in step
+# with ci.yml's job names.
+#
+# # Why it dispatches the deploy itself
+#
+# A push made with the repository's token does not trigger workflows -- GitHub
+# stops there so a workflow cannot start an infinite chain of itself. So the
+# merge alone would land a bump on main and never deploy it. workflow_dispatch
+# is the exception to that rule, so this dispatches the deploy, waits for it,
+# and fails if it failed -- and a failed scheduled workflow emails the person
+# who last committed this file, which is the one email you want from any of
+# this. The deploy's own rollback has already run by then.
+#
+# # Why it is not in the deploy-production group
+#
+# eumaeus's copy is, at the level of the whole workflow, and on 2026-10-06 it
+# hung for six hours: this run held deploy-production while it watched the
+# deploy it had dispatched, and that deploy, in the same group, waited for
+# this run to finish. Neither moved until GitHub's six-hour job limit
+# cancelled this one. The deploy holding the group is what keeps a
+# merge-and-deploy from racing a push deploy, and deploy.yml already does
+# that: the deploy dispatched here queues behind any deploy that is running.
+# Merging while a deploy runs is harmless; the running deploy has its own
+# commit checked out. So this workflow has a group of its own, which only
+# stops two of it overlapping.
+
+name: merge dependabot
+
+on:
+  schedule:
+    # 05:30 UTC daily, which is the middle of the night across the Americas,
+    # where the people who use this are, so the restart a deploy makes falls
+    # on nobody. Half an hour after go-version.yml, so a pull request it opens
+    # has waited its full day by the next morning's run.
+    - cron: "30 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  actions: write
+
+concurrency:
+  group: dependabot-merge
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+
+    # Same tripwire as the deploy: no server, nothing to deploy a bump to, and
+    # a merge without a deploy would leave main ahead of production quietly.
+    if: vars.APP_HOST != ''
+
+    outputs:
+      merged: ${{ steps.merge.outputs.merged }}
+
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+
+    steps:
+      - name: Merge what has waited a day and passed
+        id: merge
+        run: |
+          set -euo pipefail
+
+          merged=0
+          cutoff=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          fields=number,title,createdAt,mergeable,headRefOid,headRefName
+          row='"\(.number)\t\(.createdAt)\t\(.mergeable)\t\(.headRefOid)\t\(.title)"'
+
+          # The Go version workflow's pull requests are by the same
+          # app/github-actions that any workflow using the repository's token
+          # is, so the branch name is what tells them apart.
+          {
+            gh pr list --author app/dependabot --state open --json "$fields" \
+              -q ".[] | ${row}"
+            gh pr list --author app/github-actions --state open --json "$fields" \
+              -q ".[] | select(.headRefName | test(\"^go-[0-9]+\\\\.[0-9]+\\\\.[0-9]+\$\")) | ${row}"
+          } > prs.tsv
+
+          if [ ! -s prs.tsv ]; then
+            echo "no open Dependabot or Go version pull requests"
+            echo "merged=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          while IFS=$'\t' read -r number created mergeable sha title; do
+            echo "#${number}: ${title}"
+
+            if [ "$created" \> "$cutoff" ]; then
+              echo "   opened ${created}, under a day old; waiting"
+              continue
+            fi
+
+            # GitHub works mergeability out lazily, so UNKNOWN on the first
+            # look is ordinary. Dependabot rebases its own pull requests out
+            # of a conflict; nothing rebases a Go one, which waits for a person.
+            if [ "$mergeable" != "MERGEABLE" ]; then
+              echo "   ${mergeable}; not merging this time"
+              continue
+            fi
+
+            # Every check run on the head commit must have concluded, and
+            # concluded success. A check still running is "not yet", not
+            # "passed"; a check that was skipped is not a pass either; and no
+            # checks at all -- a Go pull request whose CI never started -- is
+            # nothing to merge on.
+            verdict=$(gh api "repos/${GH_REPO}/commits/${sha}/check-runs" \
+              -q '[.check_runs[] | .conclusion // "pending"] | if length == 0 then "none" elif all(. == "success") then "green" else join(",") end' \
+              2>/dev/null || echo "unreadable")
+
+            if [ "$verdict" != "green" ]; then
+              echo "   checks: ${verdict}; not merging"
+              continue
+            fi
+
+            echo "   a day old, mergeable, CI green: merging"
+            gh pr merge "$number" --merge --delete-branch
+            merged=$((merged + 1))
+          done < prs.tsv
+
+          echo "merged=${merged}" >> "$GITHUB_OUTPUT"
+
+  # The deploy, dispatched because the merge above cannot trigger it, and
+  # watched so that a failure here is a failure of this run -- which is what
+  # gets emailed. A job of its own so that it reads as its own line in the run.
+  deploy:
+    needs: merge
+    if: needs.merge.outputs.merged != '0'
+    runs-on: ubuntu-latest
+
+    # The deploy takes minutes, and may first queue behind a push deploy.
+    # An hour is far past both; past it, something is stuck, and a red run
+    # says so sooner than GitHub's six-hour limit would.
+    timeout-minutes: 60
+
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+
+    steps:
+      # The run is found by dispatch time: gh workflow run does not say which
+      # run it started. If a push to main lands while this one is still
+      # queued, deploy.yml's group cancels this one in favour of the push,
+      # which deploys the same commits and more; this run then goes red on a
+      # deploy that did not fail, which is the right way round to be wrong.
+      - name: Deploy what was merged, and fail if the deploy did
+        run: |
+          set -euo pipefail
+          since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          gh workflow run deploy.yml --ref main
+
+          run_id=""
+          for attempt in $(seq 12); do
+            sleep 5
+            run_id=$(gh run list --workflow deploy.yml --event workflow_dispatch --limit 3 \
+              --json databaseId,createdAt \
+              -q "[.[] | select(.createdAt >= \"$since\")] | .[0].databaseId // empty")
+            [ -n "$run_id" ] && break
+          done
+
+          [ -n "$run_id" ] || { echo "dispatched the deploy but cannot find its run"; exit 1; }
+
+          echo "deploy run ${run_id}; waiting"
+          if gh run watch "$run_id" --exit-status; then
+            echo "deployed"
+          else
+            echo "the deploy of the merged bump FAILED; deploy.sh rolls back on its own,"
+            echo "and this run is red so that you hear about it:"
+            echo "  gh run view ${run_id} --log-failed"
+            exit 1
+          fi

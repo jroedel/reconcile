@@ -21,6 +21,13 @@ on:
   push:
     branches: [main]
 
+  # For go-version.yml. A pull request opened with the repository's token
+  # triggers no workflows, so the Go version pull request would never get a
+  # CI run and the merge workflow would never see it green; dispatching is
+  # the one way a workflow may start another, and it starts this one on the
+  # branch.
+  workflow_dispatch:
+
 permissions:
   contents: read
 
