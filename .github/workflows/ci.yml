@@ -52,6 +52,27 @@ jobs:
       - name: shell tests
         run: make shell-test
 
+      # The share page's script and its service worker are plain
+      # JavaScript modules with no build step, so nothing else would
+      # notice them breaking until somebody shared a month of checks.
+      # Node's own test runner, so there is nothing to install from npm;
+      # Node itself is pinned here because the browser tests need 22 or
+      # later and the runner's own may be older. Taken from stewards.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: JavaScript tests
+        run: make test-js
+
+      # In the runner's own Chrome, against a server built from this
+      # commit: a share caught by the worker under the real header policy.
+      # CI is set here, so a missing Chrome fails this step rather than
+      # skipping it.
+      - name: browser tests
+        timeout-minutes: 10
+        run: make test-browser
+
       - name: vulnerability scan
         run: make vuln-check
 

@@ -78,12 +78,20 @@ hooks: ## Install the pre-commit guard that keeps statements and account numbers
 vuln-check: ## Check dependencies against the Go vulnerability database (needs network)
 	@$(GO) tool govulncheck ./...
 
+.PHONY: test-js
+test-js: ## The JavaScript's unit tests, under Node's own test runner. No browser
+	@scripts/js-test unit
+
+.PHONY: test-browser
+test-browser: ## The pages with scripts, in headless Chrome against a server built for it
+	@scripts/js-test browser
+
 .PHONY: test-unit
 test-unit: ## Run unit tests, with the race detector
 	@GO=$(GO) scripts/go-test -race ./...
 
 .PHONY: test
-test: test-unit lint shell-test ## Full check: unit tests + lint + shell tests
+test: test-unit lint shell-test test-js test-browser ## Full check: unit tests + lint + shell tests + JavaScript, in Node and in Chrome
 	@echo "vuln-check needs the network and is run separately by CI"
 
 .PHONY: cover

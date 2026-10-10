@@ -101,7 +101,8 @@ declaration of an identifier, which is what gopls is exact about.
 ```sh
 make test-unit     # the tests, with -race. No network.
 make lint          # go vet + gofmt check
-make test          # both, plus the shell tests
+make test          # both, plus the shell tests and the JavaScript's
+make test-browser  # the share page's scripts, in headless Chrome. Needs Node 22+
 make vuln-check    # govulncheck. Needs the network.
 make go-check PKG= # the after-editing-Go loop, on one package
 make release       # the static linux/amd64 binary the server runs

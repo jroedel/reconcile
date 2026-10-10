@@ -36,11 +36,24 @@ fixture() {
 	return 1
 }
 
+# artwork is the site's own icons: drawn for it, in the one directory the
+# page renderer serves them from, and changed only when the brand is. A
+# PNG anywhere else is still refused, and nothing a person uploads is ever
+# written into the source tree, so this lets in no receipt.
+artwork() {
+	case "$1" in
+	app/sdk/page/assets/app/img/*/*) return 1 ;; # a case pattern's * crosses /
+	app/sdk/page/assets/app/img/*.png) return 0 ;;
+	esac
+	return 1
+}
+
 # check_name refuses a file by what its name says it is.
 check_name() {
 	local file="$1"
 
 	fixture "$file" && return 0
+	artwork "$file" && return 0
 
 	case "$file" in
 	*.csv|*.ofx|*.qfx|*.qif|*.qbo|*.xls|*.xlsx|*.pdf)
