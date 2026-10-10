@@ -54,6 +54,12 @@ type Record struct {
 	// account whose statements arrive one file per cardholder it is part
 	// of the row's identity (docs/clearing.md, 3).
 	Holder string
+
+	// Pending is a charge the document lists as not yet posted: in a
+	// section headed so, among the rows a stated pending total accounts
+	// for, or with "pending" in a CSV's status column (docs/clearing.md,
+	// 4). Its amount may change when it posts.
+	Pending bool
 }
 
 // Balance is a balance a file stated, at a date.
@@ -114,6 +120,12 @@ type Result struct {
 
 	// Start and End are the period the file says it covers, when it says.
 	Start, End time.Time
+
+	// Pending is the total the file says is pending, when it says
+	// ("Pending purchases $14.50"), and Unplaced a non-zero one that no
+	// rows at the head of the list add up to, so that none were marked.
+	Pending  Total
+	Unplaced bool
 
 	// Daily is the balances the file states at the end of some days apart
 	// from its rows: a bank statement's "daily ending balance" table. Each

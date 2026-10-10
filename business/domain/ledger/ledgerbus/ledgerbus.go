@@ -185,6 +185,13 @@ type Storer interface {
 	Holders(ctx context.Context, account types.ID) ([]string, error)
 	HolderTotals(ctx context.Context, account types.ID, start, end types.Date) ([]HolderTotal, error)
 
+	// StillPending is the account's pending charges older by within than
+	// the end of its latest statement; Release removes one, refusing a
+	// charge that is not pending (ErrNotPending) or is in a reconciled
+	// period (ErrLocked), with ev.
+	StillPending(ctx context.Context, account types.ID, within int) ([]Transaction, error)
+	Release(ctx context.Context, id types.ID, ev eventbus.Event) error
+
 	// Explanation is a transaction's explanation (explain.go), if any.
 	Explanation(ctx context.Context, transactionID types.ID) (Stored, bool, error)
 
@@ -714,6 +721,7 @@ func EventDetail(st Statement) map[string]string {
 		"already":  strconv.Itoa(st.Already),
 		"byrule":   strconv.Itoa(st.ByRule),
 		"setaside": strconv.Itoa(st.SetAside()),
+		"posted":   strconv.Itoa(st.Posted),
 	}
 }
 

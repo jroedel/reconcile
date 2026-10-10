@@ -55,13 +55,14 @@ var (
 // description, amount, currency, the transaction's total, category, the
 // category's kind, project, memo, receipts, statement, the day its
 // period was reconciled, the transaction it is part of the explanation of
-// (docs/clearing.md, 2), and the cardholder its file said made it (3).
+// (docs/clearing.md, 2), the cardholder its file said made it (3), and
+// whether it was still pending (4).
 //
 // The kind is a column of its own (docs/plan.md, "Kinds of money") so that
 // an accountant can map the categories onto their chart of accounts at a
 // glance, and see at once which rows are transfers and pass-through rather
 // than income or expenses.
-const Columns = 15
+const Columns = 16
 
 // ExplanationColumns is how many columns explanations.csv has, in this
 // order: the explained transaction's date, account, description and
@@ -153,6 +154,9 @@ type Row struct {
 
 	// Holder is the cardholder the transaction's file said made it.
 	Holder string
+
+	// Pending is a charge not posted yet, whose amount may still change.
+	Pending bool
 }
 
 // Entry is a file in the zip beside the spreadsheet.
@@ -182,6 +186,9 @@ type Words struct {
 	Kinds        map[categorybus.Kind]string
 	Explanations []string
 	Accepted     string
+
+	// Pending is what the "Pending" column says of a charge not posted yet.
+	Pending string
 }
 
 // Account is an account's package for a period, both days included.
@@ -279,7 +286,7 @@ func (b *Business) Account(ctx context.Context, actor, accountID types.ID, from,
 				Amount: s.Amount, Total: t.Amount, Currency: account.Currency,
 				Category: categories[s.CategoryID].Name, Kind: categories[s.CategoryID].Kind, Project: projects[s.ProjectID], Memo: s.Memo,
 				Receipts: attached[t.ID], Statement: fileNames[t.StatementID], Reconciled: reconciledOn(recs, t.PostedOn),
-				ClearedBy: cleared.By[t.ID].Transaction, Holder: t.Holder,
+				ClearedBy: cleared.By[t.ID].Transaction, Holder: t.Holder, Pending: t.Pending,
 			})
 		}
 	}
@@ -357,6 +364,7 @@ func (b *Business) Project(ctx context.Context, actor, projectID types.ID) (Pack
 			Category: l.CategoryName, Kind: l.CategoryKind, Project: book.Project.Name, Memo: l.Split.Memo,
 			Receipts: attached[l.Split.TransactionID], Reconciled: reconciledOn(recs[l.AccountID], l.PostedOn),
 			ClearedBy: cleared.By[l.Split.TransactionID].Transaction, Holder: byID[l.Split.TransactionID].Holder,
+			Pending: byID[l.Split.TransactionID].Pending,
 		})
 	}
 
@@ -543,11 +551,16 @@ func spreadsheet(rows []Row, words Words) ([]byte, error) {
 			reconciled = r.Reconciled.String()
 		}
 
+		pending := ""
+		if r.Pending {
+			pending = words.Pending
+		}
+
 		if err := cw.Write([]string{
 			r.PostedOn.String(), cell(r.Account), cell(r.Description),
 			r.Amount.String(), r.Currency, r.Total.String(),
 			cell(r.Category), cell(words.Kinds[r.Kind]), cell(r.Project), cell(r.Memo),
-			strings.Join(r.Receipts, "; "), cell(r.Statement), reconciled, clearer(r.ClearedBy), cell(r.Holder),
+			strings.Join(r.Receipts, "; "), cell(r.Statement), reconciled, clearer(r.ClearedBy), cell(r.Holder), pending,
 		}); err != nil {
 			return nil, err
 		}

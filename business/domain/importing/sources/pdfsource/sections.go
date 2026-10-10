@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/jroedel/reconcile/business/domain/importing/importbus"
+	"github.com/jroedel/reconcile/business/types/money"
 )
 
 // A bank's own statement, as against a page of transactions printed from
@@ -34,6 +35,10 @@ var (
 	inHeading    = regexp.MustCompile(`(?i)\b(deposits?|additions|credits|money in|dep[óo]sitos|cr[ée]ditos|entradas|abonos)\b`)
 	outHeading   = regexp.MustCompile(`(?i)\b(withdrawals?|checks? paid|debits|fees|service charges|money out|purchases|retiros|saques|d[ée]bitos|tarifas|cargos|cheques? (pagos|pagados|compensados))\b`)
 	checkHeading = regexp.MustCompile(`(?i)\b(checks? paid|cheques? (pagos|pagados|compensados))\b`)
+
+	// pendingHeading is a section of charges not yet posted, which says
+	// nothing of their direction.
+	pendingHeading = regexp.MustCompile(`(?i)^(pending|pendentes?|pendientes?)\b|\bpending (transactions|charges|purchases|activity|authorizations)\b|\b(transa[çc][õo]es|lan[çc]amentos) pendentes\b|\b(transacciones|movimientos) pendientes\b`)
 
 	// accountNumber is a line that names the account the lines after it
 	// are about; "Primary account" on a consolidated statement's every
@@ -69,7 +74,7 @@ func (r *reader) nextAccount(last4 string) {
 	r.parts = append(r.parts, part{last4: r.last4, res: r.res, cols: r.cols, dirs: r.dirs})
 	r.res, r.cols, r.dirs = importbus.Result{}, nil, nil
 	r.last4 = last4
-	r.dir, r.checks, r.daily, r.check = 0, false, false, ""
+	r.dir, r.checks, r.daily, r.check, r.held = 0, false, false, "", false
 	r.open = -1
 }
 
@@ -105,8 +110,11 @@ func (r *reader) section(s string) bool {
 	}
 
 	in, out := inHeading.MatchString(t), outHeading.MatchString(t)
+	r.held = false
 
 	switch {
+	case pendingHeading.MatchString(t):
+		r.dir, r.checks, r.daily, r.held = 0, false, false, true
 	case dailyHeading.MatchString(t):
 		r.dir, r.checks, r.daily = 0, false, true
 	case stopHeading.MatchString(t), in && out:
@@ -131,21 +139,21 @@ func (r *reader) section(s string) bool {
 func (r *reader) balances(s string) {
 	for _, c := range cells(s, 0) {
 		if d, rest, ok := leadingDate(c.s, r.doc.dayFirst); ok && strings.TrimSpace(rest) == "" {
-			r.pending, r.hasPending = d, true
+			r.waiting, r.hasWaiting = d, true
 
 			continue
 		}
 
 		a, err := parseFigure(c.s)
-		if err != nil || !r.hasPending {
+		if err != nil || !r.hasWaiting {
 			continue
 		}
 
-		if date, ok := r.doc.resolve(r.pending); ok {
+		if date, ok := r.doc.resolve(r.waiting); ok {
 			r.res.Daily = append(r.res.Daily, importbus.Balance{Amount: a, AsOf: date, Known: true})
 		}
 
-		r.hasPending = false
+		r.hasWaiting = false
 	}
 }
 
@@ -230,10 +238,45 @@ func (p part) finish() importbus.Result {
 		}
 	}
 
+	placePending(&res)
 	fromBalances(res.Records, p.cols, res.Opening)
 	daily(res.Records, res.Daily)
 
 	return res
+}
+
+// placePending marks the rows a stated pending total accounts for, when no
+// section said which they are: a printed page lists what has not posted at
+// the head of its list, out of date order, and the rows from the head that
+// add up to the total -- in either sign, since the total is printed the
+// bank's way round -- are those. A total no such rows add up to marks
+// nothing, and says so (Unplaced): a guess presented as the document's
+// word is what this reader never does.
+func placePending(res *importbus.Result) {
+	if slices.ContainsFunc(res.Records, func(r importbus.Record) bool { return r.Pending }) {
+		return
+	}
+
+	total := res.Pending.Amount
+	if !res.Pending.Known || total == 0 {
+		return
+	}
+
+	var sum money.Amount
+
+	for i, r := range res.Records {
+		sum += r.Amount
+
+		if sum == total || sum == -total {
+			for j := range i + 1 {
+				res.Records[j].Pending = true
+			}
+
+			return
+		}
+	}
+
+	res.Unplaced = true
 }
 
 // daily puts each day's ending balance on the last row on or before that

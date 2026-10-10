@@ -120,6 +120,7 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	handle("POST /statements/{id}/reconcile", a.reconcile)
 	handle("POST /statements/{id}/reopen", a.reopen)
 	handle("POST /accounts/{id}/holders", a.setByHolder)
+	handle("POST /transactions/{id}/release", a.release)
 	handle("GET /accounts/{id}/months", a.months)
 	handle("GET /accounts/{id}/sort", a.sortMonth)
 	handle("POST /accounts/{id}/sort", a.saveMonth)
@@ -254,12 +255,23 @@ type transactionsView struct {
 	CanManage bool
 	Holders   ledgerbus.HolderMonth
 
+	// StillPending is the account's pending charges its statements should
+	// have posted by now (ledgerbus.StillPending).
+	StillPending []ledgerbus.Transaction
+
 	Problem string
 	Done    string
 }
 
 func (a app) transactions(w http.ResponseWriter, r *http.Request) {
-	a.transactionsPage(w, r, http.StatusOK, "")
+	// The problems a redirect back here may name: a removal of a pending
+	// charge that could not be made, from the charge's own route.
+	problem := r.URL.Query().Get("problem")
+	if problem != "not-pending" && problem != "release-locked" {
+		problem = ""
+	}
+
+	a.transactionsPage(w, r, http.StatusOK, problem)
 }
 
 func (a app) transactionsPage(w http.ResponseWriter, r *http.Request, status int, problem string) {
@@ -324,6 +336,12 @@ func (a app) transactionsPage(w http.ResponseWriter, r *http.Request, status int
 	}
 
 	if view.ByHolder, err = a.cfg.Ledger.ByHolder(ctx, me.ID, id); err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
+	if view.StillPending, err = a.cfg.Ledger.StillPending(ctx, me.ID, id); err != nil {
 		a.failed(w, r, err)
 
 		return
@@ -701,6 +719,7 @@ func options(r *http.Request) (ledgerbus.Options, string) {
 		SkipLines:    min(max(skip, 0), 50),
 		Invert:       f.Get("invert") == "1",
 		Holder:       f.Get("holder_column"),
+		Status:       f.Get("status"),
 	}
 
 	// One signed column, or two unsigned ones: whichever was chosen.

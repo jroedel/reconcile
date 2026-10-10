@@ -94,6 +94,11 @@ type Statement struct {
 	// cardholders (ContentKey); the store refuses it if the account's
 	// option has changed since. Not kept.
 	ByHolder bool
+
+	// Posted is how many of its rows were the posted form of a pending
+	// charge already in the account, which took that charge's place
+	// (pending.go). Counted on import and in the preview; not kept.
+	Posted int
 }
 
 // SetAside is how many of its rows the count rule left out.
@@ -130,6 +135,10 @@ type Transaction struct {
 	// whatever the account; part of the identity only on an account whose
 	// statements arrive one file per cardholder (ContentKey).
 	Holder string
+
+	// Pending is a charge its file listed as not yet posted (pending.go).
+	// The posted charge, when it arrives, takes its place.
+	Pending bool
 
 	// Hash and Occurrence are the fallback identity (hash).
 	Hash       string
@@ -243,6 +252,7 @@ func transactions(account types.ID, recs []importbus.Record, byHolder bool) []Tr
 			HasBalance:  r.HasBalance,
 			ExternalID:  r.ExternalID,
 			Holder:      r.Holder,
+			Pending:     r.Pending,
 		}
 
 		key := ContentKey(t, byHolder)

@@ -208,8 +208,8 @@ INSERT INTO splits (id, transaction_id, position, amount, memo) VALUES (?, ?, 0,
 		t.Errorf("the part: %+v", tx.Splits)
 	}
 
-	if tx.Holder != "" || tx.Hash != id.String() {
-		t.Errorf("the old row: holder %q, hash %q", tx.Holder, tx.Hash)
+	if tx.Holder != "" || tx.Hash != id.String() || tx.Pending {
+		t.Errorf("the old row: holder %q, hash %q, pending %v", tx.Holder, tx.Hash, tx.Pending)
 	}
 
 	if err := sqldb.CheckSchema(ctx, db, ledgerdb.Expected); err != nil {

@@ -26,6 +26,8 @@
 {{- else if eq . "explain-elsewhere"}}{{t "Lines can come only from this organization's accounts that you may read. Choose among those listed."}}
 {{- else if eq . "explain-months"}}{{t "Choose the months to look in, the first no later than the last."}}
 {{- else if eq . "explain-note"}}{{t "The note is too long. Keep it under 500 characters."}}
+{{- else if eq . "not-pending"}}{{t "That charge has posted, so it is not removed this way. A posted charge goes with its statement."}}
+{{- else if eq . "release-locked"}}{{t "That pending charge is in a reconciled period, so it cannot be removed. Reopen the statement that covers it first."}}
 {{- else if eq . "which-account"}}{{t "This file holds the statements of several accounts. Choose which of them is this account, below."}}
 {{- else if eq . "unstable"}}{{t "This file could not be imported safely: reading it a second time did not give the same transactions. Nothing was imported, and the problem has been recorded for the developers. Meanwhile, try the same statement downloaded in another format."}}
 {{- else if eq . "same-file"}}{{t "This file was imported into this account already."}}
@@ -93,6 +95,7 @@ one. Given a dict of By, a *ledgerbus.Clearer, and Currency. */}}
 {{- if eq . "sorted"}}{{t "Saved."}}
 {{- else if eq . "entered"}}{{t "Entered. Its document is kept with it."}}
 {{- else if eq . "entered-line"}}{{t "Entered, with its document, and added to the explanation."}}
+{{- else if eq . "released"}}{{t "Removed. The history keeps what it was."}}
 {{- else if eq . "split-on"}}{{t "Saved. This account's statements are now kept apart by cardholder."}}
 {{- else if eq . "split-off"}}{{t "Saved. This account's statements are no longer kept apart by cardholder."}}
 {{- else if eq . "gathered"}}{{t "The explanation is saved."}}

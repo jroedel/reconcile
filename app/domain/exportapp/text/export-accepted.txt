@@ -1,3 +1,0 @@
-{{/* What explanations.csv says, in its "Difference accepted" column, of
-     a difference a person accepted. */ -}}
-{{t "accepted"}}

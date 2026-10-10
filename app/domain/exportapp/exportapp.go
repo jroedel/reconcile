@@ -156,12 +156,16 @@ func (a app) words(lang types.Lang) (exportbus.Words, error) {
 		*into = columns(text)
 	}
 
-	accepted, err := a.cfg.Render.Text(lang, "export-accepted", nil)
+	accepted, err := a.cfg.Render.Text(lang, "export-words", nil)
 	if err != nil {
 		return exportbus.Words{}, err
 	}
 
-	words.Accepted = strings.TrimSpace(accepted)
+	if said := columns(accepted); len(said) == 2 {
+		words.Accepted, words.Pending = said[0], said[1]
+	} else {
+		return exportbus.Words{}, fmt.Errorf("export-words.txt has %d lines, not 2", len(said))
+	}
 
 	words.Kinds, err = a.kinds(lang)
 

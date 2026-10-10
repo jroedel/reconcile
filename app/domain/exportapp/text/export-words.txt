@@ -1,0 +1,6 @@
+{{/* What explanations.csv says, in its "Difference accepted" column, of
+     a difference a person accepted; and on its second line, what
+     transactions.csv says in its "Pending" column of a charge not posted
+     yet. */ -}}
+{{t "accepted"}}
+{{tc "a charge" "pending"}}
