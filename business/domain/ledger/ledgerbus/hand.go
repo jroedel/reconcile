@@ -42,7 +42,8 @@ const TransactionEntered eventbus.Action = "transaction.entered"
 // HandAccept is what an entry's document may be: what a receipt may be.
 var HandAccept = []string{filebus.JPEG, filebus.PNG, filebus.WebP, filebus.HEIC, filebus.PDF}
 
-// MaxDescription is the longest description typed for an entry.
+// MaxDescription is the longest description a person types: for an entry,
+// or of their own for any transaction (describe.go).
 const MaxDescription = 200
 
 // ErrEntered is an entry identical to a transaction already in the account

@@ -50,6 +50,7 @@
 {{- else if eq .Problem "category"}}{{t "Part {n} has a category that is not on this account's list. Choose another." "n" .Part}}
 {{- else if eq .Problem "project"}}{{t "Part {n} is in a project you do not keep the books of. Ask one of its owners for the bookkeeper role." "n" .Part}}
 {{- else if eq .Problem "memo"}}{{t "The memo on part {n} is too long." "n" .Part}}
+{{- else if eq .Problem "description"}}{{t "Your description can be at most {max} characters. Nothing was saved." "max" 200}}
 {{- else if eq .Problem "locked"}}{{t "This transaction is in a reconciled period, so its parts cannot change. Reopen the statement first."}}
 {{- else if eq .Problem "rule-match"}}{{t "The parts are saved, but not the rule: give the text to look for, 3 to 100 characters."}}
 {{- else if eq .Problem "rule-choice"}}{{t "The parts are saved, but not the rule: choose a category or a project for it to sort charges into."}}
@@ -90,7 +91,7 @@ explains, or, in an account the reader may not see, only that there is
 one. Given a dict of By, a *ledgerbus.Clearer, and Currency. */}}
 {{define "cleared"}}{{with .By}}<p class="hint"><span class="badge">{{t "cleared"}}</span>
 {{if .Hidden}}{{t "Part of what explains a transaction in an account you cannot see."}}
-{{else}}{{with .Transaction}}<a href="/transactions/{{.ID}}/explain">{{t "Part of what explains {description}, {amount} on {date}" "description" .Description "amount" (money .Amount $.Currency) "date" .PostedOn}}</a>{{end}}{{end}}</p>{{end}}{{end}}
+{{else}}{{with .Transaction}}<a href="/transactions/{{.ID}}/explain">{{t "Part of what explains {description}, {amount} on {date}" "description" .Shown "amount" (money .Amount $.Currency) "date" .PostedOn}}</a>{{end}}{{end}}</p>{{end}}{{end}}
 
 {{define "done"}}{{if .}}<p class="notice ok" role="status">
 {{- if eq . "sorted"}}{{t "Saved."}}

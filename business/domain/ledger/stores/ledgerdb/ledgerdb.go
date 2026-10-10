@@ -37,7 +37,8 @@ var Expected = sqldb.Expected{
 	"statements": {"id", "account_id", "file_id", "format", "period_start", "period_end", "opening", "closing",
 		"checked", "added", "already", "imported_by", "imported_at", "shape"},
 	"transactions": {"id", "account_id", "statement_id", "posted_on", "description", "amount", "balance",
-		"external_id", "hash", "occurrence", "holder", "pending", "check_number", "payee"},
+		"external_id", "hash", "occurrence", "holder", "pending", "check_number", "payee",
+		"own_description", "own_description_via"},
 	"csv_mappings":        {"account_id", "fingerprint", "mapping", "updated_by", "updated_at"},
 	"splits":              {"id", "transaction_id", "position", "amount", "category_id", "project_id", "memo", "rule_id", "via"},
 	"transaction_aliases": {"account_id", "hash", "transaction_id", "created_at"},
@@ -142,6 +143,18 @@ CREATE TABLE IF NOT EXISTS csv_mappings (
 	// To whom a check was written, as a person read it off its image
 	// (ledgerbus/checks.go); empty for every row until somebody says.
 	if err := sqldb.AddColumn(ctx, db, "transactions", "payee", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+
+	// A person's own description of a transaction, beside the bank's, and
+	// the key a program wrote it through, until a person saves it on the
+	// web (ledgerbus/describe.go). Later columns, empty for every row from
+	// before them: the bank's description is all anything showed then.
+	if err := sqldb.AddColumn(ctx, db, "transactions", "own_description", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+
+	if err := sqldb.AddColumn(ctx, db, "transactions", "own_description_via", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
 
@@ -830,7 +843,7 @@ SELECT substr(posted_on, 1, 7), count(*),
        min(posted_on),
        sum(EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id AND s.category_id IS NULL)),
        sum(EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id AND s.rule_id IS NOT NULL)),
-       sum(EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id AND s.via <> ''))
+       sum(t.own_description_via <> '' OR EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id AND s.via <> ''))
 FROM transactions t WHERE account_id = ?
 GROUP BY 1 ORDER BY 1 DESC`, account.String())
 	if err != nil {
@@ -1045,7 +1058,7 @@ func inList(ids []types.ID) (string, []any) {
 	return strings.Join(marks, ", "), args
 }
 
-const transactionColumns = `id, account_id, statement_id, posted_on, description, amount, balance, external_id, hash, occurrence, holder, pending, check_number, payee`
+const transactionColumns = `id, account_id, statement_id, posted_on, description, amount, balance, external_id, hash, occurrence, holder, pending, check_number, payee, own_description, own_description_via`
 
 func (s *Store) transactions(ctx context.Context, q string, args ...any) ([]ledgerbus.Transaction, error) {
 	rows, err := s.db.QueryContext(ctx, q, args...)
@@ -1064,7 +1077,7 @@ func (s *Store) transactions(ctx context.Context, q string, args ...any) ([]ledg
 			balance                sql.NullInt64
 		)
 
-		if err := rows.Scan(&id, &acct, &stmt, &posted, &t.Description, &amount, &balance, &t.ExternalID, &t.Hash, &t.Occurrence, &t.Holder, &t.Pending, &t.CheckNumber, &t.Payee); err != nil {
+		if err := rows.Scan(&id, &acct, &stmt, &posted, &t.Description, &amount, &balance, &t.ExternalID, &t.Hash, &t.Occurrence, &t.Holder, &t.Pending, &t.CheckNumber, &t.Payee, &t.OwnDescription, &t.OwnVia); err != nil {
 			return nil, fmt.Errorf("reading the transactions: %w", err)
 		}
 
@@ -1215,7 +1228,7 @@ func (s *Store) OrgLines(ctx context.Context, orgID types.ID, from, to types.Dat
 func (s *Store) lines(ctx context.Context, where string, args ...any) ([]ledgerbus.ProjectLine, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT s.id, s.transaction_id, s.position, s.amount, s.category_id, s.project_id, s.memo, s.rule_id, s.via,
-       t.posted_on, t.description, a.id, a.name, a.currency, coalesce(c.name, ''), coalesce(c.kind, '')
+       t.posted_on, t.description, t.own_description, a.id, a.name, a.currency, coalesce(c.name, ''), coalesce(c.kind, '')
 FROM splits s
 JOIN transactions t ON t.id = s.transaction_id
 JOIN accounts a ON a.id = t.account_id
@@ -1236,7 +1249,7 @@ ORDER BY t.posted_on, t.rowid, s.position`, args...)
 			kind            string
 		)
 
-		l.Split, err = scanSplit(rows, &posted, &l.Description, &account, &l.AccountName, &l.Currency, &l.CategoryName, &kind)
+		l.Split, err = scanSplit(rows, &posted, &l.Description, &l.OwnDescription, &account, &l.AccountName, &l.Currency, &l.CategoryName, &kind)
 		if err != nil {
 			return nil, err
 		}

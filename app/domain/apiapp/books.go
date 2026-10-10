@@ -59,6 +59,7 @@ type Ledger interface {
 	ImportProposals(ctx context.Context, now time.Time, actor types.ID, props []ledgerbus.Proposal) (int, error)
 	SortMany(ctx context.Context, now time.Time, actor, accountID types.ID, choices []ledgerbus.Choice) (int, map[types.ID]error, error)
 	SetSplits(ctx context.Context, now time.Time, actor, id types.ID, parts []ledgerbus.Part) (ledgerbus.Transaction, error)
+	Describe(ctx context.Context, now time.Time, actor, id types.ID, description string) (ledgerbus.Transaction, error)
 	SortUnsorted(ctx context.Context, now time.Time, actor, accountID types.ID) (int, error)
 	Gather(ctx context.Context, now time.Time, actor, id types.ID, add, remove, accounts []types.ID, from, to string) error
 }
@@ -309,22 +310,29 @@ type partOut struct {
 }
 
 type txOut struct {
-	ID          string        `json:"id"`
-	Account     string        `json:"account"`
-	AccountName string        `json:"account_name,omitempty"`
-	Date        string        `json:"date"`
-	Description string        `json:"description"`
-	Payee       string        `json:"payee,omitempty"`
-	Amount      money.Amount  `json:"amount"`
-	Currency    string        `json:"currency"`
-	Balance     *money.Amount `json:"balance,omitempty"`
-	Holder      string        `json:"holder,omitempty"`
-	Check       string        `json:"check,omitempty"`
-	Pending     bool          `json:"pending,omitempty"`
-	Sorted      bool          `json:"sorted"`
-	Parts       []partOut     `json:"parts"`
-	Receipts    *int          `json:"receipts,omitempty"`
-	URL         string        `json:"url"`
+	ID          string `json:"id"`
+	Account     string `json:"account"`
+	AccountName string `json:"account_name,omitempty"`
+	Date        string `json:"date"`
+	Description string `json:"description"`
+
+	// OwnDescription is what a person, or a program as them, said it was,
+	// shown on the site in place of the bank's Description; Described is
+	// the key a program wrote it through, until a person saves it on the
+	// web. Description stays the bank's, since it is what rules read.
+	OwnDescription string        `json:"own_description,omitempty"`
+	Described      string        `json:"own_description_through,omitempty"`
+	Payee          string        `json:"payee,omitempty"`
+	Amount         money.Amount  `json:"amount"`
+	Currency       string        `json:"currency"`
+	Balance        *money.Amount `json:"balance,omitempty"`
+	Holder         string        `json:"holder,omitempty"`
+	Check          string        `json:"check,omitempty"`
+	Pending        bool          `json:"pending,omitempty"`
+	Sorted         bool          `json:"sorted"`
+	Parts          []partOut     `json:"parts"`
+	Receipts       *int          `json:"receipts,omitempty"`
+	URL            string        `json:"url"`
 }
 
 type spanOut struct {
@@ -481,7 +489,7 @@ func (rd *reader) tx(t ledgerbus.Transaction, a tenancybus.Account) txOut {
 
 	out := txOut{
 		ID: t.ID.String(), Account: t.AccountID.String(), Date: t.PostedOn.String(), Description: t.Description,
-		Payee: t.Payee, Amount: t.Amount, Currency: a.Currency, Holder: t.Holder, Check: t.CheckNumber,
+		OwnDescription: t.OwnDescription, Described: t.OwnVia, Payee: t.Payee, Amount: t.Amount, Currency: a.Currency, Holder: t.Holder, Check: t.CheckNumber,
 		Pending: t.Pending, Sorted: t.Sorted(), Parts: []partOut{}, URL: rd.url("/transactions/" + t.ID.String()),
 	}
 
@@ -1636,11 +1644,17 @@ func (a app) projectBook(w http.ResponseWriter, r *http.Request) {
 
 	lines := make([]map[string]any, 0, min(len(book.Lines), maxBookLines))
 	for _, l := range book.Lines[:min(len(book.Lines), maxBookLines)] {
-		lines = append(lines, map[string]any{
+		line := map[string]any{
 			"date": l.PostedOn.String(), "description": l.Description, "account": l.AccountName,
 			"amount": l.Split.Amount, "currency": l.Currency, "category": l.CategoryName, "kind": string(l.CategoryKind),
 			"memo": l.Split.Memo, "transaction": rd.url("/transactions/" + l.Split.TransactionID.String()),
-		})
+		}
+
+		if l.OwnDescription != "" {
+			line["own_description"] = l.OwnDescription
+		}
+
+		lines = append(lines, line)
 	}
 
 	rd.done(w, r, map[string]any{

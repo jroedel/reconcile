@@ -29,8 +29,9 @@ import (
 // Query is what to look for. Every part is optional; the zero Query finds
 // the newest transactions of every account the actor may read.
 type Query struct {
-	// Text is words to look for in the description or payee, as a rule
-	// looks for them: without case or runs of spaces.
+	// Text is words to look for in the description, the payee or the
+	// transaction's own description, as a rule looks for them: without
+	// case or runs of spaces.
 	Text string
 
 	// Min and Max bound the amount without its sign, when Has says they
@@ -123,7 +124,7 @@ func fits(t Transaction, text string, q Query) bool {
 	abs := t.Amount.Abs()
 
 	switch {
-	case text != "" && !strings.Contains(rulebus.Key(t.Words()), text):
+	case text != "" && !strings.Contains(rulebus.Key(t.Words()), text) && !strings.Contains(rulebus.Key(t.OwnDescription), text):
 		return false
 	case q.HasMin && abs < q.Min, q.HasMax && abs > q.Max:
 		return false

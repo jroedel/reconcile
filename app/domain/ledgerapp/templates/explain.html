@@ -1,8 +1,8 @@
 {{define "title"}}{{t "Explain this amount"}}{{end}}
 {{define "content"}}{{$v := .Data}}{{$x := $v.X}}{{$t := $x.Transaction}}{{$cur := $x.Account.Currency}}
-<p class="crumbs"><a href="/accounts/{{$x.Account.ID}}/transactions?month={{slice $t.PostedOn.String 0 7}}">{{$x.Account.Name}}</a> · <a href="{{$v.Back}}">{{if $t.Description}}{{$t.Description}}{{else}}{{t "A transaction with no description"}}{{end}}</a></p>
+<p class="crumbs"><a href="/accounts/{{$x.Account.ID}}/transactions?month={{slice $t.PostedOn.String 0 7}}">{{$x.Account.Name}}</a> · <a href="{{$v.Back}}">{{if $t.Shown}}{{$t.Shown}}{{else}}{{t "A transaction with no description"}}{{end}}</a></p>
 <h1>{{t "Explain this amount"}}</h1>
-<p>{{$t.PostedOn}} · {{$t.Description}} · <span class="money {{if lt $t.Amount 0}}out{{else}}in{{end}}">{{money $t.Amount $cur}}</span></p>
+<p>{{$t.PostedOn}} · {{$t.Shown}} · <span class="money {{if lt $t.Amount 0}}out{{else}}in{{end}}">{{money $t.Amount $cur}}</span></p>
 <p class="hint">{{t "Gather the transactions that together make up this amount, from this organization's accounts: the charges a card payment pays for, the gifts in a deposit. Nothing about them changes by being here."}}</p>
 {{template "done" $v.Done}}
 {{template "problem" $v.Problem}}
@@ -25,7 +25,7 @@
 <thead><tr>{{if $x.CanChange}}<th>{{t "Take out"}}</th>{{end}}<th>{{t "Date"}}</th><th>{{t "Description"}}</th><th class="money">{{t "Amount"}}</th></tr></thead>
 <tbody>
 {{range $g.Lines}}{{$l := .Transaction}}<tr>{{if $x.CanChange}}<td><input type="checkbox" name="remove" value="{{$l.ID}}" aria-label="{{t "Take out"}}"></td>{{end}}
-<td>{{$l.PostedOn}}</td><td><a href="/transactions/{{$l.ID}}">{{if $l.Description}}{{$l.Description}}{{else}}{{t "(no description)"}}{{end}}</a></td>
+<td>{{$l.PostedOn}}</td><td><a href="/transactions/{{$l.ID}}">{{if $l.Shown}}{{$l.Shown}}{{else}}{{t "(no description)"}}{{end}}</a></td>
 <td class="money {{if lt $l.Amount 0}}out{{else}}in{{end}}">{{money $l.Amount $cur}}</td></tr>
 {{end}}</tbody>
 </table>
@@ -68,7 +68,7 @@
 <thead><tr><th>{{t "Add"}}</th><th>{{t "Account"}}</th><th>{{t "Date"}}</th><th>{{t "Description"}}</th><th class="money">{{t "Amount"}}</th></tr></thead>
 <tbody>
 {{range $v.Offered}}{{$l := .Transaction}}<tr><td><input type="checkbox" name="add" value="{{$l.ID}}" checked aria-label="{{t "Add"}}"></td>
-<td>{{.Account.Name}}</td><td>{{$l.PostedOn}}</td><td>{{if $l.Description}}{{$l.Description}}{{else}}{{t "(no description)"}}{{end}}</td>
+<td>{{.Account.Name}}</td><td>{{$l.PostedOn}}</td><td>{{if $l.Shown}}{{$l.Shown}}{{else}}{{t "(no description)"}}{{end}}</td>
 <td class="money {{if lt $l.Amount 0}}out{{else}}in{{end}}">{{money $l.Amount $cur}}</td></tr>
 {{end}}</tbody>
 </table>

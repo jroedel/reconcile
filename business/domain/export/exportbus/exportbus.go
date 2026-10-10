@@ -56,15 +56,18 @@ var (
 // category's kind, project, memo, receipts, statement, the day its
 // period was reconciled, the transaction it is part of the explanation of
 // (docs/clearing.md, 2), the holder its file said made it (3),
-// whether it was still pending (4), and the number of the check it paid
-// and to whom (docs/shapes.md, 3), last so that a sheet an accountant set
-// up for the earlier columns still reads them where they were.
+// whether it was still pending (4), the number of the check it paid
+// and to whom (docs/shapes.md, 3), and what a person said it was in their
+// own words (ledgerbus/describe.go), last so that a sheet an accountant
+// set up for the earlier columns still reads them where they were.
 //
 // The kind is a column of its own (docs/plan.md, "Kinds of money") so that
 // an accountant can map the categories onto their chart of accounts at a
 // glance, and see at once which rows are transfers and pass-through rather
-// than income or expenses.
-const Columns = 18
+// than income or expenses. So is a person's own description, rather than
+// put in the description's place: the bank's wording is what the
+// accountant finds the line by on the statement in the same package.
+const Columns = 19
 
 // ExplanationColumns is how many columns explanations.csv has, in this
 // order: the explained transaction's date, account, description and
@@ -164,6 +167,10 @@ type Row struct {
 	// and Payee whom it was paid to, if a person said.
 	CheckNumber string
 	Payee       string
+
+	// OwnDescription is what a person said the transaction was, in place
+	// of the bank's Description, or "".
+	OwnDescription string
 }
 
 // Entry is a file in the zip beside the spreadsheet.
@@ -294,6 +301,7 @@ func (b *Business) Account(ctx context.Context, actor, accountID types.ID, from,
 				Category: categories[s.CategoryID].Name, Kind: categories[s.CategoryID].Kind, Project: projects[s.ProjectID], Memo: s.Memo,
 				Receipts: attached[t.ID], Statement: fileNames[t.StatementID], Reconciled: reconciledOn(recs, t.PostedOn),
 				ClearedBy: cleared.By[t.ID].Transaction, Holder: t.Holder, Pending: t.Pending, CheckNumber: t.CheckNumber, Payee: t.Payee,
+				OwnDescription: t.OwnDescription,
 			})
 		}
 	}
@@ -372,7 +380,7 @@ func (b *Business) Project(ctx context.Context, actor, projectID types.ID) (Pack
 			Receipts: attached[l.Split.TransactionID], Reconciled: reconciledOn(recs[l.AccountID], l.PostedOn),
 			ClearedBy: cleared.By[l.Split.TransactionID].Transaction, Holder: byID[l.Split.TransactionID].Holder,
 			Pending: byID[l.Split.TransactionID].Pending, CheckNumber: byID[l.Split.TransactionID].CheckNumber,
-			Payee: byID[l.Split.TransactionID].Payee,
+			Payee: byID[l.Split.TransactionID].Payee, OwnDescription: l.OwnDescription,
 		})
 	}
 
@@ -574,7 +582,7 @@ func spreadsheet(rows []Row, words Words) ([]byte, error) {
 			r.Amount.String(), r.Currency, r.Total.String(),
 			cell(r.Category), cell(words.Kinds[r.Kind]), cell(r.Project), cell(r.Memo),
 			strings.Join(r.Receipts, "; "), cell(r.Statement), reconciled, clearer(r.ClearedBy), cell(r.Holder), pending,
-			r.CheckNumber, cell(r.Payee),
+			r.CheckNumber, cell(r.Payee), cell(r.OwnDescription),
 		}); err != nil {
 			return nil, err
 		}
@@ -731,7 +739,7 @@ func receiptPath(rc receiptbus.Receipt, t ledgerbus.Transaction, page int, conte
 
 	who := rc.Merchant
 	if who == "" {
-		who = t.Description
+		who = t.Shown()
 	}
 
 	return fmt.Sprintf("receipts/%s_%s_%s_%d%s", day, amount, slug(who, "receipt"), page, extension(contentType))

@@ -45,7 +45,7 @@
 {{if $rv.Unsorted}}
 <p>{{t "{n} of them are not sorted into a category yet. You can reconcile now, but they cannot be sorted afterwards without reopening." "n" (len $rv.Unsorted)}}</p>
 <ul class="list">
-{{range $rv.Unsorted}}<li><a href="/transactions/{{.ID}}">{{.PostedOn}} · {{if .Description}}{{.Description}}{{else}}{{t "(no description)"}}{{end}}</a> <span class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $cur}}</span></li>
+{{range $rv.Unsorted}}<li><a href="/transactions/{{.ID}}">{{.PostedOn}} · {{if .Shown}}{{.Shown}}{{else}}{{t "(no description)"}}{{end}}</a> <span class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $cur}}</span></li>
 {{end}}</ul>
 {{else if $rv.Transactions}}<p class="hint">{{t "Every transaction in the period is sorted."}}</p>{{end}}
 

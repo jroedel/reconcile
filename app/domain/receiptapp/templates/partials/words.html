@@ -65,7 +65,7 @@
 <input type="hidden" name="back" value="{{$.Back}}">
 <button type="submit" class="quiet">{{t "This is it"}}</button>
 </form>
-{{.PostedOn}} · {{.Description}} · <span class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $acct.Currency}}</span> · <span class="hint">{{$acct.Name}}</span>
+{{.PostedOn}} · {{.Shown}} · <span class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $acct.Currency}}</span> · <span class="hint">{{$acct.Name}}</span>
 </li>{{end}}
 </ul>
 {{end}}{{end}}

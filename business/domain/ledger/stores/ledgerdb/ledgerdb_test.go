@@ -153,8 +153,9 @@ CREATE TABLE IF NOT EXISTS splits (
 // sorted through no API key. From before holders,
 // pending charges and check numbers too, it gains transactions.holder,
 // pending, check_number and payee, and the row names nobody, has posted,
-// and paid no check to anybody. And a statement from before layouts were
-// kept gains statements.shape, and was in none.
+// and paid no check to anybody; from before descriptions of its own, it
+// gains own_description and its mark, and has neither. And a statement
+// from before layouts were kept gains statements.shape, and was in none.
 func TestInitGivesOldPartsNoRule(t *testing.T) {
 	db, err := sqldb.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -220,7 +221,7 @@ VALUES (?, ?, ?, 'csv', '2026-07-01', '2026-07-31', 'none', ?, 0)`,
 		t.Errorf("the part: %+v", tx.Splits)
 	}
 
-	if tx.Holder != "" || tx.Hash != id.String() || tx.Pending || tx.CheckNumber != "" || tx.Payee != "" {
+	if tx.Holder != "" || tx.Hash != id.String() || tx.Pending || tx.CheckNumber != "" || tx.Payee != "" || tx.OwnDescription != "" || tx.OwnVia != "" {
 		t.Errorf("the old row: holder %q, hash %q, pending %v, check %q, payee %q", tx.Holder, tx.Hash, tx.Pending, tx.CheckNumber, tx.Payee)
 	}
 

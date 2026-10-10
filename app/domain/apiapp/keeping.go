@@ -90,6 +90,14 @@ func (a app) keepEndpoints() []Endpoint {
 			Returns: "{transaction}", handler: a.setSplits,
 		},
 		{
+			Method: http.MethodPut, Path: Prefix + "/transactions/{transaction}/description", Scope: write, Tool: "set_description",
+			Summary: "Say what a transaction was, in words a person reads in place of the bank's -- \"Summer work\" for \"Check 1322\", from the check's memo line -- or take it away with an empty description. The bank's description is kept, and is still what rules look for. Marked as written through this key until a person saves the transaction on the web. Bookkeepers and owners only; not in a reconciled period.",
+			Body: &Body{Encoding: "json", Fields: []Field{
+				{Name: "description", Type: "string", Required: true, Description: fmt.Sprintf("At most %d characters; empty takes it away.", ledgerbus.MaxDescription)},
+			}},
+			Returns: "{transaction}", handler: a.setDescription,
+		},
+		{
 			Method: http.MethodPost, Path: Prefix + "/accounts/{account}/rules", Scope: write, Tool: "save_rule",
 			Summary: "Save a sorting rule on an account: what a charge with this text is sorted into from now on. The account's rule with the same text is corrected rather than doubled. It changes no transaction until apply_rules or the next import. try_rule first, always. Marked as written through this key until a person saves it on the rules page. Bookkeepers and owners only.",
 			Body:    &Body{Encoding: "json", Fields: ruleFields},
@@ -479,6 +487,47 @@ func (a app) setSplits(w http.ResponseWriter, r *http.Request) {
 	rd := a.reader(r)
 
 	t, err := a.books.Ledger.SetSplits(r.Context(), time.Now(), rd.me, id, parts)
+	if a.bookRefused(w, r, err, "transaction") {
+		return
+	}
+
+	rd.done(w, r, map[string]any{"transaction": rd.named(t, rd.account(t.AccountID))})
+}
+
+// setDescription is a transaction's own description (ledgerbus.Describe).
+// A tool of its own rather than a field of set_splits or
+// sort_transactions: those change only a transaction's parts, and
+// sort_transactions only one nobody has sorted, while a check's memo
+// belongs on a transaction already sorted as much as on one that is not.
+func (a app) setDescription(w http.ResponseWriter, r *http.Request) {
+	id, ok := a.pathID(w, r, "transaction", "transaction")
+	if !ok {
+		return
+	}
+
+	var in struct {
+		Description *string `json:"description"`
+	}
+
+	if !a.body(w, r, &in) {
+		return
+	}
+
+	if in.Description == nil {
+		web.WriteJSON(w, http.StatusBadRequest, web.Problem("description", "Give the description, or an empty one to take it away."))
+
+		return
+	}
+
+	rd := a.reader(r)
+
+	t, err := a.books.Ledger.Describe(r.Context(), time.Now(), rd.me, id, *in.Description)
+	if errors.Is(err, ledgerbus.ErrDescription) {
+		web.WriteJSON(w, http.StatusUnprocessableEntity, web.Problem("description", fmt.Sprintf("A description is at most %d characters.", ledgerbus.MaxDescription)))
+
+		return
+	}
+
 	if a.bookRefused(w, r, err, "transaction") {
 		return
 	}
