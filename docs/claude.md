@@ -1,17 +1,23 @@
 # Using Reconcile from Claude
 
-Claude on claude.ai can read your books on Reconcile as you: how a month's
-statements checked, what is still to sort, what a sorting rule would do
-before you save it, and what an amount is made of. It sees what you can see
-on the site and nothing else, and it answers with the app's own figures
-rather than its own arithmetic.
+Claude on claude.ai can keep your books on Reconcile as you: say how a
+month's statements checked and what is still to sort, import what your
+email brought, sort it, write sorting rules and try them first, attach
+receipts, and work out what an amount is made of. It sees what you can see
+on the site and nothing else, it changes only what your role lets you
+change, and it answers with the app's own figures rather than its own
+arithmetic.
 
-For now it only reads. It cannot change anything in your books, import a
-statement, or download a statement or receipt; when it would sort a charge,
-save a rule or import from your inbox, it says so and links you to the page
-where you do it. (Sorting, rules, receipts and importing through Claude
-come next, `docs/books-api.md`. Reconciling a month, reopening one, and
-removing a statement or receipt stay yours, on the site.)
+It proposes and you decide: it says what it would sort, which rule it
+would write and what that rule would catch, which receipt goes on which
+charge, and makes the change when you say yes. Importing is the exception:
+when you ask it to import, it imports what checks against its own figures,
+and leaves the rest waiting with the reason.
+
+Some things stay yours, on the site, and Claude has no way to do them:
+reconciling a month, reopening one, removing a statement or a receipt,
+accepting the difference left in an explanation, and entries by hand. It
+cannot download a statement or a receipt either.
 
 ## Connecting it
 
@@ -24,12 +30,15 @@ Once, on claude.ai in a browser:
    first, under the organization's settings; you then connect to it
    yourself.
 2. **Connect.** Choose *Connect*. Claude opens Reconcile, which asks you to
-   sign in if you are not already, and then asks whether claude.ai may read
-   your books as you. Choose *Allow*, and you are back on claude.ai.
+   sign in if you are not already, and then asks whether claude.ai may keep
+   your books as you. Choose *Allow*, and you are back on claude.ai. To let
+   it read and change nothing, tick *Only let it read* first.
 3. **Turn it on in a chat.** In a conversation, Reconcile is among the
    connectors in the tools menu under the message box. Claude asks before
-   it uses a tool the first time; every Reconcile tool reads only, so
-   allowing them always is safe.
+   it uses a tool the first time. The reading tools are safe to allow
+   always; for the ones that change something, being asked each time is a
+   second look before anything is saved, and allowing them always is fine
+   once you trust how it works.
 
 Once connected on the web, it works the same in the Claude apps on a phone.
 
@@ -39,6 +48,12 @@ page says so.
 ## Things to ask
 
 Start with the month in front of you, in your own words:
+
+- "Do this month's books." Claude imports what your email brought, says
+  how each statement checked, proposes how to sort what is left and which
+  rules would save you the work next month, and, once you agree, sorts,
+  writes the rules and attaches the receipts that match. It ends with what
+  it changed and what is left for you, with the links.
 
 - "How did September's import go?" Claude reads your inbox and each
   account's months: which statements checked against their balances, which
@@ -52,8 +67,9 @@ Start with the month in front of you, in your own words:
 - "What did the card payment on 3 October cover?" Claude finds the payment
   and its explanation, last month's for comparison, the charges that may
   belong in it, and on a card whose statements come one file per holder,
-  which holders' months are in. It says the difference the app gives, and
-  what may account for it.
+  which holders' months are in. With your yes it gathers the charges into
+  the payment's explanation, and says the difference the app gives and what
+  may account for it.
 - "Which receipts are waiting for a match?" Each with the charges it may
   belong to.
 - "How does the pilgrimage stand?" A project's income and expenses, from
@@ -73,6 +89,23 @@ does not exist. Asking Claude for somebody else's account is not a way
 round that, and neither is anything written in a bank's description or a
 receipt, which Claude is told to read as data, never as instructions.
 
+## Checking what it did
+
+Everything Claude changes is marked on the site until you look at it:
+
+- A transaction it sorted says *by Claude* on the month list, and the month
+  says how many are *sorted by a program, to check*, with a link that shows
+  only those. Saving the transaction yourself, changed or not, says you
+  checked it, and the mark goes.
+- A rule it wrote says *by Claude* on the rules page, until you save it
+  there.
+- Every change is in the history of what it touched, marked as done
+  through Claude.
+
+Ask Claude "what did you change today?" and it reads the same history.
+Anything it got wrong can be put right on the page, as anything else is, or
+by asking Claude to undo it.
+
 ## Ending it
 
 The connection is a key that lasts 90 days, listed on *Your account → Your
@@ -80,14 +113,11 @@ API keys* as "connected from Claude". *Revoke* ends it at once. When it runs
 out, Claude asks you to connect again. Removing the connector on claude.ai
 stops Claude using it, but revoking it on the site is what ends the key.
 
-What Claude did through the key is in the history of each thing it touched,
-marked as done through it.
-
 ## Other programs
 
-A program of your own, such as Claude Code on your computer, can read the
+A program of your own, such as Claude Code on your computer, can do the
 same with a key: on *Your API keys*, make one for **Reading your books**,
-and send it as `Authorization: Bearer <key>` to the site's `/api/v1`, which
+or **Keeping your books** to let it change what you may, and send it as `Authorization: Bearer <key>` to the site's `/api/v1`, which
 lists everything it takes. The key reaches only what you may reach
 yourself; keep it out of any file that is shared or committed.
 
