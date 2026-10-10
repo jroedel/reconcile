@@ -109,7 +109,7 @@ func read(text string, v *vocabulary) (importbus.Result, error) {
 		return importbus.Result{Structure: r.st}, ErrNoRows
 	case 1:
 		out := accounts[0].Result
-		out.Structure = r.st
+		out.Structure, out.Last4 = r.st, accounts[0].Last4
 
 		return out, nil
 	}

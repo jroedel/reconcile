@@ -114,6 +114,9 @@ type Storer interface {
 
 	StatementByID(ctx context.Context, id types.ID) (Statement, error)
 	StatementWithFile(ctx context.Context, account types.ID, sha string) (Statement, bool, error)
+	// Shaped is those of the accounts given that have a statement whose
+	// file was in the layout with this signature.
+	Shaped(ctx context.Context, signature string, accounts []types.ID) ([]types.ID, error)
 	Statements(ctx context.Context, account types.ID) ([]Statement, error)
 	// RemoveStatement deletes a statement and the transactions it brought
 	// in, or answers ErrLocked if any of them is in a reconciled period.
@@ -632,6 +635,7 @@ func (b *Business) statement(d Draft, actor types.ID, now time.Time) (Statement,
 		FileName:   d.File.Name,
 		Format:     d.Format,
 		Checked:    d.Check.Method,
+		Shape:      d.Shape.Signature,
 		ImportedBy: actor,
 		ImportedAt: now,
 	}

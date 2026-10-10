@@ -178,6 +178,12 @@ type Result struct {
 	// on a row is.
 	Daily []Balance
 
+	// Last4 is the last four digits of the account number a file of one
+	// account names, when it names one: an OFX download's ACCTID, the
+	// account number a PDF prints. It says which account the file is for,
+	// when many files arrive at once (ledgerbus, bulk.go).
+	Last4 string
+
 	// Accounts is a document that holds several accounts -- a bank's
 	// consolidated statement -- read as one Result each; Records and the
 	// rest above are then empty, and whoever imports it chooses one.
@@ -187,6 +193,25 @@ type Result struct {
 	// recognizing it. The whole document's, on the Result a reader
 	// returns, and not on each of its Accounts.
 	Structure Structure
+}
+
+// Last4 is the last four digits of an account number as a file prints
+// it, or nothing if it has fewer: whatever is between them -- spaces,
+// hyphens, the asterisks that mask the rest -- is not part of it.
+func Last4(number string) string {
+	var digits []byte
+
+	for i := range len(number) {
+		if c := number[i]; c >= '0' && c <= '9' {
+			digits = append(digits, c)
+		}
+	}
+
+	if len(digits) < 4 {
+		return ""
+	}
+
+	return string(digits[len(digits)-4:])
 }
 
 // Account is one account's part of a document that holds several.

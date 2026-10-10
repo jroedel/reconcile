@@ -247,6 +247,16 @@ func TestBankAccountNumberDoesNotLeakIntoRecords(t *testing.T) {
 			t.Error("the bank account number reached an external id")
 		}
 	}
+
+	// Its last four digits are kept, to say which account the file is
+	// for, and no more of it.
+	if res.Last4 != "6789" {
+		t.Errorf("last four %q", res.Last4)
+	}
+
+	if res, err := ofxsource.Read([]byte(xml)); err != nil || res.Last4 != "4242" {
+		t.Errorf("a masked card number's last four: %q, %v", res.Last4, err)
+	}
 }
 
 func TestLooks(t *testing.T) {

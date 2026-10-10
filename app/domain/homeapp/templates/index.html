@@ -2,6 +2,7 @@
 {{if .SignedIn}}{{$waiting := .Data.Waiting}}{{with .Data.Overview}}
 <h1>{{t "Your organizations"}}</h1>
 {{if $waiting}}<p class="notice"><a href="/receipts">{{t "{n} receipts waiting for a match" "n" $waiting}}</a></p>{{end}}
+{{if or .Orgs .Accounts}}<p><a href="/imports">{{t "Import several statements at once"}}</a></p>{{end}}
 
 {{if .Empty}}
 <p>{{t "Nothing here yet. Make an organization for your parish or group, or an account on its own. If somebody has shared theirs with you, it appears here once they give your email address a role."}}</p>

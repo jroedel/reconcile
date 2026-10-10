@@ -35,3 +35,17 @@ func TestCheckNumber(t *testing.T) {
 		t.Errorf("a description that does not: %q", got)
 	}
 }
+
+func TestLast4(t *testing.T) {
+	for number, want := range map[string]string{
+		"000123456789":     "6789",
+		"XXXXXXXXXXXX4242": "4242",
+		"1234 5678-9012":   "9012",
+		"****12":           "",
+		"":                 "",
+	} {
+		if got := importbus.Last4(number); got != want {
+			t.Errorf("%q: %q", number, got)
+		}
+	}
+}

@@ -130,6 +130,9 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	handle("POST /transactions/{id}/explain/lines", a.gather)
 	handle("POST /transactions/{id}/explain/settle", a.settle)
 	handle("GET /projects/{id}/book", a.book)
+	handle(SlowPatterns[0], a.bulk)
+	handle(BulkPatterns[0], a.bulkUpload)
+	handle(SlowPatterns[1], a.bulkImport)
 }
 
 // --- the shared tail --------------------------------------------------------
