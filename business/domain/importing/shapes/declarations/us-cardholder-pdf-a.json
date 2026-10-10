@@ -1,13 +1,13 @@
 {
-  "id": "us-card-activity-printout-a",
-  "name": "Card activity printed from the card issuer's website, layout A",
+  "id": "us-cardholder-pdf-a",
+  "name": "Cardholder PDF printed from the card issuer's website, layout A",
   "first_seen": "2026-10",
   "version": 1,
   "notes": [
     "A card's account page as a browser prints it to PDF, one cardholder's activity for a period: the account's figures in a box at the top, then the period and the cardholder on one line, then a table of date, description, cardholder and amount, newest first.",
     "Amounts are the issuer's way round: a purchase is positive, a payment negative. The ledger turns them round on a card account.",
     "Charges not yet posted are at the head of the table, out of date order, and the summary after the table states their total as \"Pending purchases\"; the rows from the head that add up to it are marked pending.",
-    "It states no balance at all. It is checked by its sum: the rows add up to the \"Total Activity\" printed after the table. 12 printouts were read this way, every one to the cent.",
+    "It states no balance at all. It is checked by its sum: the rows add up to the \"Total Activity\" printed after the table. 12 cardholder PDFs were read this way, every one to the cent.",
     "It is recognized by the account's box and the table's headings, at the top of the first page; the total is at the end of the table, which on a busy month is past the pages a document is recognized by. The producer is the browser's, which says nothing of the layout, so it is not matched."
   ],
   "match": {
@@ -16,5 +16,5 @@
   },
   "layout": {},
   "checked_by": ["sum"],
-  "fixture": "card-activity"
+  "fixture": "cardholder-pdf"
 }

@@ -86,7 +86,7 @@ const xml = `<?xml version="1.0" encoding="UTF-8"?>
 </OFX>`
 
 func read(t *testing.T, body string) []struct {
-	Date, Description, Amount, ExternalID string
+	Date, Description, Amount, ExternalID, CheckNumber string
 } {
 	t.Helper()
 
@@ -95,13 +95,14 @@ func read(t *testing.T, body string) []struct {
 		t.Fatalf("Read: %v", err)
 	}
 
-	out := make([]struct{ Date, Description, Amount, ExternalID string }, 0, len(res.Records))
+	out := make([]struct{ Date, Description, Amount, ExternalID, CheckNumber string }, 0, len(res.Records))
 	for _, r := range res.Records {
-		out = append(out, struct{ Date, Description, Amount, ExternalID string }{
+		out = append(out, struct{ Date, Description, Amount, ExternalID, CheckNumber string }{
 			Date:        r.Date.Format("2006-01-02"),
 			Description: r.Description,
 			Amount:      r.Amount.String(),
 			ExternalID:  r.ExternalID,
+			CheckNumber: r.CheckNumber,
 		})
 	}
 
@@ -182,6 +183,10 @@ func TestDescriptionJoinsNameAndMemoSensibly(t *testing.T) {
 	}
 
 	// A check number is worth keeping: "CHECK" alone identifies nothing.
+	if got[2].CheckNumber != "1042" || got[0].CheckNumber != "" {
+		t.Errorf("check numbers %q and %q", got[2].CheckNumber, got[0].CheckNumber)
+	}
+
 	if !strings.Contains(got[2].Description, "1042") {
 		t.Errorf("check description = %q, want the check number in it", got[2].Description)
 	}

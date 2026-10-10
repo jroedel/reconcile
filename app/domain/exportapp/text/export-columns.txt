@@ -16,3 +16,4 @@
 {{t "Cleared by"}}
 {{t "Cardholder"}}
 {{t "Pending"}}
+{{t "Check number"}}

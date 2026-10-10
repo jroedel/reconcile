@@ -120,8 +120,8 @@ func TestEveryDeclarationOnItsFixture(t *testing.T) {
 		kind  string
 		parts []string
 	}{
-		"consolidated":  {"checking", []string{pdfsourcetest.First, pdfsourcetest.Second}},
-		"card-activity": {"card", []string{""}},
+		"consolidated":   {"checking", []string{pdfsourcetest.First, pdfsourcetest.Second}},
+		"cardholder-pdf": {"card", []string{""}},
 	}
 
 	w := newWorld(t)

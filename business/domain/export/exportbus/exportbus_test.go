@@ -90,6 +90,7 @@ func TestWritingAPackage(t *testing.T) {
 			PostedOn: day("2026-07-03"), Account: "Parish checking", Description: "=HYPERLINK(\"http://x.invalid\")",
 			Amount: -3000, Total: -3399, Currency: "USD", Category: "Groceries", Kind: categorybus.Expense, Project: "Café", Memo: "-light bulbs",
 			Receipts: []string{"receipts/a_1.jpg"}, Statement: "july.csv", Reconciled: day("2026-08-03"),
+			CheckNumber: "1176",
 		}},
 		Entries: []Entry{{Path: "receipts/a_1.jpg", File: filebus.File{ID: photo}}},
 	}
@@ -141,7 +142,7 @@ func TestWritingAPackage(t *testing.T) {
 	}
 
 	want := []string{"2026-07-03", "Parish checking", "'=HYPERLINK(\"http://x.invalid\")", "-30.00", "USD", "-33.99",
-		"Groceries", "Spent", "Café", "'-light bulbs", "receipts/a_1.jpg", "july.csv", "2026-08-03", "", "", ""}
+		"Groceries", "Spent", "Café", "'-light bulbs", "receipts/a_1.jpg", "july.csv", "2026-08-03", "", "", "", "1176"}
 
 	if len(rows) != 2 || strings.Join(rows[1], "|") != strings.Join(want, "|") {
 		t.Errorf("the row:\n got %q\nwant %q", rows[1], want)

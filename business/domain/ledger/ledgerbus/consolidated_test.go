@@ -2,6 +2,7 @@ package ledgerbus_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/jroedel/reconcile/business/domain/importing/sources/pdfsource/pdfsourcetest"
@@ -50,6 +51,25 @@ func TestAStatementOfSeveralAccounts(t *testing.T) {
 	st, err := w.ledger.Import(ctx, now, me, first, file, ledgerbus.Options{})
 	if err != nil || st.Added != 8 {
 		t.Fatalf("import: %+v, %v", st, err)
+	}
+
+	// The checks paid keep their numbers, and nothing else has one.
+	txs, err := w.ledger.Transactions(ctx, me, first, "2026-09")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	checks := map[string]string{}
+
+	for _, tx := range txs {
+		if tx.CheckNumber != "" || strings.HasPrefix(tx.Description, "Check ") {
+			checks[tx.CheckNumber] = tx.Description
+		}
+	}
+
+	if len(checks) != 3 || !strings.HasPrefix(checks["1001"], "Check 1001") || !strings.HasPrefix(checks["1002"], "Check 1002") ||
+		!strings.HasPrefix(checks["1003"], "Check 1003") {
+		t.Errorf("the checks: %q", checks)
 	}
 
 	// An account that says no number: the preview asks, and an import

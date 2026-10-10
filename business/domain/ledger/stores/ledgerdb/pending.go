@@ -170,10 +170,10 @@ ORDER BY t.posted_on, t.rowid`, account.String(), statement.String(), from.Strin
 func replace(ctx context.Context, tx *sql.Tx, st ledgerbus.Statement, p, t ledgerbus.Transaction) error {
 	if _, err := tx.ExecContext(ctx, `
 UPDATE transactions SET statement_id = ?, posted_on = ?, description = ?, amount = ?, balance = ?, external_id = ?,
-    hash = ?, occurrence = ?, holder = ?, pending = 0
+    hash = ?, occurrence = ?, holder = ?, pending = 0, check_number = ?
 WHERE id = ?`,
 		st.ID.String(), t.PostedOn.String(), t.Description, int64(t.Amount), nullAmount(t.Balance, t.HasBalance),
-		t.ExternalID, t.Hash, t.Occurrence, cmp.Or(t.Holder, p.Holder), p.ID.String()); err != nil {
+		t.ExternalID, t.Hash, t.Occurrence, cmp.Or(t.Holder, p.Holder), cmp.Or(t.CheckNumber, p.CheckNumber), p.ID.String()); err != nil {
 		return fmt.Errorf("posting a pending charge: %w", err)
 	}
 

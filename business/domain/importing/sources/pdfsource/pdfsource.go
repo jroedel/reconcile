@@ -548,8 +548,11 @@ func (r *reader) row(l line, rw row) {
 		desc, memo = rw.desc, ""
 	}
 
-	// A check whose number the page put on the line before.
+	// A check whose number the page put on the line before, or that its
+	// row began with (checkRow).
+	var number string
 	if r.checks && r.check != "" {
+		number = r.check
 		desc, r.check = checkDescription(r.check, desc), ""
 	}
 
@@ -582,6 +585,7 @@ func (r *reader) row(l line, rw row) {
 		Memo:        memo,
 		Holder:      memo,
 		Pending:     r.held,
+		CheckNumber: importbus.CheckNumber(number),
 	}
 
 	if len(rw.figures) == 2 {

@@ -2,6 +2,7 @@ package csvsource_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/jroedel/reconcile/business/domain/importing/importbus"
@@ -269,6 +270,35 @@ func TestAStatusColumn(t *testing.T) {
 	res := read(t, data, m)
 	if !res.Records[0].Pending || res.Records[1].Pending {
 		t.Errorf("records: %+v", res.Records)
+	}
+}
+
+// A column of check numbers is found by its heading, and read as the
+// numbers they are: padding gone, and a slip's reference no number at all.
+func TestACheckNumberColumn(t *testing.T) {
+	const data = "Details,Posting Date,Description,Amount,Check or Slip #\n" +
+		"CHECK,07/02/2026,CHECK,-120.00,0001176\n" +
+		"DSLIP,07/03/2026,DEPOSIT,300.00,DS-41\n" +
+		"DEBIT,07/04/2026,CORNER BAKERY,-12.00,\n"
+
+	m := csvsource.Detect([]string{"Details", "Posting Date", "Description", "Amount", "Check or Slip #"})
+	if m.Check != "Check or Slip #" {
+		t.Fatalf("Detect = %+v", m)
+	}
+
+	res := read(t, data, m)
+
+	var got []string
+	for _, r := range res.Records {
+		got = append(got, r.CheckNumber)
+	}
+
+	if strings.Join(got, "|") != "1176||" {
+		t.Errorf("check numbers %q", got)
+	}
+
+	if m := csvsource.Detect([]string{"Date", "Description", "Amount", "Account number"}); m.Check != "" {
+		t.Errorf("an account's number taken for a check's: %+v", m)
 	}
 }
 

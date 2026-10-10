@@ -12,6 +12,7 @@
 package importbus
 
 import (
+	"strings"
 	"time"
 
 	"github.com/jroedel/reconcile/business/types/money"
@@ -55,12 +56,56 @@ type Record struct {
 	// of the row's identity (docs/clearing.md, 3).
 	Holder string
 
+	// CheckNumber is the number of the check the row paid, when the file
+	// says: a bank statement's checks paid, OFX's CHECKNUM, or a CSV's
+	// column mapped as the check number (CheckNumber). It is no part of
+	// the row's identity; it is what a check's image is matched by.
+	CheckNumber string
+
 	// Pending is a charge the document lists as not yet posted: in a
 	// section headed so, among the rows a stated pending total accounts
 	// for, or with "pending" in a CSV's status column (docs/clearing.md,
 	// 4). Its amount may change when it posts.
 	Pending bool
 }
+
+// CheckNumber is a check's number as a file printed it, as it is kept: its
+// digits, without the leading zeros some banks pad it with, so that the
+// check numbered "0001176" in one file and "1176" in another is one check.
+// Anything that is not a number of up to ten digits -- a slip's reference,
+// a word -- is no check number, and is "".
+func CheckNumber(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimSpace(strings.TrimPrefix(s, "#"))
+
+	notDigit := func(r rune) bool { return r < '0' || r > '9' }
+
+	if s == "" || len(s) > 10 || strings.ContainsFunc(s, notDigit) {
+		return ""
+	}
+
+	if s = strings.TrimLeft(s, "0"); s == "" {
+		return ""
+	}
+
+	return s
+}
+
+// CheckUnsaid is a check's number when its description does not already
+// say it, for a page to show beside the description: a bank's statement
+// calls its row "Check 1176", and a CSV may call it "CHECK" and put the
+// number in a column of its own.
+func CheckUnsaid(number, description string) string {
+	if number == "" || strings.Contains(description, number) {
+		return ""
+	}
+
+	return number
+}
+
+// CheckUnsaid is the row's check number when its description does not say
+// it (CheckUnsaid).
+func (r Record) CheckUnsaid() string { return CheckUnsaid(r.CheckNumber, r.Description) }
 
 // Balance is a balance a file stated, at a date.
 type Balance struct {

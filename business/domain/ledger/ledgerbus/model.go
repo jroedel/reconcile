@@ -136,6 +136,10 @@ type Transaction struct {
 	// statements arrive one file per cardholder (ContentKey).
 	Holder string
 
+	// CheckNumber is the number of the check it paid, when its file said
+	// (importbus.CheckNumber), or "".
+	CheckNumber string
+
 	// Pending is a charge its file listed as not yet posted (pending.go).
 	// The posted charge, when it arrives, takes its place.
 	Pending bool
@@ -170,6 +174,10 @@ type Doubt struct {
 	// Imported is whether it was imported all the same (Transaction.Insist).
 	Imported bool
 }
+
+// CheckUnsaid is its check number when its description does not say it
+// (importbus.CheckUnsaid).
+func (t Transaction) CheckUnsaid() string { return importbus.CheckUnsaid(t.CheckNumber, t.Description) }
 
 // Sorted reports whether every part has a category.
 func (t Transaction) Sorted() bool {
@@ -253,6 +261,7 @@ func transactions(account types.ID, recs []importbus.Record, byHolder bool) []Tr
 			ExternalID:  r.ExternalID,
 			Holder:      r.Holder,
 			Pending:     r.Pending,
+			CheckNumber: r.CheckNumber,
 		}
 
 		key := ContentKey(t, byHolder)

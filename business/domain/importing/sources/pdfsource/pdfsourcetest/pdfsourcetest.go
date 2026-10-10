@@ -115,15 +115,15 @@ func Consolidated() []byte {
 	return pdftexttest.Draw(p1, p2, p3)
 }
 
-// CardActivity's figures: what its rows come to, the bank's way round, and
+// CardholderPDF's figures: what its rows come to, the bank's way round, and
 // what of that is still pending.
 const (
 	CardTotal   = "-5.10"
 	CardPending = "2.75"
 )
 
-// CardActivity draws a card's activity as a browser prints the card
-// issuer's account page, for a card with two cardholders:
+// CardholderPDF draws a cardholder PDF: a card's activity as a browser
+// prints the card issuer's account page, for a card with two cardholders:
 //
 //   - the page's name and the time it was printed at the top of each page,
 //     and its address and the page count at the foot;
@@ -135,7 +135,7 @@ const (
 //     positive amounts, the issuer's way round;
 //   - after the table, the total of its rows and the summary by kind,
 //     with the pending purchases' total.
-func CardActivity() []byte {
+func CardholderPDF() []byte {
 	head := func(n string) pdftexttest.Page {
 		p := pdftexttest.Row(30, 40, "Example Card Services Account Dashboard", 470, "10/2/26, 4:15 PM")
 
@@ -178,6 +178,6 @@ func CardActivity() []byte {
 // is tested on the document drawn here in its layout, and one without a
 // drawing is not merged.
 var Fixtures = map[string]func() []byte{
-	"consolidated":  Consolidated,
-	"card-activity": CardActivity,
+	"consolidated":   Consolidated,
+	"cardholder-pdf": CardholderPDF,
 }
