@@ -295,7 +295,7 @@ func TestAShopNamedForItsWebsite(t *testing.T) {
 
           End of Activity                 Total Activity Date range                       $983.15
 
-https://cards.example.invalid/activity?accountId=00000000-0000-0000-0000-000000000000          Page 1 of 1
+https://cards.example.invalid/activity?accountId=0000-0000          Page 1 of 1
 `
 
 	res, err := pdfsource.Read(text)
