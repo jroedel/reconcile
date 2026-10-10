@@ -99,6 +99,10 @@ type Receipt struct {
 
 	Files []filebus.File
 	Links []Link
+
+	// Check is the number of the check it is the image of, front and back
+	// as its pages, or "" for any other receipt (checks.go).
+	Check string
 }
 
 // Details is what a person may type about a receipt, all of it optional.
@@ -139,6 +143,8 @@ type Ledger interface {
 	Lookup(ctx context.Context, id types.ID) (ledgerbus.Transaction, error)
 	LookupAll(ctx context.Context, ids []types.ID) ([]ledgerbus.Transaction, error)
 	Matching(ctx context.Context, accounts []types.ID, amount money.Amount, on types.Date, days int) ([]ledgerbus.Transaction, error)
+	WithCheck(ctx context.Context, account types.ID, number string) ([]ledgerbus.Transaction, error)
+	SetPayee(ctx context.Context, now time.Time, actor, id types.ID, payee string) (ledgerbus.Transaction, error)
 }
 
 // Files is where the receipts' bytes are (filebus).
@@ -682,8 +688,10 @@ func (b *Business) Detach(ctx context.Context, actor, receiptID, transactionID t
 	return r, b.store.Unlink(ctx, r.ID, transactionID)
 }
 
-// SetDetails corrects what is known about a receipt.
-func (b *Business) SetDetails(ctx context.Context, actor, id types.ID, d Details) (Receipt, error) {
+// SetDetails corrects what is known about a receipt. A check's image's
+// shop is whom the check was paid to, and goes to its transaction as well
+// (checks.go).
+func (b *Business) SetDetails(ctx context.Context, now time.Time, actor, id types.ID, d Details) (Receipt, error) {
 	r, err := b.readable(ctx, actor, id)
 	if err != nil {
 		return Receipt{}, err
@@ -699,9 +707,14 @@ func (b *Business) SetDetails(ctx context.Context, actor, id types.ID, d Details
 		return r, err
 	}
 
+	before := r
 	r.Details = d
 
-	return r, b.store.Update(ctx, r, nil)
+	if err := b.store.Update(ctx, r, nil); err != nil {
+		return r, err
+	}
+
+	return r, b.paidTo(ctx, now, actor, before, r)
 }
 
 // SetRemoved takes a waiting receipt out of its inbox, or puts it back.

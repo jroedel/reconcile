@@ -144,7 +144,7 @@ func (s sorter) sort(t Transaction) (SortedPart, bool) {
 		return SortedPart{}, false
 	}
 
-	r, ok, _ := rulebus.Pick(s.rules, t.Description, t.Amount)
+	r, ok, _ := rulebus.Pick(s.rules, t.Words(), t.Amount)
 	if !ok || s.problem(r, t.PostedOn) != "" {
 		return SortedPart{}, false
 	}
@@ -288,7 +288,7 @@ func (b *Business) Rulebook(ctx context.Context, now time.Time, actor, accountID
 	waiting := map[types.ID]int{}
 
 	for _, t := range txs {
-		r, ok, torn := rulebus.Pick(s.rules, t.Description, t.Amount)
+		r, ok, torn := rulebus.Pick(s.rules, t.Words(), t.Amount)
 
 		switch {
 		case len(torn) > 0:

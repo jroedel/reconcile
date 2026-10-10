@@ -26,6 +26,7 @@ import (
 
 	"github.com/jroedel/reconcile/app/sdk/mid"
 	"github.com/jroedel/reconcile/business/domain/file/filebus"
+	"github.com/jroedel/reconcile/business/domain/importing/importbus"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
@@ -48,6 +49,7 @@ var UploadPatterns = []string{
 	"POST /accounts/{id}/receipts",
 	"POST /projects/{id}/receipts",
 	"POST /transactions/{id}/receipts",
+	"POST /accounts/{id}/checks",
 }
 
 // The limits on one upload. A phone's photo is three to eight megabytes;
@@ -102,6 +104,7 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	handle(UploadPatterns[0], a.upload(types.ScopeAccount))
 	handle(UploadPatterns[1], a.upload(types.ScopeProject))
 	handle(UploadPatterns[2], a.uploadOnto)
+	handle(UploadPatterns[3], a.uploadChecks)
 	handle("GET /receipts/{id}", a.receipt)
 	handle("GET /receipts/{id}/files/{n}", a.file)
 	handle("GET /receipts/{id}/files/{n}/{size}", a.picture)
@@ -199,6 +202,9 @@ type received struct {
 	together bool
 	note     string
 
+	// number and payee are a check image's (uploadChecks).
+	number, payee string
+
 	wrongKind []string
 	tooBig    []string
 	cut       bool // the request ended early: too big, or the connection went
@@ -236,6 +242,12 @@ func (a app) receive(r *http.Request, me types.ID) (received, error) {
 		case name == "note":
 			note, _ := io.ReadAll(io.LimitReader(part, receiptbus.MaxNote*4))
 			got.note = strings.TrimSpace(string(note))
+		case name == "number":
+			number, _ := io.ReadAll(io.LimitReader(part, 64))
+			got.number = strings.TrimSpace(string(number))
+		case name == "payee":
+			payee, _ := io.ReadAll(io.LimitReader(part, ledgerbus.MaxPayee*4+1))
+			got.payee = strings.TrimSpace(string(payee))
 		case name == "files" && part.FileName() != "":
 			if len(got.files) >= MaxFiles {
 				got.tooBig = append(got.tooBig, part.FileName())
@@ -384,6 +396,75 @@ func (a app) uploadOnto(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/transactions/"+id.String()+"?"+q.Encode(), http.StatusSeeOther)
 }
 
+// uploadChecks is the account's form for the images of checks: each is
+// attached to the transaction with its number (receiptbus.AddChecks), and
+// a check that cannot be is said on the page, with nothing added.
+func (a app) uploadChecks(w http.ResponseWriter, r *http.Request) {
+	me, ok := actor(w, r)
+	if !ok {
+		return
+	}
+
+	id, ok := a.pathID(w, r)
+	if !ok {
+		return
+	}
+
+	home := types.AccountScope(id)
+
+	access, err := a.cfg.Tenancy.AccessTo(r.Context(), me.ID, home)
+
+	switch {
+	case err != nil:
+		a.failed(w, r, err)
+
+		return
+	case !access.Can(tenancybus.Read):
+		a.missing(w, r)
+
+		return
+	case !access.Can(tenancybus.Receipts):
+		a.failed(w, r, receiptbus.ErrForbidden)
+
+		return
+	}
+
+	got, err := a.receive(r, me.ID)
+	if err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
+	q := got.report(0)
+	q.Set("done", "checks")
+
+	if len(got.files) > 0 {
+		receipts, err := a.cfg.Receipts.AddChecks(r.Context(), a.cfg.Now(), me.ID, id, got.files, got.number, got.payee)
+
+		noCheck, isNoCheck := errors.AsType[receiptbus.NoCheck](err)
+		invalid, isInvalid := errors.AsType[receiptbus.Invalid](err)
+
+		switch {
+		case isNoCheck:
+			q.Del("done")
+			q.Set("check", map[bool]string{true: "several", false: "none"}[noCheck.Several])
+			q.Set("number", noCheck.Number)
+		case isInvalid:
+			q.Del("done")
+			q.Set("check", invalid.Field)
+		case err != nil:
+			a.failed(w, r, err)
+
+			return
+		}
+
+		q.Set("n", strconv.Itoa(len(receipts)))
+	}
+
+	http.Redirect(w, r, homePath(home)+"/receipts?"+q.Encode(), http.StatusSeeOther)
+}
+
 // uploaded is what the page an upload lands on says about it, read from
 // its query. ledgerapp reads the same query for an upload onto a
 // transaction, with its own copy of these few lines: an app does not
@@ -414,6 +495,15 @@ type inboxView struct {
 
 	Done     string
 	Uploaded uploaded
+
+	// Checks is whether the inbox takes check images (an account's), and
+	// CheckProblem and CheckNumber why the last ones were not added.
+	Checks       bool
+	CheckProblem string
+	CheckNumber  string
+
+	// CheckAdded is how many check images the last upload added.
+	CheckAdded int
 }
 
 func (a app) inbox(kind types.ScopeKind) http.HandlerFunc {
@@ -431,7 +521,17 @@ func (a app) inbox(kind types.ScopeKind) http.HandlerFunc {
 		ctx := r.Context()
 		home := types.Scope{Kind: kind, ID: id}
 
-		view := inboxView{Path: homePath(home), Done: r.URL.Query().Get("done"), Uploaded: uploadedFrom(r.URL.Query())}
+		q := r.URL.Query()
+		view := inboxView{
+			Path: homePath(home), Done: q.Get("done"), Uploaded: uploadedFrom(q),
+			Checks: kind == types.ScopeAccount, CheckProblem: q.Get("check"), CheckNumber: importbus.CheckNumber(q.Get("number")),
+		}
+
+		// Check images say so in their own words, not as receipts that
+		// still want a date and an amount.
+		if view.Done == "checks" {
+			view.CheckAdded, view.Uploaded.Added = view.Uploaded.Added, 0
+		}
 
 		var err error
 
@@ -789,7 +889,7 @@ func (a app) details(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := a.cfg.Receipts.SetDetails(r.Context(), me.ID, id, d)
+	_, err := a.cfg.Receipts.SetDetails(r.Context(), a.cfg.Now(), me.ID, id, d)
 	if invalid, ok := errors.AsType[receiptbus.Invalid](err); ok {
 		a.receiptPage(w, r, http.StatusUnprocessableEntity, &typed, invalid.Field)
 

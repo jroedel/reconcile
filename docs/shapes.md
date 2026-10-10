@@ -212,6 +212,31 @@ source; matching by number is the same.
 - The rename asked for along with it: the second declaration is
   `us-cardholder-pdf-a`, "cardholder PDF" being what these are called.
 
+### As built (the fourth pull request)
+
+- **Uploaded** on a checking account's receipts page, under "Check
+  images": one check at a time, its sides as pages with its number typed,
+  or several at once, each file named after its check ("1176-front.jpg",
+  "cheque 1176 verso.png"). A name with any word but the check's and its
+  side's -- a phone's "IMG_4521" -- gives no number, since its number is
+  the photo's (`receiptbus.NumberFromName`).
+- **Matched as it is added**: the account's one transaction with the
+  number, whose date and amount the receipt takes. It is the one receipt
+  attached without a person choosing, because nothing is left to choose.
+  A number with no transaction, or with two, is refused and nothing of the
+  upload is added: the check has not cleared or its statement is not
+  imported, and the image is better added after.
+- **Paid to**: typed with one check, or later on its page as the receipt's
+  shop, it is written on the transaction (`transactions.payee`, a later
+  column, with a line of history), shown beside it in the month, the
+  sorting page and its own page, and read by sorting rules and
+  suggestions before the description (`Transaction.Words`). Whoever may
+  attach receipts to the account may write it; it is a note, not money,
+  so a reconciled period does not stop it.
+- **The package**: each side in `checks/` as
+  `number_date_amount[_payee]_n.ext`, and a "Paid to" column after "Check
+  number".
+
 ## 4. Files to accounts, in bulk
 
 With the shape known and the account's number read, a file can say which

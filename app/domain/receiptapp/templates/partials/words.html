@@ -45,7 +45,7 @@
 
 {{define "receipt-line"}}
 <a href="/receipts/{{.ID}}" class="receipt-line">{{template "thumb" .}}
-<span><strong>{{with .Label}}{{.}}{{else}}{{t "A receipt"}}{{end}}</strong>
+<span><strong>{{if .Check}}{{t "Check {number}" "number" .Check}}{{with .Merchant}} · {{t "paid to {payee}" "payee" .}}{{end}}{{else}}{{with .Label}}{{.}}{{else}}{{t "A receipt"}}{{end}}{{end}}</strong>
 {{if gt (len .Files) 1}}<br><span class="hint">{{t "{n} pages" "n" (len .Files)}}</span>{{end}}
 <br><span class="hint">{{if .HasAmount}}{{.Amount}}{{else}}{{t "no amount yet"}}{{end}} · {{if .SpentOn.String}}{{.SpentOn}}{{else}}{{t "no date yet"}}{{end}}</span>
 {{with .Note}}<br><span class="hint">{{.}}</span>{{end}}</span></a>

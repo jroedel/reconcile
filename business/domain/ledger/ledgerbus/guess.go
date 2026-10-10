@@ -82,12 +82,12 @@ func (g guesser) guess(t Transaction) Guess {
 	sp := t.Splits[0]
 
 	if sp.ProjectID.Zero() {
-		if r, ok, _ := rulebus.Pick(g.rules, t.Description, t.Amount); ok && g.problem(r, t.PostedOn) == "" {
+		if r, ok, _ := rulebus.Pick(g.rules, t.Words(), t.Amount); ok && g.problem(r, t.PostedOn) == "" {
 			return Guess{By: ByRule, CategoryID: r.CategoryID, ProjectID: r.ProjectID, Rule: r}
 		}
 	}
 
-	s, ok := g.suggest.Suggest(t.Description)
+	s, ok := g.suggest.Suggest(t.Words())
 	if !ok {
 		return Guess{}
 	}
