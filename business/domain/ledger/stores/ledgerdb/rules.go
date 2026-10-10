@@ -132,7 +132,7 @@ const maxExamples = 2000
 // which of its parts is which.
 func (s *Store) Examples(ctx context.Context, account types.ID) ([]rulebus.Example, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT t.description, s.category_id
+SELECT CASE WHEN t.payee <> '' THEN t.payee || ' ' || t.description ELSE t.description END, s.category_id
 FROM splits s JOIN transactions t ON t.id = s.transaction_id
 WHERE t.account_id = ? AND s.category_id IS NOT NULL AND s.rule_id IS NULL
   AND (SELECT count(*) FROM splits x WHERE x.transaction_id = t.id) = 1

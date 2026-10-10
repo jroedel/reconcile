@@ -57,14 +57,14 @@ var (
 // period was reconciled, the transaction it is part of the explanation of
 // (docs/clearing.md, 2), the cardholder its file said made it (3),
 // whether it was still pending (4), and the number of the check it paid
-// (docs/shapes.md, 3), last so that a sheet an accountant set up for the
-// earlier columns still reads them where they were.
+// and to whom (docs/shapes.md, 3), last so that a sheet an accountant set
+// up for the earlier columns still reads them where they were.
 //
 // The kind is a column of its own (docs/plan.md, "Kinds of money") so that
 // an accountant can map the categories onto their chart of accounts at a
 // glance, and see at once which rows are transfers and pass-through rather
 // than income or expenses.
-const Columns = 17
+const Columns = 18
 
 // ExplanationColumns is how many columns explanations.csv has, in this
 // order: the explained transaction's date, account, description and
@@ -160,8 +160,10 @@ type Row struct {
 	// Pending is a charge not posted yet, whose amount may still change.
 	Pending bool
 
-	// CheckNumber is the number of the check the transaction paid, or "".
+	// CheckNumber is the number of the check the transaction paid, or "",
+	// and Payee whom it was paid to, if a person said.
 	CheckNumber string
+	Payee       string
 }
 
 // Entry is a file in the zip beside the spreadsheet.
@@ -291,7 +293,7 @@ func (b *Business) Account(ctx context.Context, actor, accountID types.ID, from,
 				Amount: s.Amount, Total: t.Amount, Currency: account.Currency,
 				Category: categories[s.CategoryID].Name, Kind: categories[s.CategoryID].Kind, Project: projects[s.ProjectID], Memo: s.Memo,
 				Receipts: attached[t.ID], Statement: fileNames[t.StatementID], Reconciled: reconciledOn(recs, t.PostedOn),
-				ClearedBy: cleared.By[t.ID].Transaction, Holder: t.Holder, Pending: t.Pending, CheckNumber: t.CheckNumber,
+				ClearedBy: cleared.By[t.ID].Transaction, Holder: t.Holder, Pending: t.Pending, CheckNumber: t.CheckNumber, Payee: t.Payee,
 			})
 		}
 	}
@@ -370,6 +372,7 @@ func (b *Business) Project(ctx context.Context, actor, projectID types.ID) (Pack
 			Receipts: attached[l.Split.TransactionID], Reconciled: reconciledOn(recs[l.AccountID], l.PostedOn),
 			ClearedBy: cleared.By[l.Split.TransactionID].Transaction, Holder: byID[l.Split.TransactionID].Holder,
 			Pending: byID[l.Split.TransactionID].Pending, CheckNumber: byID[l.Split.TransactionID].CheckNumber,
+			Payee: byID[l.Split.TransactionID].Payee,
 		})
 	}
 
@@ -398,7 +401,12 @@ func (b *Business) attached(ctx context.Context, txs []ledgerbus.Transaction, n 
 			paths, ok := named[rc.ID]
 			if !ok {
 				for i, f := range rc.Files {
-					path := n.free(receiptPath(rc, t, i+1, f.ContentType))
+					path := receiptPath(rc, t, i+1, f.ContentType)
+					if rc.Check != "" {
+						path = checkPath(rc, t, i+1, f.ContentType)
+					}
+
+					path = n.free(path)
 					paths = append(paths, path)
 					p.Entries = append(p.Entries, Entry{Path: path, File: f})
 				}
@@ -566,7 +574,7 @@ func spreadsheet(rows []Row, words Words) ([]byte, error) {
 			r.Amount.String(), r.Currency, r.Total.String(),
 			cell(r.Category), cell(words.Kinds[r.Kind]), cell(r.Project), cell(r.Memo),
 			strings.Join(r.Receipts, "; "), cell(r.Statement), reconciled, clearer(r.ClearedBy), cell(r.Holder), pending,
-			r.CheckNumber,
+			r.CheckNumber, cell(r.Payee),
 		}); err != nil {
 			return nil, err
 		}
@@ -690,6 +698,19 @@ func (n *namer) free(path string) string {
 	n.taken[try] = true
 
 	return try
+}
+
+// checkPath is where one page of a check's image goes:
+// checks/number_YYYY-MM-DD_amount[_payee]_n.ext, from the transaction that
+// paid it. The accountant has no way into the bank's site, where a check's
+// image otherwise is, and looks a check up by its number.
+func checkPath(rc receiptbus.Receipt, t ledgerbus.Transaction, page int, contentType string) string {
+	who := slug(rc.Merchant, "")
+	if who != "" {
+		who = "_" + who
+	}
+
+	return fmt.Sprintf("checks/%s_%s_%s%s_%d%s", rc.Check, t.PostedOn, t.Amount.Abs(), who, page, extension(contentType))
 }
 
 // receiptPath is where one page of a receipt goes:

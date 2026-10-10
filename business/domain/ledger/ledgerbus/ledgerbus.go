@@ -192,6 +192,11 @@ type Storer interface {
 	StillPending(ctx context.Context, account types.ID, within int) ([]Transaction, error)
 	Release(ctx context.Context, id types.ID, ev eventbus.Event) error
 
+	// WithCheck is the account's transactions with the check number;
+	// SetPayee writes a transaction's payee and ev (checks.go).
+	WithCheck(ctx context.Context, account types.ID, number string) ([]Transaction, error)
+	SetPayee(ctx context.Context, id types.ID, payee string, ev eventbus.Event) error
+
 	// Explanation is a transaction's explanation (explain.go), if any.
 	Explanation(ctx context.Context, transactionID types.ID) (Stored, bool, error)
 

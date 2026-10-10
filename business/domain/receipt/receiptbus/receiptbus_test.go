@@ -377,12 +377,12 @@ func TestDetailsAreChecked(t *testing.T) {
 
 	added, _ := w.receipts.Add(w.ctx, now, w.pilgrim, types.ProjectScope(w.project), w.photos(w.pilgrim, 1), false, receiptbus.Details{})
 
-	_, err := w.receipts.SetDetails(w.ctx, w.pilgrim, added[0].ID, receiptbus.Details{Merchant: strings.Repeat("x", 101)})
+	_, err := w.receipts.SetDetails(w.ctx, now, w.pilgrim, added[0].ID, receiptbus.Details{Merchant: strings.Repeat("x", 101)})
 	if invalid, ok := errors.AsType[receiptbus.Invalid](err); !ok || invalid.Field != "merchant" {
 		t.Errorf("a long merchant: %v", err)
 	}
 
-	r, err := w.receipts.SetDetails(w.ctx, w.pilgrim, added[0].ID, receiptbus.Details{Merchant: "Hostel", Amount: money.MustParse("80.00"), HasAmount: true})
+	r, err := w.receipts.SetDetails(w.ctx, now, w.pilgrim, added[0].ID, receiptbus.Details{Merchant: "Hostel", Amount: money.MustParse("80.00"), HasAmount: true})
 	if err != nil || r.Merchant != "Hostel" {
 		t.Errorf("SetDetails: %+v, %v", r, err)
 	}

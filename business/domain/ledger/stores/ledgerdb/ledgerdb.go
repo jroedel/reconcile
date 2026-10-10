@@ -37,7 +37,7 @@ var Expected = sqldb.Expected{
 	"statements": {"id", "account_id", "file_id", "format", "period_start", "period_end", "opening", "closing",
 		"checked", "added", "already", "imported_by", "imported_at"},
 	"transactions": {"id", "account_id", "statement_id", "posted_on", "description", "amount", "balance",
-		"external_id", "hash", "occurrence", "holder", "pending", "check_number"},
+		"external_id", "hash", "occurrence", "holder", "pending", "check_number", "payee"},
 	"csv_mappings":        {"account_id", "fingerprint", "mapping", "updated_by", "updated_at"},
 	"splits":              {"id", "transaction_id", "position", "amount", "category_id", "project_id", "memo", "rule_id"},
 	"transaction_aliases": {"account_id", "hash", "transaction_id", "created_at"},
@@ -128,6 +128,19 @@ CREATE TABLE IF NOT EXISTS csv_mappings (
 	// 3), and a later column again; empty for every row from before it.
 	if err := sqldb.AddColumn(ctx, db, "transactions", "check_number", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
+	}
+
+	// To whom a check was written, as a person read it off its image
+	// (ledgerbus/checks.go); empty for every row until somebody says.
+	if err := sqldb.AddColumn(ctx, db, "transactions", "payee", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+
+	// A check's image is matched by its number within its account. After
+	// the AddColumn, since an index on a later column built in the CREATE
+	// block fails on every database from before it.
+	if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS transactions_check ON transactions (account_id, check_number) WHERE check_number <> ''`); err != nil {
+		return fmt.Errorf("creating the check number index: %w", err)
 	}
 
 	if err := initSplits(ctx, db); err != nil {
@@ -973,7 +986,7 @@ func inList(ids []types.ID) (string, []any) {
 	return strings.Join(marks, ", "), args
 }
 
-const transactionColumns = `id, account_id, statement_id, posted_on, description, amount, balance, external_id, hash, occurrence, holder, pending, check_number`
+const transactionColumns = `id, account_id, statement_id, posted_on, description, amount, balance, external_id, hash, occurrence, holder, pending, check_number, payee`
 
 func (s *Store) transactions(ctx context.Context, q string, args ...any) ([]ledgerbus.Transaction, error) {
 	rows, err := s.db.QueryContext(ctx, q, args...)
@@ -992,7 +1005,7 @@ func (s *Store) transactions(ctx context.Context, q string, args ...any) ([]ledg
 			balance                sql.NullInt64
 		)
 
-		if err := rows.Scan(&id, &acct, &stmt, &posted, &t.Description, &amount, &balance, &t.ExternalID, &t.Hash, &t.Occurrence, &t.Holder, &t.Pending, &t.CheckNumber); err != nil {
+		if err := rows.Scan(&id, &acct, &stmt, &posted, &t.Description, &amount, &balance, &t.ExternalID, &t.Hash, &t.Occurrence, &t.Holder, &t.Pending, &t.CheckNumber, &t.Payee); err != nil {
 			return nil, fmt.Errorf("reading the transactions: %w", err)
 		}
 

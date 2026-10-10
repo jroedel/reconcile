@@ -140,6 +140,10 @@ type Transaction struct {
 	// (importbus.CheckNumber), or "".
 	CheckNumber string
 
+	// Payee is to whom a check was written, as a person read it off the
+	// check's image (checks.go), or "".
+	Payee string
+
 	// Pending is a charge its file listed as not yet posted (pending.go).
 	// The posted charge, when it arrives, takes its place.
 	Pending bool
@@ -178,6 +182,17 @@ type Doubt struct {
 // CheckUnsaid is its check number when its description does not say it
 // (importbus.CheckUnsaid).
 func (t Transaction) CheckUnsaid() string { return importbus.CheckUnsaid(t.CheckNumber, t.Description) }
+
+// Words is what sorting rules and suggestions read of it: its payee, when
+// a person has said, before its description. "Check 1176" says nothing of
+// what it paid for; "Hilltop Plumbing Check 1176" does.
+func (t Transaction) Words() string {
+	if t.Payee == "" {
+		return t.Description
+	}
+
+	return t.Payee + " " + t.Description
+}
 
 // Sorted reports whether every part has a category.
 func (t Transaction) Sorted() bool {
