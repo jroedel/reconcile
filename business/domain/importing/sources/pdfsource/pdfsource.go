@@ -465,8 +465,15 @@ func (r *reader) line(l line) {
 		return
 	}
 
+	// A row is never furniture. The edges' furniture holds no amount
+	// already; this is for noise, whose words a row can have too: a page's
+	// footer is a web address, and so is the name of a shop that sells on
+	// the web ("WWW.EXAMPLE.COM"), which dropped would leave a statement
+	// short by its charge, and refused when its total said so.
 	if r.doc.isFurniture(s) {
-		return
+		if _, ok := r.parseRow(s); !ok {
+			return
+		}
 	}
 
 	// A date alone on the line before waits for this one only.

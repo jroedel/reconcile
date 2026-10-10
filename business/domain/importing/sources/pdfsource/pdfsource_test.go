@@ -278,3 +278,44 @@ func date(s string) time.Time {
 
 	return t
 }
+
+// A shop named for its website is a row, though the page's footer --
+// its address, a web address too -- is not. Here in the layout that puts
+// the cardholder before the description.
+func TestAShopNamedForItsWebsite(t *testing.T) {
+	text := `Example Card Services Account Activity                                  10/2/26, 4:15 PM
+
+          Apr 1, 2026 to Apr 30, 2026 | PAT EXAMPLE
+
+          Date                 Name                     Description                          Amount
+
+          Apr 23, 2026         PAT EXAMPLE              Corner Hardware                      $27.11
+
+          Apr 01, 2026         PAT EXAMPLE              WWW.EXAMPLE-INSURER.INVALID…        $956.04
+
+          End of Activity                 Total Activity Date range                       $983.15
+
+https://cards.example.invalid/activity?accountId=0000-0000          Page 1 of 1
+`
+
+	res, err := pdfsource.Read(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var got []string
+
+	sum := money.Amount(0)
+	for _, r := range res.Records {
+		got = append(got, r.Description)
+		sum += r.Amount
+	}
+
+	if len(res.Records) != 2 || got[1] != "WWW.EXAMPLE-INSURER.INVALID…" || res.Records[1].Holder != "PAT EXAMPLE" {
+		t.Fatalf("rows %q: %+v", got, res.Records)
+	}
+
+	if !res.Total.Known || res.Total.Amount != sum {
+		t.Errorf("total %+v, the rows %s", res.Total, sum)
+	}
+}
