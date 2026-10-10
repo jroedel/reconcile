@@ -126,6 +126,13 @@ func verify(recs []importbus.Record, opening, closing importbus.Balance, total i
 	return Check{Method: Unchecked}
 }
 
+// Verify is verify, for a page that tries a reading of a document
+// without importing it (shapebus.Try): the same check, so that what it
+// says of a draft's reading is what an import would say.
+func Verify(recs []importbus.Record, opening, closing importbus.Balance, total importbus.Total, debt bool) Check {
+	return verify(recs, opening, closing, total, debt)
+}
+
 // heldToTotals holds a statement that balanced row by row to the opening and
 // closing balances it states as well. The rows only check each other from
 // the first printed balance on: a statement that prints one at the end of

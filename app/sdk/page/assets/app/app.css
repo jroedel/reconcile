@@ -171,6 +171,13 @@ input.code {
 	letter-spacing: 0.15em;
 }
 
+/* A layout's description is JSON a person writes and copies out. */
+textarea.code {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	font-size: 0.9rem;
+	line-height: 1.45;
+}
+
 .codes {
 	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 	font-size: 1.1rem;
