@@ -567,24 +567,43 @@ func TestClaudeSignsInAsATranslatorAndItsKeyReachesTheAPI(t *testing.T) {
 	}
 }
 
-// Somebody who does not translate is told so on our page, and Claude is
-// sent nothing.
-func TestOnlyATranslatorMayConnectClaude(t *testing.T) {
+// Somebody who does not translate may connect Claude too: the page says it
+// will read their books and says nothing of translating, and the key Claude
+// gets reads the books and translates nothing.
+func TestAnybodyMayConnectClaudeToReadTheirBooks(t *testing.T) {
 	s := newTranslatingSite(t)
 	stranger := signUp(t, s.h, s.sent, "stranger@example.org")
 
 	rec := stranger.get(authorize(asking()))
-	if rec.Code != http.StatusForbidden || rec.Header().Get("Location") != "" {
-		t.Errorf("asking: %d %q", rec.Code, rec.Header().Get("Location"))
+	wantBody(t, rec, "Let Claude work as you?", "read your books", "It cannot change anything in your books")
+
+	if strings.Contains(rec.Body.String(), "Spanish and Portuguese") {
+		t.Error("the page offers translating to somebody who does not translate")
 	}
 
-	wantBody(t, rec, "for the people who translate this site")
+	wantBody(t, s.admin.get(authorize(asking())), "Spanish and Portuguese")
 
 	form := asking()
 	form.Set("answer", "allow")
 
-	if rec := stranger.post("/oauth/authorize", form); rec.Code != http.StatusForbidden || rec.Header().Get("Location") != "" {
-		t.Errorf("allowing: %d %q", rec.Code, rec.Header().Get("Location"))
+	code := sentBack(t, stranger.post("/oauth/authorize", form)).Get("code")
+
+	rec = s.program("/oauth/token", url.Values{
+		"grant_type": {"authorization_code"}, "code": {code}, "client_id": {claudeAI},
+		"redirect_uri": {callback}, "code_verifier": {verifier}, "resource": {base + "/mcp"},
+	})
+
+	var tok oauth.Token
+	if err := json.Unmarshal(rec.Body.Bytes(), &tok); rec.Code != http.StatusOK || err != nil {
+		t.Fatalf("the trade: %d %s", rec.Code, rec.Body)
+	}
+
+	if rec := s.api(http.MethodGet, "/api/v1/overview", tok.AccessToken, ""); rec.Code != http.StatusOK {
+		t.Errorf("the books with Claude's key: %d %s", rec.Code, rec.Body)
+	}
+
+	if rec := s.api(http.MethodGet, "/api/v1/translations/pending?lang=es", tok.AccessToken, ""); rec.Code != http.StatusForbidden {
+		t.Errorf("the translations with Claude's key: %d", rec.Code)
 	}
 }
 

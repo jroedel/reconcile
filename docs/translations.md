@@ -151,7 +151,9 @@ outcome.
   review screen and their keys at once.
 - **OAuth consent** (`/oauth/authorize`): "claude.ai wants to translate
   Reconcile as you", for the administrator and translators; anyone else is
-  told they cannot connect.
+  told they cannot connect. (Since `docs/books-api.md`'s second pull
+  request, anybody may connect, to read their books; the administrator and
+  translators' connection translates as well, and the page says so.)
 
 ## Style, for the skill and the MCP guide
 

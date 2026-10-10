@@ -244,11 +244,14 @@ func New(cfg Config) (http.Handler, error) {
 	// reached through the cookie's chain or the cookie through the API's: a
 	// page somebody is signed in to cannot be made to call it, and a key
 	// cannot open a page. Mounted only with sign-in on, like the screens,
-	// since a key is made on one. Translations and the statement inbox
-	// (apiapp), each endpoint behind the scope it needs.
+	// since a key is made on one. Translations, the statement inbox and
+	// reading the books (apiapp), each endpoint behind the scope it needs.
 	api := http.NewServeMux()
 	if cfg.BaseURL != "" {
-		apiapp.Routes(api, apiapp.Config{Log: cfg.Log, Translations: cfg.Translations, Inbox: cfg.Ledger, BaseURL: cfg.BaseURL})
+		apiapp.Routes(api, apiapp.Config{
+			Log: cfg.Log, Translations: cfg.Translations, Inbox: cfg.Ledger, BaseURL: cfg.BaseURL,
+			Books: apiapp.Books{Ledger: cfg.Ledger, Tenancy: cfg.Tenancy, Categories: cfg.Categories, Receipts: cfg.Receipts, History: cfg.History},
+		})
 	}
 
 	// Who is signed in, then the language, which may be theirs (mid.Lang).

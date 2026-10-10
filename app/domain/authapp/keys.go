@@ -20,9 +20,10 @@ import (
 // Anybody signed in may hold a key, and says what it is for when they make
 // it: a purpose, in plain words, which is a set of scopes (userbus.Scope).
 // Only the purposes there is something for are offered: a script that sends
-// statements to the inbox, for everybody, and translating, for those who
-// may translate (translationbus.MayTranslate). Reading and keeping the books
-// join them when the API can do those (docs/books-api.md, build order).
+// statements to the inbox and reading the books, for everybody, and
+// translating, for those who may translate (translationbus.MayTranslate).
+// Keeping the books joins them when the API can do that (docs/books-api.md,
+// build order).
 //
 // Each person sees only their own keys, including the ones a program was
 // given through OAuth (oauthapp), which is where they end one: a key acts as
@@ -60,8 +61,9 @@ type keyRow struct {
 // The purposes a key may be made for, each a set of scopes: the form's
 // choice, and what the list says of each key.
 var purposes = map[string][]userbus.Scope{
-	"upload":    {userbus.Upload},
-	"translate": {userbus.Translate},
+	"upload":     {userbus.Upload},
+	"books-read": {userbus.BooksRead},
+	"translate":  {userbus.Translate},
 }
 
 // purposeOf is the purpose a key's scopes are, or "".

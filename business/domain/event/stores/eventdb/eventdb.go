@@ -49,6 +49,13 @@ CREATE INDEX IF NOT EXISTS events_scope ON events (scope_kind, scope_id, at DESC
 		return err
 	}
 
+	// What one person changed through a key, for Through: after the
+	// AddColumn, since it names via (CLAUDE.md, "When there is a database").
+	if _, err := db.ExecContext(ctx,
+		`CREATE INDEX IF NOT EXISTS events_through ON events (actor_id, at DESC) WHERE via <> ''`); err != nil {
+		return fmt.Errorf("indexing the history by key: %w", err)
+	}
+
 	return nil
 }
 
@@ -102,16 +109,30 @@ func NewStore(db *sql.DB) *Store { return &Store{db: db} }
 
 var _ eventbus.Storer = (*Store)(nil)
 
+// Through is the events an actor wrote through a key since a moment,
+// newest first.
+func (s *Store) Through(ctx context.Context, actor types.ID, since time.Time, limit int) ([]eventbus.Event, error) {
+	return s.query(ctx, `
+SELECT id, actor_id, scope_kind, scope_id, action, detail, at, via
+FROM events WHERE actor_id = ? AND via <> '' AND at >= ?
+ORDER BY at DESC, rowid DESC LIMIT ?`, actor.String(), since.UnixMilli(), limit)
+}
+
 // ForScope is the newest events on one scope, newest first.
 //
 // Ties on the millisecond are broken by the order the rows were written
 // (rowid), not by the random ID: a change that writes two lines at once, or
 // two changes in one millisecond, read back in the order they happened.
 func (s *Store) ForScope(ctx context.Context, scope types.Scope, limit int) ([]eventbus.Event, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	return s.query(ctx, `
 SELECT id, actor_id, scope_kind, scope_id, action, detail, at, via
 FROM events WHERE scope_kind = ? AND scope_id = ?
 ORDER BY at DESC, rowid DESC LIMIT ?`, string(scope.Kind), scope.ID.String(), limit)
+}
+
+// query reads events by a query that selects every column, in order.
+func (s *Store) query(ctx context.Context, q string, args ...any) ([]eventbus.Event, error) {
+	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("reading the history: %w", err)
 	}
@@ -142,7 +163,11 @@ ORDER BY at DESC, rowid DESC LIMIT ?`, string(scope.Kind), scope.ID.String(), li
 			}
 		}
 
-		e.Scope = scope
+		if e.Scope.ID, err = types.ParseID(sid); err != nil {
+			return nil, fmt.Errorf("a stored event names a bad scope: %w", err)
+		}
+
+		e.Scope.Kind = types.ScopeKind(kind)
 		e.Action = eventbus.Action(act)
 		e.At = time.UnixMilli(at).UTC()
 

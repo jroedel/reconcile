@@ -2,6 +2,7 @@ package userbus_test
 
 import (
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/jroedel/reconcile/business/domain/user/userbus"
@@ -21,7 +22,7 @@ func TestAGrantBecomesAKeyOnceAndOnlyForItsProgram(t *testing.T) {
 	b := newBus(t)
 	u := signUp(t, b, "treasurer@example.org")
 
-	code, err := b.GrantAccess(t.Context(), start, u.ID, claudeAI, "Claude", callback, challenge)
+	code, err := b.GrantAccess(t.Context(), start, u.ID, claudeAI, "Claude", callback, challenge, []userbus.Scope{userbus.BooksRead, userbus.Translate})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,8 +44,8 @@ func TestAGrantBecomesAKeyOnceAndOnlyForItsProgram(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if k.Client != claudeAI || k.Name != "Claude" {
-		t.Errorf("the key: client %q, name %q", k.Client, k.Name)
+	if k.Client != claudeAI || k.Name != "Claude" || !slices.Equal(k.Scopes, []userbus.Scope{userbus.BooksRead, userbus.Translate}) {
+		t.Errorf("the key: client %q, name %q, scopes %q", k.Client, k.Name, k.Scopes)
 	}
 
 	if got, _, err := b.AuthenticateAPIKey(t.Context(), start, key); err != nil || got.ID != u.ID {
@@ -60,7 +61,7 @@ func TestAGrantExpiresAndNeedsS256(t *testing.T) {
 	b := newBus(t)
 	u := signUp(t, b, "treasurer@example.org")
 
-	code, err := b.GrantAccess(t.Context(), start, u.ID, claudeAI, "Claude", callback, challenge)
+	code, err := b.GrantAccess(t.Context(), start, u.ID, claudeAI, "Claude", callback, challenge, []userbus.Scope{userbus.BooksRead, userbus.Translate})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,12 +71,12 @@ func TestAGrantExpiresAndNeedsS256(t *testing.T) {
 	}
 
 	for _, c := range []string{"", "plain-text-challenge", challenge + "AA"} {
-		if _, err := b.GrantAccess(t.Context(), start, u.ID, claudeAI, "Claude", callback, c); !errors.Is(err, userbus.ErrChallenge) {
+		if _, err := b.GrantAccess(t.Context(), start, u.ID, claudeAI, "Claude", callback, c, []userbus.Scope{userbus.BooksRead, userbus.Translate}); !errors.Is(err, userbus.ErrChallenge) {
 			t.Errorf("challenge %q: %v", c, err)
 		}
 	}
 
-	if _, err := b.GrantAccess(t.Context(), start, u.ID, "", "Claude", callback, challenge); !errors.Is(err, userbus.ErrClient) {
+	if _, err := b.GrantAccess(t.Context(), start, u.ID, "", "Claude", callback, challenge, []userbus.Scope{userbus.BooksRead, userbus.Translate}); !errors.Is(err, userbus.ErrClient) {
 		t.Errorf("no client: %v", err)
 	}
 }
@@ -90,7 +91,7 @@ func TestConnectingAgainReplacesTheProgramsKey(t *testing.T) {
 	connect := func() (string, error) {
 		t.Helper()
 
-		code, err := b.GrantAccess(t.Context(), start, u.ID, claudeAI, "Claude", callback, challenge)
+		code, err := b.GrantAccess(t.Context(), start, u.ID, claudeAI, "Claude", callback, challenge, []userbus.Scope{userbus.BooksRead, userbus.Translate})
 		if err != nil {
 			t.Fatal(err)
 		}

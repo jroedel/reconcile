@@ -47,7 +47,7 @@ var Expected = sqldb.Expected{
 	"sessions":      {"id", "user_id", "hash", "created_at", "expires_at"},
 	"bootstrap":     {"id", "claimed_at"},
 	"api_keys":      {"id", "user_id", "name", "hash", "created_at", "expires_at", "last_used_at", "client", "scopes"},
-	"oauth_grants":  {"id", "user_id", "hash", "client_id", "client_name", "redirect_uri", "challenge", "created_at", "expires_at", "used_at"},
+	"oauth_grants":  {"id", "user_id", "hash", "client_id", "client_name", "redirect_uri", "challenge", "created_at", "expires_at", "used_at", "scopes"},
 }
 
 // Init creates the tables. Idempotent, run at every startup.
@@ -187,6 +187,13 @@ CREATE INDEX IF NOT EXISTS oauth_grants_user ON oauth_grants (user_id, expires_a
 	// writes scopes; a later column beside the CREATE. Every key from
 	// before it was a translator's, which is what the default says.
 	if err := sqldb.AddColumn(ctx, db, "api_keys", "scopes", "TEXT NOT NULL DEFAULT 'translate'"); err != nil {
+		return err
+	}
+
+	// What a person agreed a program's key may be used for, carried from
+	// the consent to the key; a later column too. A code lives minutes,
+	// and one from before it was a translator's.
+	if err := sqldb.AddColumn(ctx, db, "oauth_grants", "scopes", "TEXT NOT NULL DEFAULT 'translate'"); err != nil {
 		return err
 	}
 
@@ -796,12 +803,12 @@ func scopesOf(scopes []userbus.Scope) string {
 // ones: the count and the insert in one statement, as for links.
 func (s *Store) CreateGrant(ctx context.Context, g userbus.Grant, limit int) (bool, error) {
 	const q = `
-INSERT INTO oauth_grants (id, user_id, hash, client_id, client_name, redirect_uri, challenge, created_at, expires_at)
-SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+INSERT INTO oauth_grants (id, user_id, hash, client_id, client_name, redirect_uri, challenge, created_at, expires_at, scopes)
+SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 WHERE (SELECT count(*) FROM oauth_grants WHERE user_id = ? AND expires_at > ? AND used_at IS NULL) < ?`
 
 	res, err := s.db.ExecContext(ctx, q,
-		g.ID.String(), g.UserID.String(), g.Hash, g.ClientID, g.ClientName, g.RedirectURI, g.Challenge, msOf(g.CreatedAt), msOf(g.ExpiresAt),
+		g.ID.String(), g.UserID.String(), g.Hash, g.ClientID, g.ClientName, g.RedirectURI, g.Challenge, msOf(g.CreatedAt), msOf(g.ExpiresAt), scopesOf(g.Scopes),
 		g.UserID.String(), msOf(g.CreatedAt), limit)
 	if err != nil {
 		return false, fmt.Errorf("inserting the OAuth grant: %w", err)
@@ -813,15 +820,15 @@ WHERE (SELECT count(*) FROM oauth_grants WHERE user_id = ? AND expires_at > ? AN
 // GrantByID finds a code by identifier.
 func (s *Store) GrantByID(ctx context.Context, id types.ID) (userbus.Grant, error) {
 	var (
-		g                userbus.Grant
-		rawID, rawUser   string
-		created, expires int64
-		used             sql.NullInt64
+		g                      userbus.Grant
+		rawID, rawUser, scopes string
+		created, expires       int64
+		used                   sql.NullInt64
 	)
 
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, user_id, hash, client_id, client_name, redirect_uri, challenge, created_at, expires_at, used_at FROM oauth_grants WHERE id = ?`,
-		id.String()).Scan(&rawID, &rawUser, &g.Hash, &g.ClientID, &g.ClientName, &g.RedirectURI, &g.Challenge, &created, &expires, &used)
+		`SELECT id, user_id, hash, client_id, client_name, redirect_uri, challenge, created_at, expires_at, used_at, scopes FROM oauth_grants WHERE id = ?`,
+		id.String()).Scan(&rawID, &rawUser, &g.Hash, &g.ClientID, &g.ClientName, &g.RedirectURI, &g.Challenge, &created, &expires, &used, &scopes)
 
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
@@ -839,6 +846,10 @@ func (s *Store) GrantByID(ctx context.Context, id types.ID) (userbus.Grant, erro
 	}
 
 	g.CreatedAt, g.ExpiresAt, g.UsedAt = timeOf(created), timeOf(expires), timeOfNull(used)
+
+	for w := range strings.FieldsSeq(scopes) {
+		g.Scopes = append(g.Scopes, userbus.Scope(w))
+	}
 
 	return g, nil
 }

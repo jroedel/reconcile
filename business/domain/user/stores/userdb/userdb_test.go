@@ -12,9 +12,10 @@ import (
 	"github.com/jroedel/reconcile/foundation/sqldb"
 )
 
-// before is the people and their keys as they stood before a key had
-// scopes, written out rather than derived (CLAUDE.md): every database on a
-// server that ran the release before this one has these.
+// before is the people, their keys and the codes that become keys as they
+// stood before either had scopes, written out rather than derived
+// (CLAUDE.md): a database from before keys had scopes has these, and one
+// from before codes had them has the codes.
 const before = `
 CREATE TABLE IF NOT EXISTS users (
     id          TEXT    PRIMARY KEY,
@@ -39,6 +40,19 @@ CREATE TABLE IF NOT EXISTS api_keys (
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS api_keys_user ON api_keys (user_id, expires_at);
+
+CREATE TABLE IF NOT EXISTS oauth_grants (
+    id            TEXT    PRIMARY KEY,
+    user_id       TEXT    NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    hash          BLOB    NOT NULL,
+    client_id     TEXT    NOT NULL,
+    client_name   TEXT    NOT NULL,
+    redirect_uri  TEXT    NOT NULL,
+    challenge     TEXT    NOT NULL,
+    created_at    INTEGER NOT NULL,
+    expires_at    INTEGER NOT NULL,
+    used_at       INTEGER
+) STRICT;
 `
 
 // A database from before scopes gets them; every key in it was a
@@ -64,6 +78,15 @@ func TestInitOverTheSchemaBefore(t *testing.T) {
 	if _, err := db.ExecContext(t.Context(),
 		`INSERT INTO api_keys (id, user_id, name, hash, created_at, expires_at) VALUES (?, ?, 'laptop', x'00', 1, ?)`,
 		key.String(), user.String(), time.Now().Add(time.Hour).UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+
+	grant := types.NewID()
+
+	if _, err := db.ExecContext(t.Context(),
+		`INSERT INTO oauth_grants (id, user_id, hash, client_id, client_name, redirect_uri, challenge, created_at, expires_at)
+		 VALUES (?, ?, x'00', 'https://claude.ai/oauth/claude-code-client-metadata', 'Claude', 'https://claude.ai/api/mcp/auth_callback', 'x', 1, ?)`,
+		grant.String(), user.String(), time.Now().Add(time.Hour).UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -93,5 +116,10 @@ func TestInitOverTheSchemaBefore(t *testing.T) {
 
 	if got, err := store.APIKeyByID(t.Context(), k.ID); err != nil || !slices.Equal(got.Scopes, k.Scopes) {
 		t.Errorf("the new key: %+v, %v", got, err)
+	}
+
+	// A code from before was a translator's.
+	if g, err := store.GrantByID(t.Context(), grant); err != nil || !slices.Equal(g.Scopes, []userbus.Scope{userbus.Translate}) {
+		t.Errorf("the old code: %+v, %v", g, err)
 	}
 }

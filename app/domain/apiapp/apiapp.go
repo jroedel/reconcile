@@ -1,8 +1,8 @@
 // Package apiapp is the JSON API at /api/v1: how a program -- a person's
 // own Claude, a script in their Google account -- works with the site
 // without a screen. Today that is the interface's translations
-// (docs/translations.md) and the statement inbox (docs/books-api.md); the
-// books follow, in the order that plan builds them.
+// (docs/translations.md), the statement inbox, and reading the books
+// (docs/books-api.md); keeping the books follows, as that plan builds it.
 //
 // # Scopes
 //
@@ -57,6 +57,9 @@ type Config struct {
 	// Inbox is where statement files sent to the API wait (inbox.go).
 	Inbox Inbox
 
+	// Books is what the books endpoints read through (books.go).
+	Books Books
+
 	// BaseURL is the public origin, for the links in answers: a program
 	// reading them may be anywhere.
 	BaseURL string
@@ -66,6 +69,7 @@ type app struct {
 	log          *slog.Logger
 	translations *translationbus.Business
 	inbox        Inbox
+	books        Books
 	base         string
 }
 
@@ -73,7 +77,7 @@ type app struct {
 // behind mid.RequireScope with its scope; mid.APIKey, which reads the key,
 // is the muxer's to put around the whole of it.
 func Routes(mux *http.ServeMux, cfg Config) {
-	a := app{log: cfg.Log, translations: cfg.Translations, inbox: cfg.Inbox, base: cfg.BaseURL}
+	a := app{log: cfg.Log, translations: cfg.Translations, inbox: cfg.Inbox, books: cfg.Books, base: cfg.BaseURL}
 
 	for _, e := range a.Endpoints() {
 		h := http.Handler(e.handler)
@@ -144,7 +148,7 @@ func (a app) Endpoints() []Endpoint {
 	return append([]Endpoint{{
 		Method: http.MethodGet, Path: Prefix, Summary: "This index: every endpoint, what it takes, and the rules.",
 		Returns: "This document.", handler: a.index,
-	}}, slices.Concat(a.translationEndpoints(), a.inboxEndpoints())...)
+	}}, slices.Concat(a.bookEndpoints(), a.inboxEndpoints(), a.translationEndpoints())...)
 }
 
 func (a app) index(w http.ResponseWriter, r *http.Request) {
@@ -156,7 +160,10 @@ func (a app) index(w http.ResponseWriter, r *http.Request) {
 			a.base + "/account/keys, for what they say it is for; it acts as them, is shown once, and lasts 90 days, or a year for one that may only upload. " +
 			"Each endpoint names the scope its key needs: upload, books:read, books:write (which includes books:read) or translate.",
 		Rules: []string{
-			"A key reaches only what its person may, and only for its scopes. Nothing here reads an organization, account, statement, receipt or export yet; the inbox takes statement files and gives nothing back.",
+			"A key reaches only what its person may, and only for its scopes: something of somebody else's is answered 404, the same as something that does not exist.",
+			"Reading the books changes nothing. Start with get_overview. Every statement, transaction, rule, receipt and project in an answer has a url: send the person there to see it, or to do what is theirs to do, such as reconciling a month.",
+			"Amounts are strings with their sign, money in positive and money out negative, beside their currency. Dates are YYYY-MM-DD and months YYYY-MM.",
+			"What the app counts -- a sum, a difference, whether a statement balances -- is the answer; do not work it out again from the lines.",
 			"A translation is shown on every page as soon as it is written. A person looks it over afterwards, and one they approved or corrected is not changed through the API.",
 			"Every {placeholder} in the English must be in the translation exactly as it is, untranslated; the app fills it in. Its place in the sentence may move.",
 			"Translations are text, not markup: no < or > the English does not have.",

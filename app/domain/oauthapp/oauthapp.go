@@ -5,9 +5,9 @@
 // It exists for Claude on claude.ai and its phone app (a "custom connector"),
 // which can only reach a server that signs in this way: there is no file
 // there to keep a key in. What the program is given is an ordinary API key
-// (userbus/oauth.go), so what it then reaches is exactly what a key from
-// /account/keys reaches -- the translations, and nothing of anybody's books
-// (docs/translations.md).
+// (userbus/oauth.go), with the scopes the person agreed to, so what it then
+// reaches is exactly what a key from /account/keys for the same purposes
+// reaches (docs/books-api.md, "Scopes").
 //
 // # Who may ask, and who may agree
 //
@@ -19,8 +19,9 @@
 // be. Claude is the program this was built for; another is a decision for
 // the site, and a line in trustedHosts.
 //
-// Only somebody who may translate may agree, because that is all a key is
-// for; anybody else is told so on this page, and nothing is sent back.
+// Anybody signed in may agree. What the key may do is what they may: read
+// their books, as far as their roles reach, and -- for the administrator
+// and translators -- translate. The page says which before they agree.
 //
 // # The two kinds of refusal
 //
@@ -75,11 +76,12 @@ var trustedHosts = []string{"claude.ai", "claude.com", "anthropic.com"}
 
 // Users is the slice of userbus this app uses.
 type Users interface {
-	GrantAccess(ctx context.Context, now time.Time, userID types.ID, clientID, name, redirect, challenge string) (string, error)
+	GrantAccess(ctx context.Context, now time.Time, userID types.ID, clientID, name, redirect, challenge string, scopes []userbus.Scope) (string, error)
 	RedeemGrant(ctx context.Context, now time.Time, presented, clientID, redirect, verifier string) (userbus.APIKey, string, error)
 }
 
-// Translators says who may translate, which is who may agree.
+// Translators says who may translate, which is whether a program connected
+// as them may translate too.
 type Translators interface {
 	MayTranslateAny(ctx context.Context, who translationbus.Translator) (bool, error)
 }
@@ -245,31 +247,32 @@ type connectView struct {
 	BackTo  string // where Allow sends the person
 	Email   string
 
+	// Translates is whether the key will translate as well as read.
+	Translates bool
+
 	// Problem is a code the page words.
 	Problem string
 }
 
-// mayAgree reports whether the signed-in person may give a program a key:
-// whether they may translate anything. Somebody who may not is told so
-// here, rather than sent back to Claude with an error that says nothing.
-func (a app) mayAgree(w http.ResponseWriter, r *http.Request) (userbus.User, bool) {
+// scopesFor is what a program connected as this person may do: read their
+// books, and translate if they may.
+func (a app) scopesFor(w http.ResponseWriter, r *http.Request) (userbus.User, []userbus.Scope, bool) {
 	me, _ := mid.UserFrom(r.Context())
 
 	ok, err := a.cfg.Translators.MayTranslateAny(r.Context(), translationbus.Translator{ID: me.ID, SiteAdmin: me.SiteAdmin})
-
-	switch {
-	case err != nil:
+	if err != nil {
 		a.cfg.Log.Error("whether somebody translates could not be read", "request_id", web.RequestIDFrom(r.Context()), "error", err)
 		a.refuse(w, r, http.StatusInternalServerError, "server")
 
-		return userbus.User{}, false
-	case !ok:
-		a.refuse(w, r, http.StatusForbidden, "not-translator")
-
-		return userbus.User{}, false
+		return userbus.User{}, nil, false
 	}
 
-	return me, true
+	scopes := []userbus.Scope{userbus.BooksRead}
+	if ok {
+		scopes = append(scopes, userbus.Translate)
+	}
+
+	return me, scopes, true
 }
 
 // ask is the page where a person agrees, or not.
@@ -289,11 +292,12 @@ func (a app) ask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, ok := a.mayAgree(w, r); !ok {
+	_, scopes, ok := a.scopesFor(w, r)
+	if !ok {
 		return
 	}
 
-	a.show(w, r, http.StatusOK, c, req, "")
+	a.show(w, r, http.StatusOK, c, req, scopes, "")
 }
 
 // answer is the person's yes or no.
@@ -319,7 +323,7 @@ func (a app) answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	me, ok := a.mayAgree(w, r)
+	me, scopes, ok := a.scopesFor(w, r)
 	if !ok {
 		return
 	}
@@ -331,11 +335,11 @@ func (a app) answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	code, err := a.cfg.Users.GrantAccess(r.Context(), a.cfg.Now(), me.ID, req.ClientID, keyName(c), req.Redirect, req.Challenge)
+	code, err := a.cfg.Users.GrantAccess(r.Context(), a.cfg.Now(), me.ID, req.ClientID, keyName(c), req.Redirect, req.Challenge, scopes)
 
 	switch {
 	case errors.Is(err, userbus.ErrTooManyGrants):
-		a.show(w, r, http.StatusTooManyRequests, c, req, "too-many")
+		a.show(w, r, http.StatusTooManyRequests, c, req, scopes, "too-many")
 
 		return
 	case errors.Is(err, userbus.ErrClient), errors.Is(err, userbus.ErrChallenge):
@@ -352,7 +356,7 @@ func (a app) answer(w http.ResponseWriter, r *http.Request) {
 	a.back(w, r, req, url.Values{"code": {code}})
 }
 
-func (a app) show(w http.ResponseWriter, r *http.Request, status int, c oauth.Client, req request, problem string) {
+func (a app) show(w http.ResponseWriter, r *http.Request, status int, c oauth.Client, req request, scopes []userbus.Scope, problem string) {
 	me, _ := mid.UserFrom(r.Context())
 
 	back, _ := url.Parse(req.Redirect) // checked in client()
@@ -369,6 +373,8 @@ func (a app) show(w http.ResponseWriter, r *http.Request, status int, c oauth.Cl
 		BackTo:  back.Host,
 		Email:   me.Email.String(),
 		Problem: problem,
+
+		Translates: userbus.Allows(scopes, userbus.Translate),
 	})
 }
 
