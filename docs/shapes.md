@@ -91,6 +91,38 @@ reader carries them meanwhile when it can.
   `pdfsource.ReadAs` reads by another. Its JSON form and the matcher that
   chooses a declaration are the next pull request.
 
+### As built (the second pull request)
+
+- **The form**: one JSON file per layout in
+  `business/domain/importing/shapes/declarations/`, named by its id and
+  embedded (`shapes.Parse` says what is wrong with one, and refuses a
+  field it does not know, so that a misspelt one is not quietly the
+  general reader's). Its `layout` names only the patterns it changes;
+  the rest are `pdfsource.General`'s.
+- **Matching**: the format, a producer pattern if given, and phrases the
+  first three pages must contain (`contains`) and must not (`lacks`),
+  ignoring case and spacing. A document that matches one declaration is
+  read by it; none, or more than one, is read by the general reader as a
+  new layout, and an overlap is logged.
+- **Checked by**: each declaration says how its documents prove they were
+  read whole (`balances`, `totals`, `sum`). A document recognized as the
+  layout and not proven one of those ways is refused -- it was misread, or
+  the bank changed the layout -- and the preview says so.
+- **The first two**: `us-consolidated-checking-a` (checked by balances,
+  or by totals in a month with activity on one day only) and
+  `us-card-activity-printout-a` (checked by its sum). Neither changes a
+  pattern: what they add is recognition and the check they are held to.
+  Checked locally on the treasurer's real files: all 78 account-months of
+  the 26 consolidated statements and all 12 printouts are recognized,
+  proven their declared way, and ready to import, and none is a sighting.
+  That check changed both: the printouts' total is past the third page on
+  a busy month, so they are recognized by the box at the top instead; and
+  two quiet months balance by totals, not daily balances.
+- **Fixtures**: `pdfsourcetest.Fixtures` names each drawn document. A
+  test reads every built-in declaration's fixture, which it alone must
+  recognize, into the rows the general reader reads; another imports it
+  through the ledger and finds it proven its declared way.
+
 ## 2. Declaring a shape
 
 A declaration is data, not code: what the reader already decides in Go,
@@ -177,14 +209,12 @@ count rules; those that balance are imported together, and the rest are
 left on the list for a person, one by one. Only accounts the person keeps
 the books of are proposed.
 
-## Open question
+## Naming (decided 2026-10-09)
 
-Built-in declarations describe real banks' layouts, which are public, in a
-public repository. Naming a declaration after its bank says nothing about
-who uses it, but this repository has so far kept every issuer out of its
-fixtures and messages. **Should built-in declarations be named for their
-bank ("chase-consolidated-checking-2026"), or generically
-("us-consolidated-checking-a")?**
+Built-in declarations are **named generically** ("us-consolidated-checking-a"),
+not after their bank, as the rest of this repository keeps every bank and
+card issuer out of its files. A declaration recognizes its documents by
+the words of their layout, never by the bank's name.
 
 ## Build order
 

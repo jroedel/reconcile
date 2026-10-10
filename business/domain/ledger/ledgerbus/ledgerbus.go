@@ -28,9 +28,9 @@ import (
 	"github.com/jroedel/reconcile/business/domain/event/eventbus"
 	"github.com/jroedel/reconcile/business/domain/file/filebus"
 	"github.com/jroedel/reconcile/business/domain/importing/importbus"
+	"github.com/jroedel/reconcile/business/domain/importing/shapes"
 	"github.com/jroedel/reconcile/business/domain/importing/sources/csvsource"
 	"github.com/jroedel/reconcile/business/domain/importing/sources/ofxsource"
-	"github.com/jroedel/reconcile/business/domain/importing/sources/pdfsource"
 	"github.com/jroedel/reconcile/business/domain/rule/rulebus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/types"
@@ -275,11 +275,14 @@ type Draft struct {
 	File    filebus.File
 	Format  Format
 
-	// Shape is what the file was recognized as, and Proven whether its own
-	// figures -- not balances a person typed -- prove it was read whole
-	// (shapes.go).
-	Shape  importbus.Shape
-	Proven bool
+	// Shape is what the file was recognized as, and Declaration the
+	// declaration of its layout, if one describes it. Proven is whether its
+	// own figures -- not balances a person typed -- prove it was read
+	// whole, and ProvenBy how (shapes.go).
+	Shape       importbus.Shape
+	Declaration shapes.Declaration
+	Proven      bool
+	ProvenBy    Method
 
 	// For a CSV: its header and first rows, the mapping in use, and
 	// whether it was remembered from an earlier file with the same header.
@@ -379,7 +382,8 @@ func (b *Business) Prepare(ctx context.Context, actor, accountID, fileID types.I
 	}
 
 	d.Check = verify(d.Result.Records, d.Opening, d.Closing, d.Result.Total, account.Kind == tenancybus.Card)
-	d.Proven = verify(d.Result.Records, d.Result.Opening, d.Result.Closing, d.Result.Total, account.Kind == tenancybus.Card).OK
+	proof := verify(d.Result.Records, d.Result.Opening, d.Result.Closing, d.Result.Total, account.Kind == tenancybus.Card)
+	d.Proven, d.ProvenBy = proof.OK, proof.Method
 	b.seen(ctx, d)
 
 	if len(d.Result.Records) == 0 || d.Check.Failed() {
@@ -501,8 +505,7 @@ func (b *Business) readPDF(ctx context.Context, d *Draft, data []byte, opts *Opt
 		b.log.Info("a PDF statement's producer could not be read", "file_id", d.File.ID.String(), "error", err)
 	}
 
-	res, err := pdfsource.Read(text)
-	d.Shape = recognize(PDF, producer, res.Structure)
+	res, err := b.readLayout(d, producer, text)
 
 	if err != nil {
 		b.seen(ctx, *d)

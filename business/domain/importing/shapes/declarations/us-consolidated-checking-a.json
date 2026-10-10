@@ -1,0 +1,20 @@
+{
+  "id": "us-consolidated-checking-a",
+  "name": "Consolidated checking statement, layout A",
+  "first_seen": "2026-10",
+  "version": 1,
+  "notes": [
+    "A bank's own monthly statement for every checking account a customer has, in one PDF: a summary of all of them, then each account's part under its \"Account Number\", with a summary of its beginning and ending balance.",
+    "Each part lists its rows by kind, not by date -- deposits and additions, checks paid, electronic withdrawals, ATM and debit card withdrawals, fees -- each under its heading and printed without a sign; the heading gives the direction. Checks paid start with the check's number, and the date paid is the last date on the row. After the rows, a table of the balance at the end of each day with activity.",
+    "The composition engine hides marks in the text around each part (\"*start*summary\"); they are not on the page and are dropped as noise.",
+    "Checked by balances: each day's ending balance follows from the rows of that day, and the rows take the beginning balance to the ending balance. A month with activity on one day only has one daily balance, which checks nothing by itself, and is checked by its totals instead: the beginning balance and the rows come to the ending balance. Of 26 months of three accounts, 76 account-months were checked by balances and 2 by totals, every one to the cent.",
+    "The general reader's words read it as they are; this declaration says how it is recognized and that nothing short of its balances will do."
+  ],
+  "match": {
+    "format": "pdf",
+    "contains": ["consolidated balance summary", "checking summary", "deposits and additions"]
+  },
+  "layout": {},
+  "checked_by": ["balances", "totals"],
+  "fixture": "consolidated"
+}

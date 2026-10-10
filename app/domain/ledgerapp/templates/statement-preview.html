@@ -168,7 +168,9 @@
   {{end}}
 {{end}}
 {{if and $pdf $d.Result.Records (not $c.Failed)}}
-  {{if not $d.Shape.New}}<p class="hint">{{t "Read as: {layout}" "layout" $d.Shape.Declared}}</p>
+  {{if not $d.Shape.New}}
+    {{if $d.Unproven}}<p class="notice" role="alert">{{t "This statement looks like a “{layout}”, but its own figures do not check out the way that layout's always do, so it cannot be imported. It may have been misread, or the bank may have changed its layout. Meanwhile, download the statement from your bank's website as CSV or OFX, if it offers them." "layout" $d.Shape.Declared}}</p>
+    {{else}}<p class="hint">{{t "Read as: {layout}" "layout" $d.Shape.Declared}}</p>{{end}}
   {{else if $d.Proven}}<p class="hint">{{t "This layout of statement is new to this site, so it was read by the general reader. Its own figures balance, which shows every row was read, so it can be imported."}}</p>
   {{else}}<p class="notice" role="alert">{{t "This layout of statement is new to this site, and it states nothing to check that every row was read: no balance on its rows, no opening and closing balance, no total. So it cannot be imported. The site's administrator can see that a statement laid out like this arrived, though never what is in it, so that the site can be taught to read it. Meanwhile, download the statement from your bank's website as CSV or OFX, if it offers them."}}</p>{{end}}
 {{end}}

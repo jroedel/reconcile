@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/jroedel/reconcile/business/domain/importing/importbus"
+	"github.com/jroedel/reconcile/business/domain/importing/shapes"
+	"github.com/jroedel/reconcile/business/domain/importing/sources/pdfsource/pdfsourcetest"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/types/money"
 	"github.com/jroedel/reconcile/foundation/pdftext/pdftexttest"
@@ -103,6 +105,84 @@ func TestANewLayout(t *testing.T) {
 			if leak.MatchString(word) {
 				t.Errorf("%q is not a word of the layout's", word)
 			}
+		}
+	}
+}
+
+// Every built-in declaration recognizes its drawn document in the ledger,
+// which reads it by the declaration, finds it proven the way the
+// declaration says, and records no sighting: the layout is known.
+func TestEveryDeclarationOnItsFixture(t *testing.T) {
+	needPoppler(t)
+
+	// The kind of account each fixture is imported into, and its parts.
+	into := map[string]struct {
+		kind  string
+		parts []string
+	}{
+		"consolidated":  {"checking", []string{pdfsourcetest.First, pdfsourcetest.Second}},
+		"card-activity": {"card", []string{""}},
+	}
+
+	w := newWorld(t)
+	me := w.user("treasurer@example.org")
+
+	for _, decl := range shapes.Builtin() {
+		how, ok := into[decl.Fixture]
+		if !ok {
+			t.Errorf("%s: this test does not know what account its fixture %q goes in", decl.ID, decl.Fixture)
+
+			continue
+		}
+
+		acct := w.account(me, how.kind)
+		file := w.save(me, decl.Fixture+".pdf", pdfsourcetest.Fixtures[decl.Fixture]())
+
+		for _, part := range how.parts {
+			d, err := w.ledger.Prepare(t.Context(), me, acct, file, &ledgerbus.Options{Part: part, Invert: how.kind == "card"})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if d.Shape.New() || d.Shape.Declared != decl.Name || d.Declaration.ID != decl.ID {
+				t.Errorf("%s %s: recognized as %q", decl.ID, part, d.Shape.Declared)
+			}
+
+			if !d.Proven || !slices.Contains(decl.CheckedBy, string(d.ProvenBy)) || !d.Check.OK || !d.Ready() {
+				t.Errorf("%s %s: proven %v by %s, check %+v, ready %v", decl.ID, part, d.Proven, d.ProvenBy, d.Check, d.Ready())
+			}
+		}
+	}
+
+	if got, err := w.shapes.Sightings(t.Context()); err != nil || len(got) != 0 {
+		t.Errorf("sightings of declared layouts: %+v, %v", got, err)
+	}
+}
+
+// A declared layout is imported only when it proves itself the way its
+// declaration says: a document of it that balances some other way was
+// misread, or the bank has changed the layout.
+func TestADeclaredLayoutProvesItselfItsWay(t *testing.T) {
+	declared := ledgerbus.Draft{
+		Format:      ledgerbus.PDF,
+		Shape:       importbus.Shape{Format: "pdf", Declared: "a layout"},
+		Declaration: shapes.Declaration{CheckedBy: []string{"balances"}},
+	}
+
+	for _, c := range []struct {
+		proven bool
+		by     ledgerbus.Method
+		want   bool
+	}{
+		{true, ledgerbus.ByBalances, false},
+		{true, ledgerbus.ByTotals, true},
+		{false, ledgerbus.Unchecked, true},
+	} {
+		d := declared
+		d.Proven, d.ProvenBy = c.proven, c.by
+
+		if d.Unproven() != c.want {
+			t.Errorf("proven %v by %s: unproven %v", c.proven, c.by, d.Unproven())
 		}
 	}
 }

@@ -114,3 +114,70 @@ func Consolidated() []byte {
 
 	return pdftexttest.Draw(p1, p2, p3)
 }
+
+// CardActivity's figures: what its rows come to, the bank's way round, and
+// what of that is still pending.
+const (
+	CardTotal   = "-5.10"
+	CardPending = "2.75"
+)
+
+// CardActivity draws a card's activity as a browser prints the card
+// issuer's account page, for a card with two cardholders:
+//
+//   - the page's name and the time it was printed at the top of each page,
+//     and its address and the page count at the foot;
+//   - the account's figures in a box above the table -- its balance, its
+//     credit, the last statement's balance -- which are not rows;
+//   - the period, and whose card the page is about, on one line;
+//   - a table of date, description, cardholder and amount, newest first,
+//     with the charge still pending at its head, and purchases printed as
+//     positive amounts, the issuer's way round;
+//   - after the table, the total of its rows and the summary by kind,
+//     with the pending purchases' total.
+func CardActivity() []byte {
+	head := func(n string) pdftexttest.Page {
+		p := pdftexttest.Row(30, 40, "Example Card Services Account Dashboard", 470, "10/2/26, 4:15 PM")
+
+		return append(p, pdftexttest.Row(770, 20, "https://cards.example.invalid/dashboard", 520, "Page "+n+" of 2")...)
+	}
+
+	row := func(y float64, date, desc, who, amount string) []pdftexttest.Text {
+		return pdftexttest.Row(y, 50, date, 150, desc, 330, who, 470, amount)
+	}
+
+	p1 := head("1")
+	p1 = append(p1, pdftexttest.Row(70, 50, "EXAMPLE PARISH")...)
+	p1 = append(p1, pdftexttest.Row(95, 50, "Current Balance", 300, "Available Credit", 450, "Credit Limit:")...)
+	p1 = append(p1, pdftexttest.Row(110, 50, "$1,234.56", 300, "$8,765.44", 450, "$10,000.00")...)
+	p1 = append(p1, pdftexttest.Row(122, 50, "Statement closing Oct 9, 2026")...)
+	p1 = append(p1, pdftexttest.Row(145, 50, "Last Statement Balance", 400, "Minimum Payment Due")...)
+	p1 = append(p1, pdftexttest.Row(160, 50, "$250.00", 400, "$25.00")...)
+	p1 = append(p1, pdftexttest.Row(172, 50, "Payment due on : Nov 3, 2026")...)
+	p1 = append(p1, pdftexttest.Row(200, 50, "Sep 1, 2026 to Sep 30, 2026 | PAT EXAMPLE")...)
+	p1 = append(p1, pdftexttest.Row(225, 50, "Date", 150, "Description", 330, "Name", 470, "Amount")...)
+	p1 = append(p1, row(250, "Sep 30, 2026", "Metro Bus Fare", "PAT EXAMPLE", "$2.75")...)
+	p1 = append(p1, row(275, "Sep 28, 2026", "Corner Hardware", "PAT EXAMPLE", "$18.40")...)
+	p1 = append(p1, row(300, "Sep 21, 2026", "Payment Thank You", "PAT EXAMPLE", "-$100.00")...)
+
+	p2 := head("2")
+	p2 = append(p2, row(70, "Sep 14, 2026", "Parish Office Supply", "LEE SAMPLE", "$64.15")...)
+	p2 = append(p2, row(95, "Sep 03, 2026", "Café Lumen", "LEE SAMPLE", "$9.60")...)
+	p2 = append(p2, pdftexttest.Row(130, 50, "End of Activity", 150, "Total Activity Date range", 470, "-$5.10")...)
+	p2 = append(p2, pdftexttest.Row(170, 200, "Pending purchases", 470, "$2.75")...)
+	p2 = append(p2, pdftexttest.Row(190, 200, "Purchases", 470, "$92.15")...)
+	p2 = append(p2, pdftexttest.Row(210, 200, "Cash advances", 470, "$0.00")...)
+	p2 = append(p2, pdftexttest.Row(230, 200, "Payments", 470, "-$100.00")...)
+	p2 = append(p2, pdftexttest.Row(250, 200, "Credits", 470, "$0.00")...)
+
+	return pdftexttest.Draw(p1, p2)
+}
+
+// Fixtures is every drawn statement by the name a built-in declaration
+// gives as its fixture (business/domain/importing/shapes): a declaration
+// is tested on the document drawn here in its layout, and one without a
+// drawing is not merged.
+var Fixtures = map[string]func() []byte{
+	"consolidated":  Consolidated,
+	"card-activity": CardActivity,
+}

@@ -116,12 +116,14 @@ the person types the balances, exactly as a CSV is (`ledgerbus.verify`).
 4. **None of these** is "not checked", shown as such in the preview, as a
    CSV without balances is today.
 
-Since the shapes work (`docs/shapes.md`, 1), 3 and 4 hold only for a
-layout a declaration describes. A PDF in a layout none does is read by
-this general reader and imported only when 1 or 2 holds: its own figures
-are the only check on a reading of a layout nobody has looked at, and
-balances a person types are typed from the same page the reader may have
-misread. Typed balances are still checked on top, when given.
+Since the shapes work (`docs/shapes.md`), 3 and 4 no longer import a
+PDF. One in a layout no declaration describes is read by this general
+reader and imported only when 1 or 2 holds: its own figures are the only
+check on a reading of a layout nobody has looked at, and balances a person
+types are typed from the same page the reader may have misread. One in a
+declared layout is imported only when it is proven the way its
+declaration says its documents are. Typed balances are still checked on
+top, when given.
 
 A check that fails imports nothing, and the preview names the row where it
 stopped adding up, as a CSV's does.
