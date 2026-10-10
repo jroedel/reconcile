@@ -89,7 +89,14 @@ func New(now time.Time, actor types.ID, scope types.Scope, action Action, detail
 // Storer reads events back.
 type Storer interface {
 	ForScope(ctx context.Context, scope types.Scope, limit int) ([]Event, error)
+
+	// Through is the events an actor wrote through an API key since a
+	// moment, newest first.
+	Through(ctx context.Context, actor types.ID, since time.Time, limit int) ([]Event, error)
 }
+
+// MaxThrough is the most Through returns.
+const MaxThrough = 500
 
 // Business is the history, for reading.
 type Business struct {
@@ -103,6 +110,21 @@ func NewBusiness(store Storer) *Business { return &Business{store: store} }
 // reader may see them is the caller's question, answered before this.
 func (b *Business) Recent(ctx context.Context, scope types.Scope, limit int) ([]Event, error) {
 	events, err := b.store.ForScope(ctx, scope, limit)
+	if err != nil {
+		return nil, fmt.Errorf("reading the history: %w", err)
+	}
+
+	return events, nil
+}
+
+// Through is what the actor changed through an API key since a moment,
+// newest first, at most MaxThrough: "what did you do this morning" asked of
+// the history rather than of whoever did it (docs/books-api.md,
+// list_changes). Only the actor's own changes, so there is nobody else's
+// permission to ask; a change on a scope they have since lost is still
+// theirs.
+func (b *Business) Through(ctx context.Context, actor types.ID, since time.Time, limit int) ([]Event, error) {
+	events, err := b.store.Through(ctx, actor, since, min(max(limit, 1), MaxThrough))
 	if err != nil {
 		return nil, fmt.Errorf("reading the history: %w", err)
 	}

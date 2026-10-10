@@ -27,7 +27,7 @@
 {{if .Keys}}
 <ul class="list">
 {{range .Keys}}<li>
-  <strong>{{.Name}}</strong>{{if .Program}} · {{t "connected from Claude"}}{{else if eq .Purpose "upload"}} · {{t "sends statements to your inbox"}}{{else if eq .Purpose "translate"}} · {{t "translates"}}{{end}}
+  <strong>{{.Name}}</strong>{{if .Program}} · {{t "connected from Claude"}}{{else if eq .Purpose "upload"}} · {{t "sends statements to your inbox"}}{{else if eq .Purpose "books-read"}} · {{t "reads your books"}}{{else if eq .Purpose "translate"}} · {{t "translates"}}{{end}}
   <br><span class="hint">{{if .LastUse}}{{t "Made {made} · ends {ends} · last used {used}" "made" .Created "ends" .Expires "used" .LastUse}}{{else}}{{t "Made {made} · ends {ends} · not used yet" "made" .Created "ends" .Expires}}{{end}}</span>
   <form method="post" action="/account/keys/{{.ID}}/revoke" class="inline">
     <button type="submit" class="quiet">{{t "Revoke"}}</button>
@@ -46,6 +46,8 @@
     <legend>{{t "What the key is for"}}</legend>
     <label class="choice"><input type="radio" name="purpose" value="upload"{{if or (eq .Purpose "upload") (not .Translates)}} checked{{end}} required> {{t "A script that sends statements to your inbox"}}</label>
     <p class="hint">{{t "For the Gmail script, which sends the statements your email brings. It may only send files; they wait under “Import several statements” until you import them. Lasts a year."}}</p>
+    <label class="choice"><input type="radio" name="purpose" value="books-read"{{if eq .Purpose "books-read"}} checked{{end}}> {{t "Reading your books"}}</label>
+    <p class="hint">{{t "For a program of yours, such as Claude, to read what you can read here: accounts, statements, transactions, rules and receipts. It changes nothing. Lasts 90 days."}}</p>
     {{if .Translates}}
     <label class="choice"><input type="radio" name="purpose" value="translate"{{if eq .Purpose "translate"}} checked{{end}}> {{t "Translating this site"}}</label>
     <p class="hint">{{t "For your own Claude, filling in the Spanish and Portuguese. Lasts 90 days."}}</p>

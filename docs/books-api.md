@@ -86,8 +86,10 @@ names: *a script that sends statements* (`upload`), *reading my books*
 something to reach, so that no key is made for an API that is not there. The list shows each key's purpose, when it was last used and
 when it ends.
 
-**OAuth consent** (`/oauth/authorize`) asks for `books:write`, plus
-`translate` for those who may: "claude.ai wants to keep your books as you:
+**OAuth consent** (`/oauth/authorize`) is open to anybody signed in. From
+the second pull request it gives `books:read`, plus `translate` for those who
+may, and says so; from the third it asks for `books:write`, with a box that
+narrows it to reading: "claude.ai wants to keep your books as you:
 see your organizations' accounts, statements, transactions and receipts,
 import statements from your inbox, sort them, and write sorting rules. It
 cannot mark a month reconciled, reopen one, or remove a statement or a
@@ -174,7 +176,7 @@ from (`docs/design.md`). Lists take `limit` and a `cursor`.
 
 | Endpoint | Tool | Over |
 |---|---|---|
-| `GET /api/v1/me` (any scope) | `whoami` | The person, the key's scopes and when it ends |
+| `GET /api/v1/me` | `whoami` | The person, the key's scopes and when it ends |
 | `GET /api/v1/overview` | `get_overview` | `tenancybus.Overview`: organizations, accounts and projects, with each account's role, currency, last four, and (from the ledger and receipts) its last statement's end, unsorted count and receipts waiting |
 | `GET /api/v1/inbox` | `list_inbox` | The waiting files, each with its proposal: shape, account or accounts, period, how it checked, new transactions, and what needs a person, if anything |
 | `GET /api/v1/accounts/{account}/months` | `get_account_months` | `Coverage`: each month reconciled, imported, partial (which days), missing or still going, with its unsorted count |
@@ -184,14 +186,14 @@ from (`docs/design.md`). Lists take `limit` and a `cursor`.
 | `GET /api/v1/transactions/{transaction}` | `get_transaction` | The transaction's page: splits, rule or API that sorted it, receipts, statement, history, and what explains it or what it is "cleared by" (`Clearing`) |
 | `GET /api/v1/accounts/{account}/to-sort?month=` | `get_month_to_sort` | `ToSort`: each unsorted charge with its suggestion, and the categories and projects it may be sorted into |
 | `GET /api/v1/accounts/{account}/rules` | `list_rules` | `Rulebook`: each rule with how many it has sorted, the rules that disagree, and how many unsorted the rules would sort now |
-| `GET /api/v1/accounts/{account}/rules/try?match=&direction=` | `try_rule` | **New**: the transactions a rule with this text would sort, which of those a person or another rule already sorted, and the rules it would disagree with. Nothing saved |
+| `GET /api/v1/accounts/{account}/rules/try?match=&direction=&category=&project=` | `try_rule` | **New** (`ledgerbus.TryRule`): the transactions a rule with this text would sort, those a longer rule sorts instead, those where a rule as long disagrees (and which), and those with the text already sorted. The category and project are optional; they tell agreement from disagreement. Trying a rule's own text tries a correction of it. Nothing saved |
 | `GET /api/v1/receipts/waiting` | `list_waiting_receipts` | `Waiting` with `Suggestions` |
-| `GET /api/v1/projects/{project}` | `get_project_book` | `ProjectBook`, and its budget beside it when it has one |
+| `GET /api/v1/projects/{project}` | `get_project_book` | `ProjectBook`: totals, by category and by month, and its parts. Its budget beside it is left for when it is asked for |
 | `GET /api/v1/transactions?text=&amount=&from=&to=&account=&direction=` | `find_transactions` | **New** (`ledgerbus.Find`): transactions across every account the person may read, or those named, by words in the description, an amount (exact, or `min`/`max`), a span of dates and money in or out. Hunting starts here: "the card payments out of this account this year", "anything for 1,240.00 in March" |
 | `GET /api/v1/accounts/{account}/holders?month=` | `get_holders` | `Holders`: on an account whose statements come one file per holder (a person or card on the account), each holder's total for the month and who is missing |
 | `GET /api/v1/transactions/{transaction}/explanation` | `get_explanation` | `Explain`: the lines that make the amount up, grouped by account, their sum, the difference, whether it is explained, open or accepted with a note, and the accounts and months last gathered from |
 | `GET /api/v1/transactions/{transaction}/explanation/candidates?account=&from=&to=` | `list_explanation_candidates` | `Candidates`: what may be added, from those accounts and months, not already in another explanation |
-| `GET /api/v1/changes?since=` | `list_changes` | **New**: what this person changed through the API since a moment, from the history: "what did you do this morning" has an answer that is not Claude's memory |
+| `GET /api/v1/changes?since=` | `list_changes` | **New** (`eventbus.Through`): what this person changed through the API since a moment (the last day by default), from the history: "what did you do this morning" has an answer that is not Claude's memory |
 
 ### Keeping the books (`books:write`)
 

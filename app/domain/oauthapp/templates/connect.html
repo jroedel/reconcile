@@ -2,12 +2,14 @@
 {{define "content"}}{{with .Data}}
 {{if .Host}}
 <h1>{{t "Let {program} work as you?" "program" .Name}}</h1>
-<p>{{t "{host} is asking to read and write the translations of this site's pages, as you ({email})." "host" .Host "email" .Email}}</p>
+<p>{{t "{host} is asking to read your books on this site, as you ({email})." "host" .Host "email" .Email}}</p>
 
 {{if eq .Problem "too-many"}}<p class="notice" role="alert">{{t "Too many programs have asked to connect as you in the last few minutes. Wait a while and try again."}}</p>{{end}}
 
 <section class="card">
-  <p>{{t "It cannot see any organization, account, statement, receipt or export: only the words on the pages, in Spanish and Portuguese. What it writes is shown at once, and you can look it over afterwards."}}</p>
+  <p>{{t "It can read what you can: your organizations, accounts and projects, their statements, transactions, sorting rules and receipts, and the statements waiting in your inbox. Only what you have been given; nobody else's."}}</p>
+  <p>{{t "It cannot change anything in your books, import a statement, or download a statement or receipt."}}</p>
+  {{if .Translates}}<p>{{t "Because you translate this site, it can also read and write the Spanish and Portuguese of its pages. What it writes is shown at once, and you can look it over afterwards."}}</p>{{end}}
   <p>{{t "It gets a key that lasts 90 days. You can end it at any time on your API keys page, where it is listed as “{name}”." "name" .KeyName}}</p>
   <p><a href="/account/keys">{{t "Your API keys"}}</a></p>
 </section>
@@ -30,7 +32,6 @@
 {{- else if eq .Problem "cannot-read-client"}}{{t "We could not read who is asking to connect. Start again from Claude in a few minutes."}}
 {{- else if eq .Problem "bad-redirect"}}{{t "The program asked to send you back somewhere it does not list as its own, so nothing was sent to it. Start again from Claude."}}
 {{- else if eq .Problem "cannot-read"}}{{t "We could not read that. Start again from Claude."}}
-{{- else if eq .Problem "not-translator"}}{{t "Connecting a program is for the people who translate this site, and you are not one of them. The site administrator decides who is."}}
 {{- else}}{{t "Something went wrong at our end. Please try again in a few minutes."}}
 {{- end}}</p>
 <p><a href="/">{{t "Your organizations"}}</a></p>

@@ -155,9 +155,9 @@ accountant's zip, read across the others and stored nowhere). The pages
 over them are `homeapp`, `authapp`, `tenancyapp`, `ledgerapp`,
 `categoryapp`, `ruleapp`, `budgetapp`, `receiptapp`, `exportapp`, `adminapp` and
 `translationapp` (the review screen); a program's ways
-in are `apiapp` (`/api/v1`: the translations, and the statement inbox a
-person's Gmail script fills, each endpoint behind the scope a key needs;
-`docs/books-api.md`), `mcpapp` (the same as tools on `/mcp`, listing only
+in are `apiapp` (`/api/v1`: the translations, the statement inbox a
+person's Gmail script fills, and reading the books, each endpoint behind the
+scope a key needs; `docs/books-api.md`), `mcpapp` (the same as tools on `/mcp`, listing only
 those a key's scopes reach) and `oauthapp` (how Claude on claude.ai gets a
 key). The rest is
 where the plan's domains go when they arrive.
@@ -219,6 +219,10 @@ is the way, and `.claude/skills/reconcile-api` says how to do it well
 (`docs/translations.md`). That is a translator using the site, not an agent
 operating the server: never as a test, never while developing, and never to
 check a change.
+
+The books endpoints (`docs/books-api.md`) are for a person's own Claude on
+claude.ai, acting as them. An agent working in this repository never calls
+them: not to read, not to test, not to check a change.
 
 `.claude/settings.json` denies these commands, so the rule holds even when it
 is forgotten. Do not work around a denial — a denied command is the answer.

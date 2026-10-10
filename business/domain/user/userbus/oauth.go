@@ -78,30 +78,37 @@ type Grant struct {
 	RedirectURI string
 	Challenge   string
 
+	// Scopes is what the person agreed the program's key may be used for.
+	Scopes []Scope
+
 	CreatedAt time.Time
 	ExpiresAt time.Time
 	UsedAt    time.Time // zero while unspent
 }
 
 // GrantAccess records that a person agreed to let a program act as them,
-// and returns the code to send it back with. The caller has read the
-// program's metadata document and checked redirect against it; this is the
-// rule about what a code is bound to, not about which programs may ask.
-func (b *Business) GrantAccess(ctx context.Context, now time.Time, userID types.ID, clientID, name, redirect, challenge string) (string, error) {
+// for the scopes they agreed to, and returns the code to send it back with.
+// The caller has read the program's metadata document and checked redirect
+// against it, and has asked whether the person may hold each scope; this is
+// the rule about what a code is bound to, not about which programs may ask.
+func (b *Business) GrantAccess(ctx context.Context, now time.Time, userID types.ID, clientID, name, redirect, challenge string, scopes []Scope) (string, error) {
 	name = keyName(name)
+	scopes = tidyScopes(scopes)
 
 	switch {
 	case clientID == "", redirect == "":
 		return "", ErrClient
 	case !oauth.ValidChallenge(challenge):
 		return "", ErrChallenge
+	case len(scopes) == 0:
+		return "", ErrKeyScope
 	}
 
 	cred := mintCredential()
 
 	made, err := b.store.CreateGrant(ctx, Grant{
 		ID: cred.id, UserID: userID, Hash: cred.hash,
-		ClientID: clientID, ClientName: name, RedirectURI: redirect, Challenge: challenge,
+		ClientID: clientID, ClientName: name, RedirectURI: redirect, Challenge: challenge, Scopes: scopes,
 		CreatedAt: now, ExpiresAt: now.Add(GrantLife),
 	}, maxLiveGrants)
 
@@ -187,12 +194,7 @@ func (b *Business) RedeemGrant(ctx context.Context, now time.Time, presented, cl
 	cred := mintCredential()
 	k := APIKey{
 		ID: cred.id, UserID: u.ID, Name: g.ClientName, Hash: cred.hash,
-		CreatedAt: now, ExpiresAt: now.Add(APIKeyLife), Client: g.ClientID,
-
-		// Translations, which is all a program connected through OAuth
-		// may do until the consent asks for the books
-		// (docs/books-api.md, build order 2).
-		Scopes: []Scope{Translate},
+		CreatedAt: now, ExpiresAt: now.Add(APIKeyLife), Client: g.ClientID, Scopes: g.Scopes,
 	}
 
 	made, err := b.store.ReplaceAPIKey(ctx, k, MaxAPIKeys)

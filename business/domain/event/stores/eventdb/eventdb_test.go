@@ -89,3 +89,40 @@ func TestTheHistorySaysWhichKey(t *testing.T) {
 		}
 	}
 }
+
+// Through is one person's changes through a key, newest first, since a
+// moment: not their changes on a page, and not anybody else's.
+func TestThroughIsOnePersonsChangesThroughAKey(t *testing.T) {
+	db, err := sqldb.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	if err := eventdb.Init(t.Context(), db); err != nil {
+		t.Fatal(err)
+	}
+
+	me, other := types.NewID(), types.NewID()
+	scope := types.AccountScope(types.NewID())
+	at := time.UnixMilli(1_700_000_000_000).UTC()
+	keyed := eventbus.WithVia(t.Context(), "claude.ai")
+
+	for i, w := range []struct {
+		ctx   context.Context
+		actor types.ID
+	}{{t.Context(), me}, {keyed, me}, {keyed, other}, {keyed, me}} {
+		if err := eventdb.Insert(w.ctx, db, eventbus.New(at.Add(time.Duration(i)*time.Minute), w.actor, scope, eventbus.Edited, nil)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := eventdb.NewStore(db).Through(t.Context(), me, at.Add(time.Minute), 10)
+	if err != nil || len(got) != 2 || !got[0].At.After(got[1].At) || got[0].Scope != scope {
+		t.Fatalf("through: %+v, %v", got, err)
+	}
+
+	if got, _ := eventdb.NewStore(db).Through(t.Context(), me, at.Add(2*time.Minute), 10); len(got) != 1 {
+		t.Errorf("since a later moment: %d", len(got))
+	}
+}
