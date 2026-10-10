@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
 
 	"github.com/jroedel/reconcile/business/domain/translation/translationbus"
 	"github.com/jroedel/reconcile/business/domain/user/userbus"
@@ -11,14 +12,17 @@ import (
 	"github.com/jroedel/reconcile/foundation/web"
 )
 
-// This file is the screen where a translator makes and revokes their own API
-// keys, for a program -- their Claude, a script -- to fill the translations
-// through /api/v1 (docs/translations.md). Lifted from stewards.
+// This file is the screen where a person makes and revokes their own API
+// keys, for a program -- their Claude, a script -- to work with the site
+// through /api/v1 (docs/translations.md, docs/books-api.md). Lifted from
+// stewards.
 //
-// Only somebody who may translate sees it: a key reaches nothing but the
-// translations, so for anybody else it would be a secret that opens nothing,
-// and a screen offering one would be a question nobody can answer well. To
-// them the address is a 404, as any page that is not theirs is.
+// Anybody signed in may hold a key, and says what it is for when they make
+// it: a purpose, in plain words, which is a set of scopes (userbus.Scope).
+// Only the purposes there is something for are offered: a script that sends
+// statements to the inbox, for everybody, and translating, for those who
+// may translate (translationbus.MayTranslate). Reading and keeping the books
+// join them when the API can do those (docs/books-api.md, build order).
 //
 // Each person sees only their own keys, including the ones a program was
 // given through OAuth (oauthapp), which is where they end one: a key acts as
@@ -31,7 +35,8 @@ import (
 // KeysPath is the screen, which the API's refusals and oauthapp name.
 const KeysPath = "/account/keys"
 
-// Translators says who may translate, which is who may hold a key.
+// Translators says who may translate, which is who may hold a translating
+// key.
 type Translators interface {
 	MayTranslateAny(ctx context.Context, who translationbus.Translator) (bool, error)
 }
@@ -46,6 +51,28 @@ type keyRow struct {
 	ID, Name                  string
 	Created, Expires, LastUse string // "" for never used
 	Program                   bool   // given to a program through OAuth
+
+	// Purpose is the key's scopes as a purpose the template words; "" for
+	// a set no purpose is (a program's, given through OAuth).
+	Purpose string
+}
+
+// The purposes a key may be made for, each a set of scopes: the form's
+// choice, and what the list says of each key.
+var purposes = map[string][]userbus.Scope{
+	"upload":    {userbus.Upload},
+	"translate": {userbus.Translate},
+}
+
+// purposeOf is the purpose a key's scopes are, or "".
+func purposeOf(scopes []userbus.Scope) string {
+	for name, set := range purposes {
+		if slices.Equal(set, scopes) {
+			return name
+		}
+	}
+
+	return ""
 }
 
 type keysView struct {
@@ -54,11 +81,17 @@ type keysView struct {
 	Index  string // the API's index, to say where to start
 	Max    int
 
-	// Name is what was typed, kept when it is refused. Done and Problem are
-	// codes the template words.
-	Name    string
-	Done    string
-	Problem string
+	// Translates is whether the person may make a translating key.
+	Translates bool
+
+	// NewPurpose is the purpose of the key just made, for what to say
+	// beside it; Name and Purpose are what was chosen, kept when it is
+	// refused. Done and Problem are codes the template words.
+	NewPurpose string
+	Name       string
+	Purpose    string
+	Done       string
+	Problem    string
 }
 
 // translates reports whether the signed-in person may hold a key. Nobody may
@@ -71,32 +104,8 @@ func (a app) translates(ctx context.Context, u userbus.User) (bool, error) {
 	return a.cfg.Translators.MayTranslateAny(ctx, translationbus.Translator{ID: u.ID, SiteAdmin: u.SiteAdmin})
 }
 
-// translator is the person behind a keys route, or false with the answer
-// already written: a sign-in, a 404, or a 500.
-func (a app) translator(w http.ResponseWriter, r *http.Request) (userbus.User, bool) {
-	u, ok := signedIn(w, r)
-	if !ok {
-		return userbus.User{}, false
-	}
-
-	may, err := a.translates(r.Context(), u)
-
-	switch {
-	case err != nil:
-		a.keysFailed(w, r, "whether somebody translates", err)
-
-		return userbus.User{}, false
-	case !may:
-		http.NotFound(w, r)
-
-		return userbus.User{}, false
-	}
-
-	return u, true
-}
-
 func (a app) keys(w http.ResponseWriter, r *http.Request) {
-	u, ok := a.translator(w, r)
+	u, ok := signedIn(w, r)
 	if !ok {
 		return
 	}
@@ -105,7 +114,7 @@ func (a app) keys(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a app) makeKey(w http.ResponseWriter, r *http.Request) {
-	u, ok := a.translator(w, r)
+	u, ok := signedIn(w, r)
 	if !ok {
 		return
 	}
@@ -116,17 +125,39 @@ func (a app) makeKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	name := r.PostFormValue("name")
+	name, purpose := r.PostFormValue("name"), r.PostFormValue("purpose")
+	kept := keysView{Name: name, Purpose: purpose}
 
-	_, key, err := a.cfg.Users.CreateAPIKey(r.Context(), a.cfg.Now(), u.ID, name)
+	scopes, known := purposes[purpose]
+	if purpose == "translate" {
+		may, err := a.translates(r.Context(), u)
+		if err != nil {
+			a.keysFailed(w, r, "whether somebody translates", err)
+
+			return
+		}
+
+		known = may
+	}
+
+	if !known {
+		kept.Problem = "key-purpose"
+		a.showKeys(w, r, http.StatusUnprocessableEntity, u, kept)
+
+		return
+	}
+
+	_, key, err := a.cfg.Users.CreateAPIKey(r.Context(), a.cfg.Now(), u.ID, name, scopes)
 
 	switch {
 	case errors.Is(err, userbus.ErrKeyName):
-		a.showKeys(w, r, http.StatusUnprocessableEntity, u, keysView{Name: name, Problem: "key-name"})
+		kept.Problem = "key-name"
+		a.showKeys(w, r, http.StatusUnprocessableEntity, u, kept)
 
 		return
 	case errors.Is(err, userbus.ErrTooManyKeys):
-		a.showKeys(w, r, http.StatusUnprocessableEntity, u, keysView{Name: name, Problem: "too-many-keys"})
+		kept.Problem = "too-many-keys"
+		a.showKeys(w, r, http.StatusUnprocessableEntity, u, kept)
 
 		return
 	case err != nil:
@@ -136,11 +167,11 @@ func (a app) makeKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Cache-Control", "no-store")
-	a.showKeys(w, r, http.StatusOK, u, keysView{NewKey: key})
+	a.showKeys(w, r, http.StatusOK, u, keysView{NewKey: key, NewPurpose: purpose})
 }
 
 func (a app) revokeKey(w http.ResponseWriter, r *http.Request) {
-	u, ok := a.translator(w, r)
+	u, ok := signedIn(w, r)
 	if !ok {
 		return
 	}
@@ -174,7 +205,7 @@ func (a app) showKeys(w http.ResponseWriter, r *http.Request, status int, u user
 
 	for _, k := range keys {
 		row := keyRow{
-			ID: k.ID.String(), Name: k.Name, Program: k.Client != "",
+			ID: k.ID.String(), Name: k.Name, Program: k.Client != "", Purpose: purposeOf(k.Scopes),
 			Created: k.CreatedAt.UTC().Format(day), Expires: k.ExpiresAt.UTC().Format(day),
 		}
 		if !k.LastUsedAt.IsZero() {
@@ -186,6 +217,12 @@ func (a app) showKeys(w http.ResponseWriter, r *http.Request, status int, u user
 
 	v.Index = a.cfg.BaseURL + "/api/v1"
 	v.Max = userbus.MaxAPIKeys
+
+	if v.Translates, err = a.translates(r.Context(), u); err != nil {
+		a.keysFailed(w, r, "whether somebody translates", err)
+
+		return
+	}
 
 	a.cfg.Render.Render(w, r, status, "account-keys", v)
 }

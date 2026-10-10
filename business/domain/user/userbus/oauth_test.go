@@ -47,7 +47,7 @@ func TestAGrantBecomesAKeyOnceAndOnlyForItsProgram(t *testing.T) {
 		t.Errorf("the key: client %q, name %q", k.Client, k.Name)
 	}
 
-	if got, err := b.AuthenticateAPIKey(t.Context(), start, key); err != nil || got.ID != u.ID {
+	if got, _, err := b.AuthenticateAPIKey(t.Context(), start, key); err != nil || got.ID != u.ID {
 		t.Errorf("the program's key does not authenticate: %v", err)
 	}
 
@@ -110,12 +110,12 @@ func TestConnectingAgainReplacesTheProgramsKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := b.AuthenticateAPIKey(t.Context(), start, first); !errors.Is(err, userbus.ErrDenied) {
+	if _, _, err := b.AuthenticateAPIKey(t.Context(), start, first); !errors.Is(err, userbus.ErrDenied) {
 		t.Error("the first connection's key still works")
 	}
 
 	for i := range userbus.MaxAPIKeys - 1 {
-		if _, _, err := b.CreateAPIKey(t.Context(), start, u.ID, "key "+string(rune('a'+i))); err != nil {
+		if _, _, err := b.CreateAPIKey(t.Context(), start, u.ID, "key "+string(rune('a'+i)), []userbus.Scope{userbus.Translate}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -125,7 +125,7 @@ func TestConnectingAgainReplacesTheProgramsKey(t *testing.T) {
 		t.Errorf("reconnecting at the limit: %v", err)
 	}
 
-	if _, err := b.AuthenticateAPIKey(t.Context(), start, second); !errors.Is(err, userbus.ErrDenied) {
+	if _, _, err := b.AuthenticateAPIKey(t.Context(), start, second); !errors.Is(err, userbus.ErrDenied) {
 		t.Error("the second connection's key still works")
 	}
 

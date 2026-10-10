@@ -129,6 +129,7 @@ business/types/                     small value types: ID, Email, money.Amount
 foundation/                         no domain knowledge: web, sqldb, logger, imaging, pdftext
 deploy/                             how it reaches the server. Run by CI, not by agents
 scripts/                            how this is built and checked
+apps-script/                        Google Apps Scripts a person copies into their own account
 ```
 
 So far the domains are `translation` (the interface's strings), `user` (who
@@ -154,8 +155,11 @@ accountant's zip, read across the others and stored nowhere). The pages
 over them are `homeapp`, `authapp`, `tenancyapp`, `ledgerapp`,
 `categoryapp`, `ruleapp`, `budgetapp`, `receiptapp`, `exportapp`, `adminapp` and
 `translationapp` (the review screen); a program's ways
-in are `apiapp` (`/api/v1`, translations only), `mcpapp` (the same as tools
-on `/mcp`) and `oauthapp` (how Claude on claude.ai gets a key). The rest is
+in are `apiapp` (`/api/v1`: the translations, and the statement inbox a
+person's Gmail script fills, each endpoint behind the scope a key needs;
+`docs/books-api.md`), `mcpapp` (the same as tools on `/mcp`, listing only
+those a key's scopes reach) and `oauthapp` (how Claude on claude.ai gets a
+key). The rest is
 where the plan's domains go when they arrive.
 
 **Access is asked of tenancybus, every time.** A business method that reads

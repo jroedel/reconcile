@@ -82,7 +82,8 @@ nothing, because the viewer may not.
 page. Making a key asks what it is for, in plain words rather than scope
 names: *a script that sends statements* (`upload`), *reading my books*
 (`books:read`), *keeping my books* (`books:write`), and, for translators,
-*translating*. The list shows each key's purpose, when it was last used and
+*translating*. Each purpose is offered from the pull request that gives it
+something to reach, so that no key is made for an API that is not there. The list shows each key's purpose, when it was last used and
 when it ends.
 
 **OAuth consent** (`/oauth/authorize`) asks for `books:write`, plus
@@ -97,18 +98,21 @@ trusting, so the person's choice on this screen is the key's scopes.
 
 ### On the site
 
-A new table in the `file` domain, since an inbox file is an upload not yet
-anything else:
+A new table in the `ledger` domain (`ledgerbus/inbox.go`): an inbox file
+is a statement not yet imported, and what takes it out of the inbox is the
+ledger importing it.
 
-**`statement_inbox(id, user_id, file_id, name, source, received_at,
-statement_id NULL, dismissed_at NULL)`**, `STRICT`, unique on
-`(user_id, file_id)`.
+**`statement_inbox(id, user_id, file_id, sha256, name, source,
+received_at, closed_at NULL, dismissed_at NULL)`**, `STRICT`, unique on
+`(user_id, sha256)`: one line per person and content, however many emails
+the same statement came in.
 
 - **`POST /api/v1/inbox?name=…&source=…`** (scope `upload`), no tool. The
   body is the file itself, not JSON, with its `Content-Type`, as large as a
   statement may be: an Apps Script sends a blob in one call, and base64 in
-  JSON would make every PDF a third larger for nothing. The bytes go into
-  the file store, kept once per content as every upload is. `source` is
+  JSON would make every PDF a third larger for nothing. The content is
+  hashed before anything is kept, so the same file sent again leaves
+  nothing behind; a new one goes into the file store as every upload does. `source` is
   free text up to 200 characters, for the script's own reference
   (`gmail:<message id>`), shown to nobody but the owner. Answers
   `{"outcome": "received" | "already_waiting" | "already_imported"}`, so a
@@ -117,18 +121,21 @@ statement_id NULL, dismissed_at NULL)`**, `STRICT`, unique on
   account a file belongs to is exactly what the bulk import's proposal
   works out (`ledgerbus.Propose`, `docs/shapes.md` section 4), for the
   accounts the person keeps the books of.
-- **`/imports`** shows the waiting files at the top ("3 statements came in
-  by email"), each with its proposal, to import as a bulk import is
-  imported or to dismiss. A file whose statement is imported closes itself
-  (`statement_id`); one dismissed leaves the list but keeps its row, so the
-  same file sent again is `already_waiting` rather than back on the list.
+- **`/imports`** shows the waiting files before any are chosen ("From your
+  email"), with a link to the bulk import's own list with them on it, to be
+  checked and imported as uploaded files are, and a button on each to put
+  it aside. A file closes itself (`closed_at`) when an import leaves every
+  part of it in its account: a consolidated statement with one part still
+  needing a person stays, so that the part is not forgotten. One put aside
+  leaves the list but keeps its row, so the same file sent again is
+  `already_waiting` rather than back on the list.
   The bytes stay in the file store, as every upload's do: the store has no
   sweep of unused files today, and a statement is small beside a month of
   receipt photos.
 
 ### In the person's Google account
 
-`tools/gmail-inbox/Code.gs`, in this repository, is a script a person
+`apps-script/gmail-inbox/Code.gs`, in this repository, is a script a person
 copies into script.google.com. It holds no address and no key: both are in
 its Script Properties (`RECONCILE_URL`, `RECONCILE_KEY`), set by the person,
 so nothing about anybody's site enters this public repository.
@@ -146,7 +153,7 @@ so nothing about anybody's site enters this public repository.
   themselves, saying the key has ended and where to make a new one, and
   remembers that it did, so that an expired key is one message rather than
   one an hour.
-- A short `tools/gmail-inbox/README.md`: the filter, the properties, the
+- A short `apps-script/gmail-inbox/README.md`: the filter, the properties, the
   trigger, and how to tell it worked (the inbox on `/imports`).
 
 The script is the person's, running as them in their own Google account.
@@ -304,7 +311,7 @@ old-schema test CLAUDE.md requires.
 
 - `api_keys.scopes TEXT NOT NULL DEFAULT 'translate'`: space-separated, as
   OAuth writes scopes. The default is what every existing key is.
-- `statement_inbox`, above, in `filedb`.
+- `statement_inbox`, above, in `ledgerdb`.
 - `events.via TEXT NOT NULL DEFAULT ''`, and an index on `(actor_id, at)`
   for `list_changes`, in a second `Exec` after the `AddColumn`.
 - `splits.via TEXT NOT NULL DEFAULT ''` and `sort_rules.via TEXT NOT NULL
@@ -321,7 +328,7 @@ Three pull requests, each useful when it deploys.
    - `statement_inbox`, `POST /api/v1/inbox`, and the waiting files on
      `/imports`.
    - `events.via` and the context that carries it.
-   - `tools/gmail-inbox/` and its README.
+   - `apps-script/gmail-inbox/` and its README.
 
    After it deploys: a person makes an upload key, sets up the script, and
    statements arrive on `/imports` by themselves, to import there.

@@ -8,6 +8,7 @@ import (
 
 	"github.com/jroedel/reconcile/app/sdk/mid"
 	"github.com/jroedel/reconcile/business/domain/translation/translationbus"
+	"github.com/jroedel/reconcile/business/domain/user/userbus"
 	"github.com/jroedel/reconcile/business/types"
 	"github.com/jroedel/reconcile/foundation/web"
 )
@@ -21,14 +22,14 @@ func (a app) translationEndpoints() []Endpoint {
 
 	return []Endpoint{
 		{
-			Method: http.MethodGet, Path: Prefix + "/translations/pending", Tool: "list_pending_translations", NeedsKey: true,
+			Method: http.MethodGet, Path: Prefix + "/translations/pending", Tool: "list_pending_translations", Scope: userbus.Translate,
 			Query:   []Field{lang, {Name: "limit", Type: "integer", Description: fmt.Sprintf("How many to give, %d by default and %d at most.", pendingDefault, translationbus.MaxBatch)}},
 			Summary: "The interface's strings waiting for a translation into one language: those a reviewer sent back first, with their note and the translation there now, then those with none. Each is its English, a context that tells apart two strings with the same English (usually empty), and the template files it is written in, which say where it appears. The glossary is how the app's own terms are translated already; use the same words.",
 			Returns: `{"lang", "pending": [{context, en, pages: [string], current, note}], "remaining": n, "glossary": [{en, text}]}. current and note only for one sent back. remaining counts the ones given too; ask again until it is 0.`,
 			handler: a.pendingTranslations,
 		},
 		{
-			Method: http.MethodPut, Path: Prefix + "/translations", Tool: "put_translations", NeedsKey: true,
+			Method: http.MethodPut, Path: Prefix + "/translations", Tool: "put_translations", Scope: userbus.Translate,
 			Summary: "Translate: send each string's translation into one language. Each is on every page at once. One a person approved or corrected is refused unless sent unchanged; say what you would change instead. One refused does not stop the rest. Sending the same translation again changes nothing.",
 			Body: &Body{Encoding: "json", Fields: []Field{
 				lang,
@@ -38,7 +39,7 @@ func (a app) translationEndpoints() []Endpoint {
 			handler: a.putTranslations,
 		},
 		{
-			Method: http.MethodGet, Path: Prefix + "/translations", Tool: "list_translations", NeedsKey: true,
+			Method: http.MethodGet, Path: Prefix + "/translations", Tool: "list_translations", Scope: userbus.Translate,
 			Query: []Field{
 				lang,
 				{Name: "status", Type: "string", Values: []string{"pending", "draft", "approved"}, Description: "pending for none yet, draft for written and not yet looked over, approved for looked over by a person; leave it out for all."},

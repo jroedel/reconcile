@@ -144,6 +144,7 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		{e.org + "/budget?year=2026", url.Values{"currency": {"USD"}, "expense-total": {"100"}}},
 		{e.org + "/budget/copy?year=2027", nil},
 		{e.org + "/budget/year-start", url.Values{"month": {"7"}}},
+		{inboxed(t, h, e.owner), nil},
 	}
 
 	for _, account := range []string{e.account, e.ownAccount} {

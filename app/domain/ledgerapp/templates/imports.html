@@ -6,6 +6,7 @@
 {{else if eq $v.Problem "too-big-some"}}<p class="notice" role="alert">{{t "Some files were too big to be statements, and were left out."}}</p>
 {{else}}{{template "problem" $v.Problem}}{{end}}
 {{if $v.Done}}<p class="notice ok" role="status">{{t "Imported: {count}. Those left need a look on their own page." "count" $v.Imported}}</p>{{end}}
+{{if $v.Dismissed}}<p class="notice ok" role="status">{{t "Put aside. The same file sent again stays aside."}}</p>{{end}}
 
 {{if not $v.Accounts}}
 <p class="notice">{{t "You keep the books of no account yet. Statements can be imported once you make an account, or somebody gives you the bookkeeper role on one."}}</p>
@@ -74,6 +75,22 @@
 </div>
 </section>
 </form>
+{{end}}
+
+{{if $v.Inbox}}
+<section class="card">
+<h2>{{t "From your email"}}</h2>
+<p>{{t "Statements that came in by email and wait to be imported: {count}." "count" (len $v.Inbox)}}</p>
+<p><a href="{{$v.InboxList}}">{{t "Check them and import"}}</a></p>
+<ul class="list">
+{{range $v.Inbox}}<li>
+  <strong>{{.Name}}</strong> <span class="hint">{{t "arrived {date}" "date" (.ReceivedAt.Format "2006-01-02")}}</span>
+  <form method="post" action="/imports/inbox/{{.ID}}/dismiss" class="inline">
+    <button type="submit" class="quiet">{{t "Put aside"}}</button>
+  </form>
+</li>
+{{end}}</ul>
+</section>
 {{end}}
 
 <section class="card">

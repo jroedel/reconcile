@@ -133,6 +133,7 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	handle(SlowPatterns[0], a.bulk)
 	handle(BulkPatterns[0], a.bulkUpload)
 	handle(SlowPatterns[1], a.bulkImport)
+	handle("POST /imports/inbox/{id}/dismiss", a.dismiss)
 }
 
 // --- the shared tail --------------------------------------------------------

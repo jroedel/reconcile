@@ -44,7 +44,8 @@ line.
   `scripts/translate`, and never read `secrets.env`, `config.toml` or
   `~/.config/reconcile/` (CLAUDE.md §6). If the script says a variable is
   not set, or the API answers 401 or 403, stop and tell the person: a
-  translator makes a key at `/account/keys` on the site, puts it in
+  translator makes a key at `/account/keys` on the site, for "Translating
+  this site", puts it in
   `~/.config/reconcile/api-key`, and starts Claude Code with
   `make translate`.
 - Never write the site's address into a file here. The repository is public.

@@ -254,6 +254,10 @@ type line struct {
 	Who    string
 	Action eventbus.Action
 	Detail map[string]string
+
+	// Via is the name of the API key the change came through, "" for one
+	// made on a page (eventbus.Event.Via).
+	Via string
 }
 
 // names looks people up once each, for a page that names the same few many
@@ -327,7 +331,7 @@ func (a app) scope(r *http.Request, me userbus.User, scope types.Scope, path str
 	}
 
 	for _, e := range events {
-		l := line{At: e.At.UTC().Format("2006-01-02 15:04 UTC"), Action: e.Action, Detail: e.Detail}
+		l := line{At: e.At.UTC().Format("2006-01-02 15:04 UTC"), Action: e.Action, Detail: e.Detail, Via: e.Via}
 
 		if !e.ActorID.Zero() {
 			l.Who = n.of(e.ActorID).Named()

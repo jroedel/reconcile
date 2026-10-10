@@ -84,12 +84,20 @@ var (
 	revokeOne = regexp.MustCompile(`action="(/account/keys/[^/"]+/revoke)"`)
 )
 
-// makeKey makes a key on the keys screen, as a person does, and copies it
-// off the page.
+// makeKey makes a translating key on the keys screen, as a translator does,
+// and copies it off the page.
 func makeKey(t *testing.T, b *browser, name string) string {
 	t.Helper()
 
-	rec := b.post("/account/keys", url.Values{"name": {name}})
+	return keyFor(t, b, name, "translate")
+}
+
+// keyFor makes a key for a purpose on the keys screen and copies it off the
+// page.
+func keyFor(t *testing.T, b *browser, name, purpose string) string {
+	t.Helper()
+
+	rec := b.post("/account/keys", url.Values{"name": {name}, "purpose": {purpose}})
 	if rec.Code != http.StatusOK || rec.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("making a key: %d %q\n%s", rec.Code, rec.Header().Get("Cache-Control"), rec.Body)
 	}
@@ -122,37 +130,48 @@ func (s translatingSite) api(method, path, key, body string) *httptest.ResponseR
 	return rec
 }
 
-// Somebody who does not translate has no keys screen and is offered none;
-// the administrator makes one, sees it once, and can revoke it.
-func TestOnlyATranslatorHasKeys(t *testing.T) {
+// Anybody may hold a key for a script that sends statements, but only a
+// translator one that translates; the administrator makes one, sees it
+// once, and can revoke it.
+func TestOnlyATranslatorHasATranslatingKey(t *testing.T) {
 	s := newTranslatingSite(t)
 
 	stranger := signUp(t, s.h, s.sent, "stranger@example.org")
 
-	if strings.Contains(stranger.get("/account").Body.String(), "/account/keys") {
-		t.Error("the account page offers keys to somebody who does not translate")
+	wantBody(t, stranger.get("/account"), `href="/account/keys"`)
+
+	page := stranger.get("/account/keys")
+	wantBody(t, page, `value="upload"`)
+
+	if strings.Contains(page.Body.String(), `value="translate"`) {
+		t.Error("the keys screen offers translating to somebody who does not translate")
 	}
 
-	if rec := stranger.get("/account/keys"); rec.Code != http.StatusNotFound {
-		t.Errorf("GET /account/keys: %d", rec.Code)
+	if rec := stranger.post("/account/keys", url.Values{"name": {"laptop"}, "purpose": {"translate"}}); rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("a translating key for somebody who does not translate: %d", rec.Code)
 	}
 
-	if rec := stranger.post("/account/keys", url.Values{"name": {"laptop"}}); rec.Code != http.StatusNotFound {
-		t.Errorf("POST /account/keys: %d", rec.Code)
+	if rec := stranger.post("/account/keys", url.Values{"name": {"laptop"}}); rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("a key for nothing: %d", rec.Code)
+	}
+
+	theirs := keyFor(t, stranger, "Gmail script", "upload")
+	if rec := s.api(http.MethodGet, "/api/v1/translations/pending?lang=es", theirs, ""); rec.Code != http.StatusForbidden {
+		t.Errorf("an upload key on the translations: %d", rec.Code)
 	}
 
 	wantBody(t, s.admin.get("/account"), `href="/account/keys"`)
 
 	key := makeKey(t, s.admin, "laptop")
 
-	page := s.admin.get("/account/keys")
+	page = s.admin.get("/account/keys")
 	wantBody(t, page, "laptop", "not used yet")
 
 	if strings.Contains(page.Body.String(), key) {
 		t.Error("the key is shown a second time")
 	}
 
-	if rec := s.admin.post("/account/keys", url.Values{"name": {"   "}}); rec.Code != http.StatusUnprocessableEntity {
+	if rec := s.admin.post("/account/keys", url.Values{"name": {"   "}, "purpose": {"translate"}}); rec.Code != http.StatusUnprocessableEntity {
 		t.Errorf("a key with no name: %d", rec.Code)
 	}
 
@@ -168,14 +187,13 @@ func TestOnlyATranslatorHasKeys(t *testing.T) {
 		t.Errorf("a revoked key: %d", rec.Code)
 	}
 
-	// Another person's key is not theirs to revoke, and the key still
-	// works.
+	// Another person's key is not theirs to revoke: they are told there
+	// is no key of theirs by that name now, which is true, and the key
+	// still works.
 	other := makeKey(t, s.admin, "desktop")
 	id := strings.TrimPrefix(strings.SplitN(other, ".", 2)[0], userbus.APIKeyPrefix)
 
-	if rec := stranger.post("/account/keys/"+id+"/revoke", nil); rec.Code != http.StatusNotFound {
-		t.Errorf("a stranger revoking: %d", rec.Code)
-	}
+	wantRedirect(t, stranger.post("/account/keys/"+id+"/revoke", nil), "/account/keys?done=revoked")
 
 	if rec := s.api(http.MethodGet, "/api/v1/translations/pending?lang=es", other, ""); rec.Code != http.StatusOK {
 		t.Errorf("a key a stranger tried to revoke: %d", rec.Code)
@@ -279,7 +297,7 @@ func TestAKeyReachesTheTranslationsAndNothingElse(t *testing.T) {
 		t.Fatal(found, err)
 	}
 
-	_, theirs, err := s.users.CreateAPIKey(t.Context(), time.Now(), id, "sneaky")
+	_, theirs, err := s.users.CreateAPIKey(t.Context(), time.Now(), id, "sneaky", []userbus.Scope{userbus.Translate})
 	if err != nil {
 		t.Fatal(err)
 	}

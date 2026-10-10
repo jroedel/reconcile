@@ -61,7 +61,7 @@ curl_opts=(--silent --show-error --fail-with-body --request "$method")
 
 if [ -z "${RECONCILE_API_KEY:-}" ]; then
 	if [ "${path%/}" != /api/v1 ]; then
-		die "RECONCILE_API_KEY is not set. A translator makes a key at $base/account/keys, puts it in ~/.config/reconcile/api-key, and starts Claude Code with: make translate"
+		die "RECONCILE_API_KEY is not set. A translator makes a key at $base/account/keys, for \"Translating this site\", puts it in ~/.config/reconcile/api-key, and starts Claude Code with: make translate"
 	fi
 
 	exec curl "${curl_opts[@]}" "$@" "$base$path"
