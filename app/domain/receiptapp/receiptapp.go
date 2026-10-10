@@ -17,6 +17,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"slices"
@@ -49,6 +50,8 @@ var UploadPatterns = []string{
 	"POST /projects/{id}/receipts",
 	"POST /transactions/{id}/receipts",
 	"POST /accounts/{id}/checks",
+	"POST " + SharePath,
+	"POST " + sharedPath,
 }
 
 // The limits on one upload. A phone's photo is three to eight megabytes;
@@ -104,6 +107,9 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	handle(UploadPatterns[1], a.upload(types.ScopeProject))
 	handle(UploadPatterns[2], a.uploadOnto)
 	handle(UploadPatterns[3], a.uploadChecks)
+	handle(UploadPatterns[4], a.share)
+	handle(UploadPatterns[5], a.shared)
+	a.shareRoutes(mux, guard)
 	handle("GET /receipts/{id}", a.receipt)
 	handle("GET /receipts/{id}/files/{n}", a.file)
 	handle("GET /receipts/{id}/files/{n}/{size}", a.picture)
@@ -217,12 +223,18 @@ type received struct {
 // than failing the rest; an upload cut off part way keeps what arrived
 // whole. Nothing that arrived is dropped without being said.
 func (a app) receive(r *http.Request, me types.ID) (received, error) {
-	var got received
-
 	mr, err := r.MultipartReader()
 	if err != nil {
-		return got, nil
+		return received{}, nil
 	}
+
+	return a.receiveFrom(r, mr, me)
+}
+
+// receiveFrom is receive for a form whose first parts have been read
+// already (share).
+func (a app) receiveFrom(r *http.Request, mr *multipart.Reader, me types.ID) (received, error) {
+	var got received
 
 	for {
 		part, err := mr.NextPart()
@@ -317,20 +329,7 @@ func (a app) upload(kind types.ScopeKind) http.HandlerFunc {
 
 		// Asked before a byte is stored: an upload somebody may not make is
 		// refused, not kept.
-		access, err := a.cfg.Tenancy.AccessTo(r.Context(), me.ID, home)
-
-		switch {
-		case err != nil:
-			a.failed(w, r, err)
-
-			return
-		case !access.Can(tenancybus.Read):
-			a.missing(w, r)
-
-			return
-		case !access.Can(tenancybus.Receipts):
-			a.failed(w, r, receiptbus.ErrForbidden)
-
+		if !a.mayAdd(w, r, me.ID, home) {
 			return
 		}
 
@@ -341,21 +340,46 @@ func (a app) upload(kind types.ScopeKind) http.HandlerFunc {
 			return
 		}
 
-		added := 0
+		a.addReceipts(w, r, me.ID, home, got)
+	}
+}
 
-		if len(got.files) > 0 {
-			receipts, err := a.cfg.Receipts.Add(r.Context(), a.cfg.Now(), me.ID, home, got.files, got.together, receiptbus.Details{Note: got.note})
-			if err != nil {
-				a.failed(w, r, err)
+// mayAdd reports whether the actor may add receipts to an inbox, and
+// otherwise says they may not.
+func (a app) mayAdd(w http.ResponseWriter, r *http.Request, me types.ID, home types.Scope) bool {
+	access, err := a.cfg.Tenancy.AccessTo(r.Context(), me, home)
 
-				return
-			}
+	switch {
+	case err != nil:
+		a.failed(w, r, err)
+	case !access.Can(tenancybus.Read):
+		a.missing(w, r)
+	case !access.Can(tenancybus.Receipts):
+		a.failed(w, r, receiptbus.ErrForbidden)
+	default:
+		return true
+	}
 
-			added = len(receipts)
+	return false
+}
+
+// addReceipts puts an upload's files into an inbox, each a receipt or all
+// of them one, and goes to the inbox, which says what happened.
+func (a app) addReceipts(w http.ResponseWriter, r *http.Request, me types.ID, home types.Scope, got received) {
+	added := 0
+
+	if len(got.files) > 0 {
+		receipts, err := a.cfg.Receipts.Add(r.Context(), a.cfg.Now(), me, home, got.files, got.together, receiptbus.Details{Note: got.note})
+		if err != nil {
+			a.failed(w, r, err)
+
+			return
 		}
 
-		http.Redirect(w, r, homePath(home)+"/receipts?"+got.report(added).Encode(), http.StatusSeeOther)
+		added = len(receipts)
 	}
+
+	http.Redirect(w, r, homePath(home)+"/receipts?"+got.report(added).Encode(), http.StatusSeeOther)
 }
 
 // uploadOnto is the transaction page's form: receipts straight onto it.
@@ -410,22 +434,7 @@ func (a app) uploadChecks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	home := types.AccountScope(id)
-
-	access, err := a.cfg.Tenancy.AccessTo(r.Context(), me.ID, home)
-
-	switch {
-	case err != nil:
-		a.failed(w, r, err)
-
-		return
-	case !access.Can(tenancybus.Read):
-		a.missing(w, r)
-
-		return
-	case !access.Can(tenancybus.Receipts):
-		a.failed(w, r, receiptbus.ErrForbidden)
-
+	if !a.mayAdd(w, r, me.ID, types.AccountScope(id)) {
 		return
 	}
 
@@ -436,11 +445,20 @@ func (a app) uploadChecks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.addChecks(w, r, me.ID, id, got)
+}
+
+// addChecks adds an upload's files to an account as the images of checks,
+// and goes to its inbox, which says how many were attached and how many
+// wait.
+func (a app) addChecks(w http.ResponseWriter, r *http.Request, me, id types.ID, got received) {
+	home := types.AccountScope(id)
+
 	q := got.report(0)
 	q.Set("done", "checks")
 
 	if len(got.files) > 0 {
-		receipts, err := a.cfg.Receipts.AddChecks(r.Context(), a.cfg.Now(), me.ID, id, got.files, got.number, got.payee)
+		receipts, err := a.cfg.Receipts.AddChecks(r.Context(), a.cfg.Now(), me, id, got.files, got.number, got.payee)
 
 		invalid, isInvalid := errors.AsType[receiptbus.Invalid](err)
 

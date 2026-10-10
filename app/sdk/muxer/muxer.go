@@ -119,6 +119,7 @@ func New(cfg Config) (http.Handler, error) {
 
 	mux.HandleFunc("GET "+cfg.Render.StylesheetPath(), cfg.Render.Stylesheet())
 	mux.HandleFunc("GET /static/js/{file}", cfg.Render.Scripts())
+	mux.HandleFunc("GET /static/img/{file}", cfg.Render.Images())
 
 	homeapp.Routes(mux, cfg.Log, cfg.Render, cfg.Tenancy, cfg.Receipts)
 
@@ -189,6 +190,11 @@ func New(cfg Config) (http.Handler, error) {
 			Users:    cfg.Users,
 			Render:   cfg.Render,
 		}, guard)
+
+		// Reconcile, installable from any page of somebody signed in, with
+		// the receipts' share target: its manifest, and the script that
+		// registers the worker a share is caught by (docs/phone.md, 3).
+		cfg.Render.OfferApp(receiptapp.ManifestPath, receiptapp.ShareScript)
 
 		exportapp.Routes(mux, exportapp.Config{
 			Log:    cfg.Log,

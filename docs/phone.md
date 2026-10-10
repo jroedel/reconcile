@@ -115,6 +115,33 @@ since its inbox was built:
   allows them). The site still works without them; a share is the one
   thing that needs them.
 
+### As built (the third pull request)
+
+- **The manifest** is receiptapp's, at `/receipts/app.webmanifest`, and
+  the worker and the share script are at `/receipts/static/`, all served
+  to anybody: Chrome reads the manifest without cookies, and the worker
+  again on its own schedule. The worker is served with
+  `Service-Worker-Allowed: /receipts/shared`, its scope.
+- **The icons** are the site's, not the receipts': a white tick on the
+  accent blue, drawn for it, at `/static/img/` (`page.Renderer.Images`),
+  with the 192-pixel one as every page's favicon.
+- **The share page** is `/receipts/share`. It offers, among the inboxes
+  the person may add receipts to, a checking account's check images
+  first, then its receipts, then each other account's and each
+  project's. Its form says where before its files, so that the choice is
+  asked about before a byte is kept, and is then that inbox's upload, or
+  its check images'. The phone remembers the last choice (`localStorage`),
+  so a month shared in batches goes to the same place without choosing
+  again.
+- **What the page says** about a share -- ready, gone, could not be put in
+  the form, did not reach the page, too many for one upload -- is written
+  by the server in the page's language, hidden until the script shows the
+  one that happened.
+- **The JavaScript tests** came with it, from stewards: `make test-js` (none
+  yet) and `make test-browser`, which builds the server, signs in with the
+  bootstrap secret, and shares to it from a headless Chrome. CI runs both,
+  with Node 24.
+
 ## 4. A photo a request, shrunk on the phone
 
 An upload takes at most 20 files a request (`docs/plan.md`, step 7).

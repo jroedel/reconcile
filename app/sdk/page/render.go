@@ -87,6 +87,15 @@ type Renderer struct {
 	// for Shell.Script.
 	scripts     map[string]asset
 	scriptPaths map[string]string
+
+	// The installable app the pages of somebody signed in offer, if any:
+	// see OfferApp.
+	manifest, appScript string
+
+	// images is the site's icons, by file name, from /static/img/. An icon
+	// changes only when the brand does, and then under a new file name: the
+	// name is the version, as stewards has it.
+	images map[string]asset
 }
 
 type asset struct {
@@ -109,6 +118,11 @@ type Shell struct {
 	// page of somebody who is not, and User is then the zero User.
 	User     userbus.User
 	SignedIn bool
+
+	// Manifest and AppScript are the installable app, on the pages of
+	// somebody signed in alone, and empty on everybody else's: see
+	// OfferApp.
+	Manifest, AppScript string
 
 	// scripts is where each shared script is served: see Script.
 	scripts map[string]string
@@ -264,6 +278,22 @@ func NewRenderer(log *slog.Logger, tr Translator, own ...fs.FS) (*Renderer, erro
 		scriptPaths: map[string]string{},
 	}
 
+	rn.images = map[string]asset{}
+
+	icons, err := fs.Glob(chrome, "img/*.png")
+	if err != nil {
+		return nil, fmt.Errorf("listing the icons: %w", err)
+	}
+
+	for _, name := range icons {
+		body, err := fs.ReadFile(chrome, name)
+		if err != nil {
+			return nil, fmt.Errorf("%s could not be read: %w", name, err)
+		}
+
+		rn.images[path.Base(name)] = asset{body: body, kind: "image/png"}
+	}
+
 	modules, err := fs.Glob(chrome, "js/*.mjs")
 	if err != nil {
 		return nil, fmt.Errorf("listing the scripts: %w", err)
@@ -294,6 +324,22 @@ func NewRenderer(log *slog.Logger, tr Translator, own ...fs.FS) (*Renderer, erro
 // Strings is every string the pages translate, with the files it is in,
 // for translationbus.Register.
 func (rn *Renderer) Strings() []translationbus.Use { return rn.strings }
+
+// OfferApp has every page somebody is signed in on link manifest and load
+// script, and no page anybody else sees. Lifted from stewards.
+//
+// It is how a person installs Reconcile from Chrome on a phone, from
+// whichever page they are on, and with it Android's share target. The
+// paths come from the app that owns them, through the muxer, so this
+// layer knows that there is an installable app and not which: today it is
+// receiptapp's, whose script registers the worker that catches a share.
+// Linking the manifest only where that script runs as well is what makes
+// an app installed from any page ready for its first share.
+//
+// Called while the routes are built, before anything is served.
+func (rn *Renderer) OfferApp(manifest, script string) {
+	rn.manifest, rn.appScript = manifest, script
+}
 
 // StylesheetPath is where the stylesheet is served, including its hash.
 func (rn *Renderer) StylesheetPath() string { return rn.cssPath }
@@ -329,6 +375,11 @@ func (rn *Renderer) Render(w http.ResponseWriter, r *http.Request, status int, n
 
 	user, signedIn := mid.UserFrom(r.Context())
 
+	var manifest, appScript string
+	if signedIn {
+		manifest, appScript = rn.manifest, rn.appScript
+	}
+
 	var buf bytes.Buffer
 
 	if err := set.ExecuteTemplate(&buf, "base", Shell{
@@ -337,6 +388,8 @@ func (rn *Renderer) Render(w http.ResponseWriter, r *http.Request, status int, n
 		Langs:      links,
 		User:       user,
 		SignedIn:   signedIn,
+		Manifest:   manifest,
+		AppScript:  appScript,
 		scripts:    rn.scriptPaths,
 		Data:       data,
 	}); err != nil {
@@ -402,6 +455,29 @@ func (rn *Renderer) Scripts() http.HandlerFunc {
 		h.Set("ETag", s.etag)
 
 		http.ServeContent(w, r, file, startup, bytes.NewReader(s.body))
+	}
+}
+
+// Images serves the site's icons from /static/img/{file}: the favicon every
+// page links, and the installable app's (receiptapp's manifest). Cached
+// for a week rather than for ever, though the name is the version, so
+// that a phone's home screen catches up with a corrected icon.
+func (rn *Renderer) Images() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		file := r.PathValue("file")
+
+		img, ok := rn.images[file]
+		if !ok {
+			http.NotFound(w, r)
+
+			return
+		}
+
+		h := w.Header()
+		h.Set("Content-Type", img.kind)
+		h.Set("Cache-Control", "public, max-age=604800")
+
+		http.ServeContent(w, r, file, startup, bytes.NewReader(img.body))
 	}
 }
 

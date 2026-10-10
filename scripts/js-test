@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+#
+# The JavaScript tests, under Node's own test runner: no npm, no package.json,
+# nothing to install but Node. Lifted from stewards.
+#
+#     scripts/js-test unit      # what "make test-js" runs: Node alone, fast
+#     scripts/js-test browser   # what "make test-browser" runs: headless Chrome
+#
+# Found by name, so a new test is run without being listed anywhere:
+# *_test.mjs is a unit test and *_browser_test.mjs a browser test.
+#
+# The unit tests use the dot reporter, for the reason scripts/go-test gives: a
+# line per passing test is a page that says one thing, and the failures are
+# printed in full at the end. The browser tests use spec, which also shows
+# each setup's stage lines (scripts/browser.mjs, stage): there are few of
+# them, and when one stops, where it stopped is the first thing to know.
+#
+# No test may take more than three minutes. A browser test that cannot
+# finish fails, rather than holding CI until GitHub gives up on it.
+#
+# Node 22 or later, for the WebSocket the browser tests drive Chrome with.
+# CI installs 24 (.github/workflows/ci.yml).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+if ! command -v node >/dev/null 2>&1; then
+	echo "node is not installed: the JavaScript tests need Node 22 or later" >&2
+	exit 1
+fi
+
+major="$(node -p 'process.versions.node.split(".")[0]')"
+if [ "$major" -lt 22 ]; then
+	echo "node $(node -v) is too old: the JavaScript tests need 22 or later" >&2
+	exit 1
+fi
+
+case "${1:-}" in
+unit)
+	reporter=dot
+	mapfile -t files < <(find app -name '*_test.mjs' ! -name '*_browser_test.mjs' | sort)
+	;;
+browser)
+	reporter=spec
+	mapfile -t files < <(find app -name '*_browser_test.mjs' | sort)
+	;;
+*)       echo "usage: scripts/js-test unit|browser" >&2; exit 2 ;;
+esac
+
+# None yet of a kind is not a failure: the browser tests came first here,
+# and unit tests arrive with the first script that has logic of its own
+# to test without a browser.
+if [ "${#files[@]}" -eq 0 ]; then
+	echo "no $1 tests yet"
+	exit 0
+fi
+
+# One file at a time: each browser test starts a Chrome of its own, and one
+# of them a server too.
+exec node --test --test-concurrency=1 --test-timeout=180000 --test-reporter="$reporter" "${files[@]}"

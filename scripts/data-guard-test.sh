@@ -45,6 +45,16 @@ printf 'x' > receipt.jpg; git add receipt.jpg
 check "a receipt photo is refused" refuses staged
 reset
 
+mkdir -p app/sdk/page/assets/app/img
+printf 'x' > app/sdk/page/assets/app/img/icon-192.png; git add app/sdk/page/assets/app/img/icon-192.png
+check "the site's own icon is not" accepts staged
+reset
+
+mkdir -p app/sdk/page/assets/app/img/receipts
+printf 'x' > app/sdk/page/assets/app/img/receipts/a.png; git add app/sdk/page/assets/app/img/receipts/a.png
+check "a photo beside the icons is" refuses staged
+reset
+
 printf 'x' > secrets.env; git add -f secrets.env
 check "secrets.env is refused, even forced past .gitignore" refuses staged
 reset

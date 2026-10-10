@@ -6,6 +6,9 @@
 <meta name="color-scheme" content="light dark">
 <title>{{block "title" .}}Reconcile{{end}}</title>
 <link rel="stylesheet" href="{{.Stylesheet}}">
+<link rel="icon" type="image/png" href="/static/img/icon-192.png">
+{{with .Manifest}}<link rel="manifest" href="{{.}}">{{end}}
+{{with .AppScript}}<script type="module" src="{{.}}"></script>{{end}}
 </head>
 <body>
 <header class="masthead">
