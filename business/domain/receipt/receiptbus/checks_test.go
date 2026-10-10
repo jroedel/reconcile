@@ -68,8 +68,8 @@ func (w *world) checking() types.ID {
 
 // A check's front and back, named after it, are one receipt attached to
 // the check's transaction, with its date and amount; whom it was paid to
-// goes onto the transaction. A number with no transaction, or with two, a
-// file that names no number, and a payee for two checks add nothing.
+// goes onto the transaction. A number not typed must be digits, and a
+// payee is for one check at a time.
 func TestCheckImages(t *testing.T) {
 	w := newWorld(t)
 	acct := w.checking()
@@ -81,7 +81,7 @@ func TestCheckImages(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(added) != 1 || len(added[0].Files) != 2 || added[0].Check != "1176" || added[0].Amount.String() != "120.00" ||
+	if len(added) != 1 || len(added[0].Files) != 2 || added[0].Check != "1176" || !added[0].CheckImage || added[0].Amount.String() != "120.00" ||
 		added[0].SpentOn.String() != "2026-07-02" || added[0].Merchant != "Hilltop Plumbing" || len(added[0].Links) != 1 {
 		t.Fatalf("added: %+v", added)
 	}
@@ -110,35 +110,18 @@ func TestCheckImages(t *testing.T) {
 		files  []string
 		number string
 		payee  string
-		want   func(error) bool
 	}{
-		"a number with no check": {[]string{"1190.jpg"}, "", "", func(err error) bool {
-			e, ok := errors.AsType[receiptbus.NoCheck](err)
-			return ok && e.Number == "1190" && !e.Several
-		}},
-		"a number with two checks": {[]string{"1180.jpg"}, "", "", func(err error) bool {
-			e, ok := errors.AsType[receiptbus.NoCheck](err)
-			return ok && e.Several
-		}},
-		"no number": {[]string{"IMG_4522.jpg"}, "", "", func(err error) bool {
-			e, ok := errors.AsType[receiptbus.Invalid](err)
-			return ok && e.Field == "number"
-		}},
-		"a payee for two checks": {[]string{"1176.jpg", "1177.jpg"}, "", "Somebody", func(err error) bool {
-			e, ok := errors.AsType[receiptbus.Invalid](err)
-			return ok && e.Field == "payee"
-		}},
-		"one good and one with no check": {[]string{"1176.jpg", "1191.jpg"}, "", "", func(err error) bool {
-			_, ok := errors.AsType[receiptbus.NoCheck](err)
-			return ok
-		}},
+		"a number that is no number": {[]string{"IMG_4522.jpg"}, "#12a", ""},
+		"a payee for two checks":     {[]string{"1176.jpg", "1177.jpg"}, "", "Somebody"},
 	} {
 		var ids []types.ID
 		for _, f := range c.files {
 			ids = append(ids, image(f))
 		}
 
-		if _, err := w.receipts.AddChecks(w.ctx, now, w.owner, acct, ids, c.number, c.payee); !c.want(err) {
+		if _, err := w.receipts.AddChecks(w.ctx, now, w.owner, acct, ids, c.number, c.payee); err == nil {
+			t.Errorf("%s: added", name)
+		} else if _, ok := errors.AsType[receiptbus.Invalid](err); !ok {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
@@ -159,5 +142,101 @@ func TestCheckImages(t *testing.T) {
 
 	if _, err := w.receipts.AddChecks(w.ctx, now, viewer, acct, []types.ID{w.upload(viewer, "1177.jpg", photo, receiptbus.Accept)}, "", ""); !errors.Is(err, receiptbus.ErrForbidden) {
 		t.Errorf("a viewer: %v", err)
+	}
+}
+
+// Fifty screenshots from a bank's app, in one upload: none refused because
+// another cannot be matched. A named check with one transaction is
+// attached; one with none, or with two, waits with its number; a
+// screenshot waits with none, a check of its own. Each waiting image is
+// numbered later, on its page, which attaches it when it can; the one
+// with two transactions is offered both.
+func TestChecksWait(t *testing.T) {
+	w := newWorld(t)
+	acct := w.checking()
+
+	image := func(name string) types.ID { return w.upload(w.owner, name, photo+name, receiptbus.Accept) }
+
+	added, err := w.receipts.AddChecks(w.ctx, now, w.owner, acct, []types.ID{
+		image("1176.jpg"), image("1190.jpg"), image("1180.jpg"),
+		image("Screenshot_20260712-101500.png"), image("Screenshot_20260712-101530.png"),
+	}, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(added) != 5 {
+		t.Fatalf("%d checks added, want 5: %+v", len(added), added)
+	}
+
+	for i, want := range []struct {
+		number   string
+		attached bool
+	}{{"1176", true}, {"1190", false}, {"1180", false}, {"", false}, {"", false}} {
+		r := added[i]
+		if !r.CheckImage || r.Check != want.number || r.Waiting() == want.attached || len(r.Files) != 1 {
+			t.Errorf("check %d: %+v, want number %q attached %v", i, r, want.number, want.attached)
+		}
+	}
+
+	in, err := w.receipts.Inbox(w.ctx, w.owner, types.AccountScope(acct))
+	if err != nil || len(in.Matched) != 1 || len(in.Waiting) != 4 {
+		t.Fatalf("the inbox: %d matched, %d waiting, %v", len(in.Matched), len(in.Waiting), err)
+	}
+
+	// The check with two transactions is offered both, and nothing else.
+	s, err := w.receipts.Suggestions(w.ctx, w.owner, []receiptbus.Receipt{added[2]})
+	if err != nil || len(s[added[2].ID]) != 2 {
+		t.Errorf("the suggestions for check 1180: %+v, %v", s, err)
+	}
+
+	// A screenshot numbered, with whom it was paid to typed before: it is
+	// attached, takes the bank's date and amount, and the payee goes to
+	// the transaction.
+	shot := added[3].ID
+	if _, err := w.receipts.SetDetails(w.ctx, now, w.owner, shot, receiptbus.Details{Merchant: "Diocesan Office"}); err != nil {
+		t.Fatal(err)
+	}
+
+	r, err := w.receipts.NumberCheck(w.ctx, now, w.owner, shot, "0001177")
+	if err != nil || r.Check != "1177" || r.Waiting() || r.Amount.String() != "30.00" || r.SpentOn.String() != "2026-07-09" {
+		t.Fatalf("numbered: %+v, %v", r, err)
+	}
+
+	if c, _ := w.ledger.Lookup(w.ctx, r.Links[0].TransactionID); c.CheckNumber != "1177" || c.Payee != "Diocesan Office" {
+		t.Errorf("the transaction: %+v", c)
+	}
+
+	// Numbered again once attached: refused, since it has a transaction.
+	if _, err := w.receipts.NumberCheck(w.ctx, now, w.owner, shot, "1176"); !errors.Is(err, receiptbus.ErrAttached) {
+		t.Errorf("renumbering an attached check: %v", err)
+	}
+
+	// The other numbered for a check not cleared: it waits with its number.
+	r, err = w.receipts.NumberCheck(w.ctx, now, w.owner, added[4].ID, "1191")
+	if err != nil || r.Check != "1191" || !r.Waiting() {
+		t.Errorf("a check not cleared: %+v, %v", r, err)
+	}
+
+	if got, _ := w.receipts.Receipt(w.ctx, w.owner, added[4].ID); got.Receipt.Check != "1191" {
+		t.Errorf("the stored number: %q", got.Receipt.Check)
+	}
+
+	// No digits; a receipt that is no check; and somebody who may not.
+	if _, err := w.receipts.NumberCheck(w.ctx, now, w.owner, added[4].ID, "soon"); err == nil {
+		t.Error("a number with no digits was taken")
+	}
+
+	plain, err := w.receipts.Add(w.ctx, now, w.owner, types.AccountScope(acct), []types.ID{image("grocery.jpg")}, false, receiptbus.Details{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := w.receipts.NumberCheck(w.ctx, now, w.owner, plain[0].ID, "1190"); err == nil {
+		t.Error("a grocery receipt was given a check number")
+	}
+
+	if _, err := w.receipts.NumberCheck(w.ctx, now, w.pilgrim, added[1].ID, "1190"); !errors.Is(err, receiptbus.ErrNotFound) {
+		t.Errorf("the pilgrim: %v", err)
 	}
 }

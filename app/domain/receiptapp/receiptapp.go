@@ -26,7 +26,6 @@ import (
 
 	"github.com/jroedel/reconcile/app/sdk/mid"
 	"github.com/jroedel/reconcile/business/domain/file/filebus"
-	"github.com/jroedel/reconcile/business/domain/importing/importbus"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
@@ -109,6 +108,7 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	handle("GET /receipts/{id}/files/{n}", a.file)
 	handle("GET /receipts/{id}/files/{n}/{size}", a.picture)
 	handle("POST /receipts/{id}/details", a.details)
+	handle("POST /receipts/{id}/number", a.number)
 	handle("POST /receipts/{id}/attach", a.attach)
 	handle("POST /receipts/{id}/detach", a.detach)
 	handle("POST /receipts/{id}/remove", a.remove)
@@ -398,7 +398,7 @@ func (a app) uploadOnto(w http.ResponseWriter, r *http.Request) {
 
 // uploadChecks is the account's form for the images of checks: each is
 // attached to the transaction with its number (receiptbus.AddChecks), and
-// a check that cannot be is said on the page, with nothing added.
+// the others wait in the inbox, which says how many of each.
 func (a app) uploadChecks(w http.ResponseWriter, r *http.Request) {
 	me, ok := actor(w, r)
 	if !ok {
@@ -442,14 +442,9 @@ func (a app) uploadChecks(w http.ResponseWriter, r *http.Request) {
 	if len(got.files) > 0 {
 		receipts, err := a.cfg.Receipts.AddChecks(r.Context(), a.cfg.Now(), me.ID, id, got.files, got.number, got.payee)
 
-		noCheck, isNoCheck := errors.AsType[receiptbus.NoCheck](err)
 		invalid, isInvalid := errors.AsType[receiptbus.Invalid](err)
 
 		switch {
-		case isNoCheck:
-			q.Del("done")
-			q.Set("check", map[bool]string{true: "several", false: "none"}[noCheck.Several])
-			q.Set("number", noCheck.Number)
 		case isInvalid:
 			q.Del("done")
 			q.Set("check", invalid.Field)
@@ -459,7 +454,16 @@ func (a app) uploadChecks(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		q.Set("n", strconv.Itoa(len(receipts)))
+		waiting := 0
+
+		for _, rc := range receipts {
+			if rc.Waiting() {
+				waiting++
+			}
+		}
+
+		q.Set("n", strconv.Itoa(len(receipts)-waiting))
+		q.Set("waiting", strconv.Itoa(waiting))
 	}
 
 	http.Redirect(w, r, homePath(home)+"/receipts?"+q.Encode(), http.StatusSeeOther)
@@ -497,13 +501,13 @@ type inboxView struct {
 	Uploaded uploaded
 
 	// Checks is whether the inbox takes check images (an account's), and
-	// CheckProblem and CheckNumber why the last ones were not added.
+	// CheckProblem why the last ones were not added.
 	Checks       bool
 	CheckProblem string
-	CheckNumber  string
 
-	// CheckAdded is how many check images the last upload added.
-	CheckAdded int
+	// CheckAdded is how many check images the last upload attached, and
+	// CheckWaiting how many it left waiting.
+	CheckAdded, CheckWaiting int
 }
 
 func (a app) inbox(kind types.ScopeKind) http.HandlerFunc {
@@ -524,13 +528,14 @@ func (a app) inbox(kind types.ScopeKind) http.HandlerFunc {
 		q := r.URL.Query()
 		view := inboxView{
 			Path: homePath(home), Done: q.Get("done"), Uploaded: uploadedFrom(q),
-			Checks: kind == types.ScopeAccount, CheckProblem: q.Get("check"), CheckNumber: importbus.CheckNumber(q.Get("number")),
+			Checks: kind == types.ScopeAccount, CheckProblem: q.Get("check"),
 		}
 
 		// Check images say so in their own words, not as receipts that
 		// still want a date and an amount.
 		if view.Done == "checks" {
 			view.CheckAdded, view.Uploaded.Added = view.Uploaded.Added, 0
+			view.CheckWaiting, _ = strconv.Atoi(q.Get("waiting"))
 		}
 
 		var err error
@@ -903,6 +908,51 @@ func (a app) details(w http.ResponseWriter, r *http.Request) {
 	}
 
 	back(w, r, "/receipts/"+id.String(), "saved")
+}
+
+// number says which check a waiting check image is (receiptbus.NumberCheck).
+func (a app) number(w http.ResponseWriter, r *http.Request) {
+	me, ok := actor(w, r)
+	if !ok || !form(w, r) {
+		return
+	}
+
+	id, ok := a.pathID(w, r)
+	if !ok {
+		return
+	}
+
+	rc, err := a.cfg.Receipts.NumberCheck(r.Context(), a.cfg.Now(), me.ID, id, r.PostForm.Get("number"))
+
+	switch {
+	case errors.Is(err, receiptbus.ErrAttached):
+		a.receiptPage(w, r, http.StatusUnprocessableEntity, nil, "attached")
+
+		return
+	case errors.Is(err, receiptbus.ErrRemoved):
+		a.receiptPage(w, r, http.StatusUnprocessableEntity, nil, "removed")
+
+		return
+	}
+
+	if invalid, ok := errors.AsType[receiptbus.Invalid](err); ok {
+		a.receiptPage(w, r, http.StatusUnprocessableEntity, nil, invalid.Field)
+
+		return
+	}
+
+	if err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
+	done := "numbered"
+	if !rc.Waiting() {
+		done = "attached"
+	}
+
+	back(w, r, "/receipts/"+id.String(), done)
 }
 
 // parse reads the details as typed, or names the field that is not one.

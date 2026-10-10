@@ -62,15 +62,17 @@ func TestCheckNumbersFromACSV(t *testing.T) {
 // A check's front and back, named after it, uploaded to the account: one
 // receipt attached to the check, whom it was paid to beside the check in
 // the month, and both sides in the accountant's checks/ folder. A number
-// the account has no check for is refused with nothing added, and a
-// stranger and a viewer may not upload at all.
+// the account has no check for, and a screenshot that says no number,
+// wait in the inbox; the screenshot is numbered on its page, which
+// attaches it. A stranger and a viewer may not upload or number at all.
 func TestCheckImages(t *testing.T) {
 	h, sent := newSite(t, sqldb.Infrastructure, nil)
 	e := newEstate(t, h, sent)
 
 	const file = "Date,Description,Amount,Balance,Check Number\n" +
 		"2026-07-01,OPENING DEPOSIT,1000.00,1000.00,\n" +
-		"2026-07-02,CHECK,-120.00,880.00,0001176\n"
+		"2026-07-02,CHECK,-120.00,880.00,0001176\n" +
+		"2026-07-09,Check 1177,-30.00,850.00,1177\n"
 
 	preview := uploaded(t, e.owner, e.account, "july.csv", file)
 	form := columns("import")
@@ -100,13 +102,37 @@ func TestCheckImages(t *testing.T) {
 	wantBody(t, e.owner.get(e.account+"/transactions?month=2026-07"), "Paid to Hilltop Plumbing", "Check number 1176")
 	wantBody(t, e.owner.get(e.account), "wrote that CHECK on 2026-07-02 was paid to Hilltop Plumbing")
 
-	// No check 1190 in the account.
-	rec = e.owner.receipts(e.account+"/checks", nil, [2]string{"1190.jpg", photoOf("1190")})
-	wantBody(t, e.owner.get(rec.Header().Get("Location")), "No transaction in this account is check 1190, so nothing was added")
+	// No check 1190 in the account, and a screenshot: both wait.
+	rec = e.owner.receipts(e.account+"/checks", nil,
+		[2]string{"1190.jpg", photoOf("1190")}, [2]string{"Screenshot_20260712-101500.png", photoOf("phone")})
+	inbox = e.owner.get(rec.Header().Get("Location"))
+	wantBody(t, inbox, "2 check images are waiting below", "Check 1190", "waiting for the transaction that paid it", "A check", "its number not yet said")
 
-	// A phone's name, and no number typed.
-	rec = e.owner.receipts(e.account+"/checks", nil, [2]string{"IMG_4521.jpg", photoOf("phone")})
-	wantBody(t, e.owner.get(rec.Header().Get("Location")), "Say the check&#39;s number")
+	if strings.Contains(inbox.Body.String(), "Screenshot_") {
+		t.Error("a waiting check is named by its file")
+	}
+
+	// The screenshot, numbered on its page.
+	var shot string
+
+	for _, rc := range receiptsOn(inbox.Body.String()) {
+		if strings.Contains(e.owner.get(rc).Body.String(), "whose number has not been said") {
+			shot = rc
+		}
+	}
+
+	if shot == "" {
+		t.Fatal("no page for the screenshot")
+	}
+
+	wantBody(t, e.owner.get(shot), `action="`+shot+`/number"`)
+
+	if rec := e.owner.post(shot+"/number", url.Values{"number": {"soon"}}); rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("a number with no digits: %d", rec.Code)
+	}
+
+	wantRedirect(t, e.owner.post(shot+"/number", url.Values{"number": {"1177"}}), shot+"?done=attached")
+	wantBody(t, e.owner.get(shot), "Check 1177", "attached to the transaction that paid it by its number")
 
 	zipped := e.owner.get(e.account + "/export?from=2026-07&to=2026-07")
 	files := unzipped(t, zipped.Body.Bytes())
@@ -135,5 +161,13 @@ func TestCheckImages(t *testing.T) {
 
 	if strings.Contains(viewer.get(e.account+"/receipts").Body.String(), `action="`+e.account+`/checks"`) {
 		t.Error("a viewer is offered the check images form")
+	}
+
+	if rec := viewer.post(shot+"/number", url.Values{"number": {"1177"}}); rec.Code != http.StatusForbidden {
+		t.Errorf("a viewer numbering a check: %d", rec.Code)
+	}
+
+	if rec := stranger.post(shot+"/number", url.Values{"number": {"1177"}}); rec.Code != http.StatusNotFound {
+		t.Errorf("a stranger numbering a check: %d", rec.Code)
 	}
 }

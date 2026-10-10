@@ -56,6 +56,24 @@ when it can be, and otherwise waits:
 - When it is attached, by any of these ways, it takes its transaction's
   date and amount, and its payee goes to the transaction, as now.
 
+### As built (the first pull request)
+
+- **A check image** is `Receipt.CheckImage`, stored as
+  `receipts.check_image`; `Init` marks every receipt that already had a
+  number, which before this were all the check images there were.
+- **Added** by `AddChecks` as planned: nothing in an upload is refused
+  for another check in it, and the inbox says how many were attached and
+  how many wait. A typed number that is not digits still refuses the
+  upload, since it is a typing mistake in the form.
+- **Numbered** on its page with "Check number" (`NumberCheck`,
+  `POST /receipts/{id}/number`), for a check image that is waiting. A
+  check image attached is refused there; taking it off its transaction
+  first says what is undone.
+- **Several transactions** with its number are its suggestions, in its
+  inbox and on its page.
+- **Named** "A check" until it has a number, "Check 1176" after, and
+  never by its file's name.
+
 ## 2. Matched when the check clears
 
 An import that brings a check number a waiting image of the same account

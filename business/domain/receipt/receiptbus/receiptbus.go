@@ -100,9 +100,11 @@ type Receipt struct {
 	Files []filebus.File
 	Links []Link
 
-	// Check is the number of the check it is the image of, front and back
-	// as its pages, or "" for any other receipt (checks.go).
-	Check string
+	// CheckImage is whether it is the image of a check, front and back as
+	// its pages, and Check that check's number, "" until somebody has
+	// read it (checks.go). Check is "" for any other receipt.
+	CheckImage bool
+	Check      string
 }
 
 // Details is what a person may type about a receipt, all of it optional.
@@ -174,6 +176,10 @@ type Storer interface {
 	// Update writes the details and the removed time, and the history
 	// when there is a line to write.
 	Update(ctx context.Context, r Receipt, ev *eventbus.Event) error
+
+	// SaveCheck writes a check image's number and details, and its links,
+	// in one transaction (checks.go).
+	SaveCheck(ctx context.Context, r Receipt) error
 }
 
 // Business is the set of operations on receipts.
@@ -583,7 +589,9 @@ func (b *Business) OnTransactions(ctx context.Context, ids []types.ID) (map[type
 
 // Suggestions is, for each receipt with an amount and a date, the
 // transactions it might be: in an account the actor may attach receipts
-// to, for the same amount, within MatchDays, nearest first.
+// to, for the same amount, within MatchDays, nearest first. A check image
+// with a number its account has several transactions for is waiting for
+// a person to say which (checks.go), and those are its suggestions.
 func (b *Business) Suggestions(ctx context.Context, actor types.ID, receipts []Receipt) (map[types.ID][]ledgerbus.Transaction, error) {
 	ov, err := b.access.Overview(ctx, actor)
 	if err != nil {
@@ -607,6 +615,19 @@ func (b *Business) Suggestions(ctx context.Context, actor types.ID, receipts []R
 	out := map[types.ID][]ledgerbus.Transaction{}
 
 	for _, r := range receipts {
+		if r.CheckImage && r.Check != "" && slices.Contains(accounts, r.Home.ID) && r.Waiting() {
+			txs, err := b.ledger.WithCheck(ctx, r.Home.ID, r.Check)
+			if err != nil {
+				return nil, err
+			}
+
+			if len(txs) > 0 {
+				out[r.ID] = txs
+			}
+
+			continue
+		}
+
 		if !r.HasAmount || r.SpentOn.Zero() || r.Removed() {
 			continue
 		}

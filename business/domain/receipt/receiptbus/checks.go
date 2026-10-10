@@ -21,35 +21,30 @@ import (
 	"github.com/jroedel/reconcile/business/types"
 )
 
-// Check images (docs/shapes.md, 3). A check's image is a receipt like any
-// other, one check to a receipt with its front and back as pages, and
-// different in one way: it says which transaction it belongs to. Its number
-// is the check's, and a checking account has one transaction with that
-// number, so it is attached to that one as it is added -- the one receipt
-// that is matched without a person choosing, because nothing is left to
-// choose. A number the account has no transaction for is refused rather
-// than left waiting: the check has not cleared, or its statement is not
-// imported yet, and either way the image is better uploaded after.
+// Check images (docs/shapes.md, 3, and docs/phone.md, 1). A check's image
+// is a receipt like any other, one check to a receipt with its front and
+// back as pages, and different in one way: it says which transaction it
+// belongs to. Its number is the check's, and a checking account has one
+// transaction with that number, so it is attached to that one as soon as
+// both are known -- the one receipt that is matched without a person
+// choosing, because nothing is left to choose.
+//
+// Until then it waits in the account's inbox, still a check image. Its
+// number may not be known: a screenshot from a bank's app is named for the
+// moment it was taken, and somebody -- a person on its page, or Claude --
+// has to read the number off it. Or the number is known and the account
+// has no transaction with it yet, because the check has not cleared or its
+// statement is not imported; an import that brings it attaches the image
+// (MatchChecks). Or the account has several, and a person chooses among
+// them, which its suggestions offer. None of these is a mistake, so none
+// refuses an upload: an earlier version refused the whole of one when a
+// single check in it could not be matched, which was right for one check
+// typed at a desk and wrong for fifty shared from a phone.
 //
 // What the bank never says about a check is to whom it was written. The
 // person with its image in hand may say, as its payee, which is written on
 // the transaction too (ledgerbus.SetPayee), where sorting rules and
 // suggestions read it.
-
-// NoCheck is a check's image whose number no transaction in the account
-// has, or several have.
-type NoCheck struct {
-	Number  string
-	Several bool
-}
-
-func (e NoCheck) Error() string {
-	if e.Several {
-		return fmt.Sprintf("several transactions in the account are check %s", e.Number)
-	}
-
-	return fmt.Sprintf("no transaction in the account is check %s", e.Number)
-}
 
 // nameWords is what a check image's file name may say beside the number,
 // in English, Spanish and Portuguese: that it is a check, and which side.
@@ -89,11 +84,12 @@ func NumberFromName(name string) string {
 	return importbus.CheckNumber(numbers[0])
 }
 
-// AddChecks adds the images of checks to an account, each attached to the
-// transaction that paid it. With a number, the files are that one check's
-// sides; without, each file's name gives its check's number, and files
-// with the same number are one check's. A payee is for one check only. If
-// any check cannot be matched, nothing is added.
+// AddChecks adds the images of checks to an account. With a number, the
+// files are that one check's sides; without, each file's name gives its
+// check's number, files with the same number are one check's, and a file
+// whose name gives none is a check of its own. Each check is attached to
+// the account's one transaction with its number, and the others wait. A
+// payee is for one check only.
 func (b *Business) AddChecks(ctx context.Context, now time.Time, actor, accountID types.ID, fileIDs []types.ID, number, payee string) ([]Receipt, error) {
 	home := types.AccountScope(accountID)
 
@@ -123,9 +119,14 @@ func (b *Business) AddChecks(ctx context.Context, now time.Time, actor, accountI
 	}
 
 	// The files, by check, in the order their first file came.
+	type check struct {
+		number string
+		files  []filebus.File
+	}
+
 	var (
-		order  []string
-		checks = map[string][]filebus.File{}
+		checks   []*check
+		byNumber = map[string]*check{}
 	)
 
 	for _, id := range fileIDs {
@@ -139,18 +140,21 @@ func (b *Business) AddChecks(ctx context.Context, now time.Time, actor, accountI
 		}
 
 		n := cmp.Or(given, NumberFromName(f.Name))
-		if n == "" {
-			return nil, Invalid{Field: "number", Err: fmt.Errorf("the name of %q says no check number", f.Name)}
+		if c, ok := byNumber[n]; ok {
+			c.files = append(c.files, f)
+
+			continue
 		}
 
-		if _, ok := checks[n]; !ok {
-			order = append(order, n)
-		}
+		c := &check{number: n, files: []filebus.File{f}}
+		checks = append(checks, c)
 
-		checks[n] = append(checks[n], f)
+		if n != "" {
+			byNumber[n] = c
+		}
 	}
 
-	if payee != "" && len(order) > 1 {
+	if payee != "" && len(checks) > 1 {
 		return nil, Invalid{Field: "payee", Err: errors.New("say whom one check was paid to at a time")}
 	}
 
@@ -159,25 +163,23 @@ func (b *Business) AddChecks(ctx context.Context, now time.Time, actor, accountI
 		paid     []types.ID
 	)
 
-	for _, n := range order {
-		txs, err := b.ledger.WithCheck(ctx, accountID, n)
+	for _, c := range checks {
+		r := Receipt{
+			ID: types.NewID(), Home: home, UploadedBy: actor, CreatedAt: now, CheckImage: true, Check: c.number,
+			Details: Details{Merchant: payee}, Files: c.files,
+		}
+
+		t, ok, err := b.paidBy(ctx, accountID, c.number)
 		if err != nil {
 			return nil, err
 		}
 
-		if len(txs) != 1 {
-			return nil, NoCheck{Number: n, Several: len(txs) > 1}
+		if ok {
+			r = matched(r, t, actor, now)
+			paid = append(paid, t.ID)
 		}
 
-		t := txs[0]
-
-		receipts = append(receipts, Receipt{
-			ID: types.NewID(), Home: home, UploadedBy: actor, CreatedAt: now, Check: n,
-			Details: Details{SpentOn: t.PostedOn, Amount: max(t.Amount, -t.Amount), HasAmount: true, Merchant: payee},
-			Files:   checks[n],
-			Links:   []Link{{TransactionID: t.ID, LinkedBy: actor, LinkedAt: now}},
-		})
-		paid = append(paid, t.ID)
+		receipts = append(receipts, r)
 	}
 
 	ev := eventbus.New(now, actor, home, Added, map[string]string{"count": strconv.Itoa(len(receipts))})
@@ -186,7 +188,7 @@ func (b *Business) AddChecks(ctx context.Context, now time.Time, actor, accountI
 		return nil, err
 	}
 
-	if payee != "" {
+	if payee != "" && len(paid) > 0 {
 		if _, err := b.ledger.SetPayee(ctx, now, actor, paid[0], payee); err != nil {
 			return receipts, err
 		}
@@ -195,10 +197,98 @@ func (b *Business) AddChecks(ctx context.Context, now time.Time, actor, accountI
 	return receipts, nil
 }
 
+// paidBy is the account's one transaction with the check's number, if it
+// has exactly one.
+func (b *Business) paidBy(ctx context.Context, accountID types.ID, number string) (ledgerbus.Transaction, bool, error) {
+	if number == "" {
+		return ledgerbus.Transaction{}, false, nil
+	}
+
+	txs, err := b.ledger.WithCheck(ctx, accountID, number)
+	if err != nil || len(txs) != 1 {
+		return ledgerbus.Transaction{}, false, err
+	}
+
+	return txs[0], true, nil
+}
+
+// matched is a check image attached to the transaction that paid it, whose
+// date and amount it takes: the bank's word on them is better than any
+// typed before the check was matched.
+func matched(r Receipt, t ledgerbus.Transaction, actor types.ID, now time.Time) Receipt {
+	r.SpentOn, r.Amount, r.HasAmount = t.PostedOn, t.Amount.Abs(), true
+	r.Links = []Link{{TransactionID: t.ID, LinkedBy: actor, LinkedAt: now}}
+
+	return r
+}
+
+// NumberCheck says which check a waiting check image is. It is attached
+// to the account's one transaction with the number, and its payee written
+// on that transaction, as an upload with the number would have done; with
+// no such transaction, or several, it waits with its number. Whoever may
+// correct the receipt's details may number it. One already attached is
+// ErrAttached: taking it off its transaction first says what is being
+// undone.
+func (b *Business) NumberCheck(ctx context.Context, now time.Time, actor, id types.ID, number string) (Receipt, error) {
+	r, err := b.readable(ctx, actor, id)
+	if err != nil {
+		return Receipt{}, err
+	}
+
+	if ok, err := b.mayEdit(ctx, actor, r); err != nil {
+		return Receipt{}, err
+	} else if !ok {
+		return Receipt{}, ErrForbidden
+	}
+
+	switch {
+	case !r.CheckImage || r.Home.Kind != types.ScopeAccount:
+		return r, Invalid{Field: "number", Err: errors.New("only the image of a check has a check number")}
+	case r.Removed():
+		return r, ErrRemoved
+	case !r.Waiting():
+		return r, ErrAttached
+	}
+
+	n := importbus.CheckNumber(number)
+	if n == "" {
+		return r, Invalid{Field: "number", Err: errors.New("a check number is digits")}
+	}
+
+	r.Check = n
+
+	return b.saveCheck(ctx, now, actor, r)
+}
+
+// saveCheck writes a waiting check image's number, attaching it to the
+// transaction that paid it when the account has exactly one.
+func (b *Business) saveCheck(ctx context.Context, now time.Time, actor types.ID, r Receipt) (Receipt, error) {
+	t, ok, err := b.paidBy(ctx, r.Home.ID, r.Check)
+	if err != nil {
+		return r, err
+	}
+
+	if ok {
+		r = matched(r, t, actor, now)
+	}
+
+	if err := b.store.SaveCheck(ctx, r); err != nil {
+		return r, err
+	}
+
+	if ok && r.Merchant != "" {
+		if _, err := b.ledger.SetPayee(ctx, now, actor, t.ID, r.Merchant); err != nil {
+			return r, err
+		}
+	}
+
+	return r, nil
+}
+
 // paidTo writes a check image's shop -- to whom the check was written --
 // on the transactions it is attached to, when it has changed.
 func (b *Business) paidTo(ctx context.Context, now time.Time, actor types.ID, before, after Receipt) error {
-	if after.Check == "" || before.Merchant == after.Merchant {
+	if !after.CheckImage || before.Merchant == after.Merchant {
 		return nil
 	}
 
