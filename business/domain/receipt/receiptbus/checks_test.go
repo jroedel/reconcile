@@ -8,6 +8,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/types"
+	"github.com/jroedel/reconcile/business/types/money"
 )
 
 // A check's number from its file's name, and none from a name that might
@@ -293,5 +294,125 @@ func TestChecksMatchWhenTheyClear(t *testing.T) {
 	in, err := w.receipts.Inbox(w.ctx, w.owner, types.AccountScope(acct))
 	if err != nil || len(in.Matched) != 1 || len(in.Waiting) != 2 {
 		t.Errorf("the inbox: %d matched, %d waiting, %v", len(in.Matched), len(in.Waiting), err)
+	}
+}
+
+// Claude reads five screenshots of checks. A reading whose amount is the
+// bank's attaches the image, payee and all; one whose amount is not
+// changes nothing and says both; with two transactions of the number, the
+// one with the amount read; a check not cleared waits with what was read,
+// and the import that brings it attaches it only if the amounts agree.
+func TestReadingAChecksImage(t *testing.T) {
+	w := newWorld(t)
+	acct := w.checking()
+
+	var shots []types.ID
+	for _, name := range []string{"Screenshot_1.png", "Screenshot_2.png", "Screenshot_3.png", "Screenshot_4.png", "Screenshot_5.png"} {
+		shots = append(shots, w.upload(w.owner, name, photo+name, receiptbus.Accept))
+	}
+
+	added, err := w.receipts.AddChecks(w.ctx, now, w.owner, acct, shots, "", "")
+	if err != nil || len(added) != 5 {
+		t.Fatalf("the screenshots: %d, %v", len(added), err)
+	}
+
+	read := func(i int, number, amount, payee, on string) (receiptbus.Receipt, error) {
+		t.Helper()
+
+		rd := receiptbus.CheckReading{Number: number, Payee: payee}
+
+		var err error
+		if rd.Amount, err = money.Parse(amount); err != nil {
+			t.Fatal(err)
+		}
+
+		if on != "" {
+			if rd.On, err = types.ParseDate(on); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		return w.receipts.ReadCheck(w.ctx, now, w.owner, added[i].ID, rd)
+	}
+
+	r, err := read(0, "1176", "120.00", "Hilltop Plumbing", "2026-06-28")
+	if err != nil || r.Waiting() || r.SpentOn.String() != "2026-07-02" {
+		t.Fatalf("check 1176: %+v, %v", r, err)
+	}
+
+	if c, _ := w.ledger.Lookup(w.ctx, r.Links[0].TransactionID); c.Payee != "Hilltop Plumbing" {
+		t.Errorf("check 1176's payee: %q", c.Payee)
+	}
+
+	_, err = read(1, "1177", "300.00", "", "")
+	if e, ok := errors.AsType[receiptbus.AmountDiffers](err); !ok || e.Bank.String() != "30.00" || e.Read.String() != "300.00" {
+		t.Errorf("a misread amount: %v", err)
+	}
+
+	if got, _ := w.receipts.Receipt(w.ctx, w.owner, added[1].ID); got.Receipt.Check != "" || got.Receipt.HasAmount {
+		t.Errorf("a misread changed the image: %+v", got.Receipt)
+	}
+
+	r, err = read(2, "1180", "12.00", "", "")
+	if err != nil || r.Waiting() {
+		t.Fatalf("check 1180 for 12.00: %+v, %v", r, err)
+	}
+
+	if c, _ := w.ledger.Lookup(w.ctx, r.Links[0].TransactionID); c.Amount.String() != "-12.00" {
+		t.Errorf("check 1180 went on the one for %s", c.Amount)
+	}
+
+	// Two not cleared yet: one written for what the bank will pay, one
+	// misread.
+	for i, c := range map[int]struct{ number, amount string }{3: {"1195", "75.00"}, 4: {"1196", "40.00"}} {
+		r, err := read(i, c.number, c.amount, "Diocesan Office", "2026-07-20")
+		if err != nil || !r.Waiting() || r.Check != c.number || r.Amount.String() != c.amount || r.SpentOn.String() != "2026-07-20" {
+			t.Errorf("check %s, not cleared: %+v, %v", c.number, r, err)
+		}
+	}
+
+	const august = "Date,Description,Amount,Balance,Check Number\n" +
+		"2026-08-03,CHECK,-57.00,771.00,1195\n" +
+		"2026-08-04,CHECK,-40.00,731.00,1196\n"
+
+	f := w.upload(w.owner, "august.csv", august, nil)
+
+	d, err := w.ledger.Prepare(w.ctx, w.owner, acct, f, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := w.ledger.Import(w.ctx, now, w.owner, acct, f, ledgerbus.Options{Mapping: d.Mapping}); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, _ := w.receipts.Receipt(w.ctx, w.owner, added[3].ID); !got.Receipt.Waiting() {
+		t.Error("check 1195, read as 75.00 and paid as 57.00, was attached")
+	}
+
+	if got, _ := w.receipts.Receipt(w.ctx, w.owner, added[4].ID); got.Receipt.Waiting() || len(got.Transactions) != 1 || got.Transactions[0].Payee != "Diocesan Office" {
+		t.Errorf("check 1196 after its import: %+v", got)
+	}
+
+	// Read again once attached; nothing; and a receipt that is no check.
+	if _, err := read(0, "1176", "120.00", "", ""); !errors.Is(err, receiptbus.ErrAttached) {
+		t.Errorf("reading an attached check: %v", err)
+	}
+
+	if _, err := w.receipts.ReadCheck(w.ctx, now, w.owner, added[1].ID, receiptbus.CheckReading{Number: "1177"}); err == nil {
+		t.Error("a reading with no amount was taken")
+	}
+
+	plain, err := w.receipts.Add(w.ctx, now, w.owner, types.AccountScope(acct), []types.ID{w.upload(w.owner, "grocery.jpg", photo+"grocery", receiptbus.Accept)}, false, receiptbus.Details{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := w.receipts.ReadCheck(w.ctx, now, w.owner, plain[0].ID, receiptbus.CheckReading{Number: "1177", Amount: 3000}); err == nil {
+		t.Error("a grocery receipt was read as a check")
+	}
+
+	if _, err := w.receipts.ReadCheck(w.ctx, now, w.pilgrim, added[1].ID, receiptbus.CheckReading{Number: "1177", Amount: 3000}); !errors.Is(err, receiptbus.ErrNotFound) {
+		t.Errorf("the pilgrim: %v", err)
 	}
 }

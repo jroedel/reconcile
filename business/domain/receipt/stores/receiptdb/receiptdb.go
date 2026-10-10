@@ -232,8 +232,8 @@ UPDATE receipts SET spent_on = ?, amount = ?, merchant = ?, note = ?, removed_at
 }
 
 // SaveCheck writes a check image's number and details, and its links.
-func (s *Store) SaveCheck(ctx context.Context, r receiptbus.Receipt) error {
-	return s.inTx(ctx, nil, func(tx *sql.Tx) error {
+func (s *Store) SaveCheck(ctx context.Context, r receiptbus.Receipt, ev *eventbus.Event) error {
+	return s.inTx(ctx, ev, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `
 UPDATE receipts SET check_number = ?, spent_on = ?, amount = ?, merchant = ?, note = ? WHERE id = ? AND check_image = 1`,
 			r.Check, r.SpentOn.String(), amountOf(r.Details), r.Merchant, r.Note, r.ID.String()); err != nil {

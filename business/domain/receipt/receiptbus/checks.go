@@ -19,6 +19,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/types"
+	"github.com/jroedel/reconcile/business/types/money"
 )
 
 // Check images (docs/shapes.md, 3, and docs/phone.md, 1). A check's image
@@ -257,7 +258,17 @@ func (b *Business) NumberCheck(ctx context.Context, now time.Time, actor, id typ
 
 	r.Check = n
 
-	return b.saveCheck(ctx, now, actor, r)
+	t, ok, err := b.paidBy(ctx, r.Home.ID, n)
+	if err != nil {
+		return r, err
+	}
+
+	var paid *ledgerbus.Transaction
+	if ok {
+		paid = &t
+	}
+
+	return b.saveCheck(ctx, now, actor, r, paid, nil)
 }
 
 // MatchChecks attaches the account's waiting check images whose number
@@ -285,13 +296,20 @@ func (b *Business) MatchChecks(ctx context.Context, now time.Time, actor, accoun
 			continue
 		}
 
-		if _, ok, err := b.paidBy(ctx, accountID, r.Check); err != nil {
+		txs, err := b.ledger.WithCheck(ctx, accountID, r.Check)
+		if err != nil {
 			return err
-		} else if !ok {
+		}
+
+		// An amount read off the image, by Claude or typed by a person,
+		// must be the bank's: otherwise the image waits for somebody to
+		// look again rather than going on a transaction it may not be.
+		t := paying(txs, r)
+		if t == nil {
 			continue
 		}
 
-		if _, err := b.saveCheck(ctx, now, actor, r); err != nil {
+		if _, err := b.saveCheck(ctx, now, actor, r, t, nil); err != nil {
 			return err
 		}
 
@@ -306,28 +324,130 @@ func (b *Business) MatchChecks(ctx context.Context, now time.Time, actor, accoun
 }
 
 // saveCheck writes a waiting check image's number, attaching it to the
-// transaction that paid it when the account has exactly one.
-func (b *Business) saveCheck(ctx context.Context, now time.Time, actor types.ID, r Receipt) (Receipt, error) {
-	t, ok, err := b.paidBy(ctx, r.Home.ID, r.Check)
-	if err != nil {
+// transaction that paid it when there is one, and writing its payee there.
+func (b *Business) saveCheck(ctx context.Context, now time.Time, actor types.ID, r Receipt, paid *ledgerbus.Transaction, ev *eventbus.Event) (Receipt, error) {
+	if paid != nil {
+		r = matched(r, *paid, actor, now)
+	}
+
+	if err := b.store.SaveCheck(ctx, r, ev); err != nil {
 		return r, err
 	}
 
-	if ok {
-		r = matched(r, t, actor, now)
-	}
-
-	if err := b.store.SaveCheck(ctx, r); err != nil {
-		return r, err
-	}
-
-	if ok && r.Merchant != "" {
-		if _, err := b.ledger.SetPayee(ctx, now, actor, t.ID, r.Merchant); err != nil {
+	if paid != nil && r.Merchant != "" {
+		if _, err := b.ledger.SetPayee(ctx, now, actor, paid.ID, r.Merchant); err != nil {
 			return r, err
 		}
 	}
 
 	return r, nil
+}
+
+// CheckReading is what somebody read off a check's image: its number,
+// whom it was paid to, its amount and its date, as written on it.
+type CheckReading struct {
+	Number string
+	Payee  string
+	Amount money.Amount // as written: never negative
+	On     types.Date   // zero when not read
+}
+
+// AmountDiffers is a reading of a check whose amount is not the bank's for
+// the check with its number: a digit misread, of the number or of the
+// amount. Nothing is changed.
+type AmountDiffers struct {
+	Number     string
+	Bank, Read money.Amount
+}
+
+func (e AmountDiffers) Error() string {
+	return fmt.Sprintf("the bank paid check %s for %s, and the image was read as %s", e.Number, e.Bank, e.Read)
+}
+
+// ReadCheck says what a waiting check image is, as Claude reads it
+// through the API (docs/phone.md, 6): as NumberCheck, and held to the
+// bank's figures, so that a misread digit is a refusal rather than an
+// image on the wrong transaction.
+//
+// With one transaction in the account with the number, the amount read
+// must be its amount, or nothing changes (AmountDiffers). With several,
+// the one with the amount read, if exactly one has it. With none -- the
+// check has not cleared -- the image waits with all that was read, and
+// an import that brings the check attaches it if the amounts agree
+// (MatchChecks). The reading is a line in the inbox's history, which says
+// it came through a key.
+func (b *Business) ReadCheck(ctx context.Context, now time.Time, actor, id types.ID, rd CheckReading) (Receipt, error) {
+	r, err := b.readable(ctx, actor, id)
+	if err != nil {
+		return Receipt{}, err
+	}
+
+	if ok, err := b.mayEdit(ctx, actor, r); err != nil {
+		return Receipt{}, err
+	} else if !ok {
+		return Receipt{}, ErrForbidden
+	}
+
+	switch {
+	case !r.CheckImage || r.Home.Kind != types.ScopeAccount:
+		return r, Invalid{Field: "receipt", Err: errors.New("it is not the image of a check")}
+	case r.Removed():
+		return r, ErrRemoved
+	case !r.Waiting():
+		return r, ErrAttached
+	}
+
+	n := importbus.CheckNumber(rd.Number)
+	payee := strings.Join(strings.Fields(rd.Payee), " ")
+
+	switch {
+	case n == "":
+		return r, Invalid{Field: "number", Err: errors.New("a check number is digits")}
+	case rd.Amount <= 0:
+		return r, Invalid{Field: "amount", Err: errors.New("a check's amount is more than nothing")}
+	case utf8.RuneCountInString(payee) > ledgerbus.MaxPayee:
+		return r, Invalid{Field: "payee", Err: fmt.Errorf("at most %d characters", ledgerbus.MaxPayee)}
+	}
+
+	txs, err := b.ledger.WithCheck(ctx, r.Home.ID, n)
+	if err != nil {
+		return r, err
+	}
+
+	if len(txs) == 1 && txs[0].Amount.Abs() != rd.Amount {
+		return r, AmountDiffers{Number: n, Bank: txs[0].Amount.Abs(), Read: rd.Amount}
+	}
+
+	r.Check = n
+	r.Amount, r.HasAmount = rd.Amount, true
+
+	if payee != "" {
+		r.Merchant = payee
+	}
+
+	if !rd.On.Zero() {
+		r.SpentOn = rd.On
+	}
+
+	ev := eventbus.New(now, actor, r.Home, CheckRead, map[string]string{"number": n, "amount": rd.Amount.String(), "payee": payee})
+
+	return b.saveCheck(ctx, now, actor, r, paying(txs, r), &ev)
+}
+
+// paying is the one transaction, among those with a check image's number,
+// that paid it: the only one, or the only one with the amount the image
+// was read as. A person who typed the number has the bank's word over any
+// amount typed before (NumberCheck); a reading is held to its amount.
+func paying(txs []ledgerbus.Transaction, r Receipt) *ledgerbus.Transaction {
+	if r.HasAmount {
+		txs = slices.DeleteFunc(slices.Clone(txs), func(t ledgerbus.Transaction) bool { return t.Amount.Abs() != r.Amount })
+	}
+
+	if len(txs) != 1 {
+		return nil
+	}
+
+	return &txs[0]
 }
 
 // paidTo writes a check image's shop -- to whom the check was written --
