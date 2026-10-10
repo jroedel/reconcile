@@ -4,13 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/jroedel/reconcile/app/sdk/mid"
 	"github.com/jroedel/reconcile/business/domain/category/categorybus"
 	"github.com/jroedel/reconcile/business/domain/event/eventbus"
+	"github.com/jroedel/reconcile/business/domain/file/filebus"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
 	"github.com/jroedel/reconcile/business/domain/rule/rulebus"
@@ -78,12 +81,19 @@ type Receipts interface {
 	Suggestions(ctx context.Context, actor types.ID, receipts []receiptbus.Receipt) (map[types.ID][]ledgerbus.Transaction, error)
 	OnTransactions(ctx context.Context, ids []types.ID) (map[types.ID][]receiptbus.Receipt, error)
 	Attach(ctx context.Context, now time.Time, actor, receiptID, transactionID types.ID) (receiptbus.Receipt, error)
+	File(ctx context.Context, actor, id types.ID, n int) (filebus.File, error)
 	Detach(ctx context.Context, actor, receiptID, transactionID types.ID) (receiptbus.Receipt, error)
 }
 
 // History is what a person changed through a key.
 type History interface {
 	Through(ctx context.Context, actor types.ID, since time.Time, limit int) ([]eventbus.Event, error)
+}
+
+// Pictures is the files' bytes, for showing a receipt's page (filebus).
+type Pictures interface {
+	Picture(ctx context.Context, f filebus.File, size filebus.Size) (io.ReadSeekCloser, error)
+	Open(f filebus.File) (io.ReadSeekCloser, error)
 }
 
 // Books is everything the books endpoints read through. Nil fields leave
@@ -96,10 +106,11 @@ type Books struct {
 	Receipts   Receipts
 	History    History
 	Rules      Rules
+	Pictures   Pictures
 }
 
 func (b Books) complete() bool {
-	return b.Ledger != nil && b.Tenancy != nil && b.Categories != nil && b.Receipts != nil && b.History != nil && b.Rules != nil
+	return b.Ledger != nil && b.Tenancy != nil && b.Categories != nil && b.Receipts != nil && b.History != nil && b.Rules != nil && b.Pictures != nil
 }
 
 // --- the endpoints ----------------------------------------------------------------
@@ -230,8 +241,15 @@ func (a app) bookEndpoints() []Endpoint {
 		{
 			Method: http.MethodGet, Path: Prefix + "/receipts/waiting", Scope: read, Tool: "list_waiting_receipts",
 			Summary: "Receipts waiting for a match in the inboxes you may see, each with the transactions it may belong to: the same amount within a few days, in accounts you may attach receipts on.",
-			Returns: "{receipts: [{id, spent_on, amount, merchant, note, pages, uploaded, url, suggestions: [transaction]}]}",
+			Returns: "{receipts: [{id, spent_on, amount, merchant, note, pages, uploaded, url, check_image, check, suggestions: [transaction]}]}; check_image is true for the image of a check, and check its number once somebody has said it",
 			handler: a.waitingReceipts,
+		},
+		{
+			Method: http.MethodGet, Path: Prefix + "/receipts/{receipt}/image", Scope: read, Tool: "get_receipt_image",
+			Summary: "One page of a receipt, as an image to look at: a photo or a screenshot, at most 1600 pixels on its longer side. For the image of a check, read its number, whom it was paid to, its amount and its date, and say them with read_check.",
+			Query:   []Field{{Name: "page", Type: "integer", Description: "Which page, counting from 1; 1 when left out. list_waiting_receipts says how many pages each receipt has."}},
+			Returns: "The page as an image (JPEG, PNG or WebP). A PDF or HEIC page is refused, with the receipt's url, where a person can look at it.",
+			handler: a.receiptImage,
 		},
 		{
 			Method: http.MethodGet, Path: Prefix + "/projects/{project}", Scope: read, Tool: "get_project_book",
@@ -1170,6 +1188,11 @@ func (rd *reader) receipts(list []receiptbus.Receipt) []map[string]any {
 			m["amount"] = rc.Amount
 		}
 
+		if rc.CheckImage {
+			m["check_image"] = true
+			m["check"] = rc.Check
+		}
+
 		out = append(out, m)
 	}
 
@@ -1492,6 +1515,86 @@ func (a app) waitingReceipts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rd.done(w, r, map[string]any{"receipts": out})
+}
+
+// receiptImage is one page of a receipt as an image: its large picture
+// for a photo (filebus.Picture), as it is for a WebP, which Claude reads
+// too, and refused for a PDF or a HEIC, which an MCP image cannot be.
+func (a app) receiptImage(w http.ResponseWriter, r *http.Request) {
+	id, ok := a.pathID(w, r, "receipt", "receipt")
+	if !ok {
+		return
+	}
+
+	page := 1
+
+	if p := r.URL.Query().Get("page"); p != "" {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 1 {
+			web.WriteJSON(w, http.StatusBadRequest, web.Problem("page", "Give the page as a number from 1."))
+
+			return
+		}
+
+		page = n
+	}
+
+	rd := a.reader(r)
+
+	f, err := a.books.Receipts.File(r.Context(), rd.me, id, page-1)
+	if a.bookRefused(w, r, err, "receipt, or no such page of it") {
+		return
+	}
+
+	var (
+		pic  io.ReadSeekCloser
+		kind = f.ContentType
+	)
+
+	switch {
+	case filebus.Sizable(f.ContentType):
+		pic, err = a.books.Pictures.Picture(r.Context(), f, filebus.Large)
+		kind = filebus.JPEG
+
+		// A photo too small to need a smaller picture is shown as it is.
+		if errors.Is(err, filebus.ErrNoPicture) {
+			pic, err = a.books.Pictures.Open(f)
+			kind = f.ContentType
+		}
+	case f.ContentType == filebus.WebP:
+		pic, err = a.books.Pictures.Open(f)
+	default:
+		web.WriteJSON(w, http.StatusUnsupportedMediaType, web.Problem("page",
+			fmt.Sprintf("That page is a %s, which cannot be shown as an image here. A person can look at it on the receipt's page: %s", kindName(f.ContentType), rd.url("/receipts/"+id.String()))))
+
+		return
+	}
+
+	if err != nil {
+		a.fail(w, r, "reading a receipt's page", err)
+
+		return
+	}
+	defer pic.Close()
+
+	w.Header().Set("Content-Type", kind)
+	w.Header().Set("Cache-Control", "no-store")
+
+	if _, err := io.Copy(w, pic); err != nil {
+		a.log.Info("a receipt's page was cut off while being sent", "request_id", web.RequestIDFrom(r.Context()), "error", err)
+	}
+}
+
+// kindName is a file's kind in a sentence.
+func kindName(contentType string) string {
+	switch contentType {
+	case filebus.PDF:
+		return "PDF"
+	case filebus.HEIC:
+		return "HEIC photo"
+	}
+
+	return contentType
 }
 
 // maxBookLines is the most parts a project's book answer lists.

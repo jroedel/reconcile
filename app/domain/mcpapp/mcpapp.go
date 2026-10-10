@@ -493,10 +493,19 @@ func (a *app) send(ctx context.Context, req *mcp.CallToolRequest, method, path s
 // answer is the API's answer as a tool's result: its JSON as text, and a
 // refusal as an error whose text is the API's own sentence, so Claude reads
 // what to fix.
+//
+// An image is an image, so that Claude sees it rather than reading its
+// bytes: the one answer that is not JSON, a receipt's page
+// (get_receipt_image), which is how Claude reads a check (docs/phone.md,
+// 5).
 func answer(w *httptest.ResponseRecorder) *mcp.CallToolResult {
 	text := strings.TrimSpace(w.Body.String())
 	if w.Code >= 400 {
 		return failed(fmt.Sprintf("%d %s: %s", w.Code, http.StatusText(w.Code), text))
+	}
+
+	if kind := w.Header().Get("Content-Type"); strings.HasPrefix(kind, "image/") {
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.ImageContent{Data: w.Body.Bytes(), MIMEType: kind}}}
 	}
 
 	if text == "" {
