@@ -257,6 +257,21 @@ func TestTheCardholderColumn(t *testing.T) {
 	}
 }
 
+// A status column marks the charges that have not posted.
+func TestAStatusColumn(t *testing.T) {
+	const data = "Date,Description,Amount,Status\n2026-09-29,CITY PARKING HOLD,-7.25,Pending\n2026-09-16,CORNER BAKERY,-12.00,Posted\n"
+
+	m := csvsource.Detect([]string{"Date", "Description", "Amount", "Status"})
+	if m.Status != "Status" {
+		t.Fatalf("Detect = %+v", m)
+	}
+
+	res := read(t, data, m)
+	if !res.Records[0].Pending || res.Records[1].Pending {
+		t.Errorf("records: %+v", res.Records)
+	}
+}
+
 func TestSkipLines(t *testing.T) {
 	const data = "Account activity for July\n\nDate,Description,Amount\n2026-07-01,A,1.00\n"
 

@@ -49,6 +49,12 @@
   <p class="hint">{{t "If the file has one, every row is checked against it, and a missing row is found."}}</p>
 </div>
 
+<div class="field">
+  <label for="status">{{t "Status"}}</label>
+  <select id="status" name="status">{{range $v.Options $m.Status true}}<option value="{{.}}"{{if eq . $m.Status}} selected{{end}}>{{if .}}{{.}}{{else}}{{t "(none)"}}{{end}}</option>{{end}}</select>
+  <p class="hint">{{t "If the file says which charges are still pending, the column that says so."}}</p>
+</div>
+
 {{if or $d.ByHolder $m.Holder}}
 <div class="field">
   <label for="holder_column">{{t "Cardholder"}}</label>
@@ -111,12 +117,13 @@
 {{if not $d.Unmapped}}
 <section class="card">
 <h2>{{t "What was read"}}</h2>
+{{if $d.Result.Unplaced}}<p class="notice">{{t "The document says {amount} is pending, but no rows at the head of its list add up to that, so none is marked pending. If a pending charge posts later at another amount, the statement it posts on lists it again." "amount" (money $d.Result.Pending.Amount $cur)}}</p>{{end}}
 {{if $v.Rows}}
 <div class="scroll">
 <table class="ledger">
 <thead><tr><th>{{if $pdf}}{{t "Page"}}{{else}}{{t "Line"}}{{end}}</th><th>{{t "Date"}}</th><th>{{t "Description"}}</th><th class="money">{{t "Amount"}}</th>{{if $v.Balances}}<th class="money">{{t "Balance"}}</th>{{end}}</tr></thead>
 <tbody>
-{{range $v.Rows}}<tr><td>{{if $pdf}}{{.Page}}{{else}}{{.Line}}{{end}}</td><td>{{.Date.Format "2006-01-02"}}</td><td>{{.Description}}{{with .Memo}}<br><span class="hint">{{.}}</span>{{else}}{{with .Holder}}<br><span class="hint">{{.}}</span>{{end}}{{end}}</td><td class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $cur}}</td>{{if $v.Balances}}<td class="money">{{if .HasBalance}}{{money .Balance $cur}}{{end}}</td>{{end}}</tr>
+{{range $v.Rows}}<tr><td>{{if $pdf}}{{.Page}}{{else}}{{.Line}}{{end}}</td><td>{{.Date.Format "2006-01-02"}}</td><td>{{.Description}}{{if .Pending}} <span class="badge">{{t "pending"}}</span>{{end}}{{with .Memo}}<br><span class="hint">{{.}}</span>{{else}}{{with .Holder}}<br><span class="hint">{{.}}</span>{{end}}{{end}}</td><td class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $cur}}</td>{{if $v.Balances}}<td class="money">{{if .HasBalance}}{{money .Balance $cur}}{{end}}</td>{{end}}</tr>
 {{end}}</tbody>
 </table>
 </div>
@@ -165,6 +172,7 @@
 <ul class="list">{{range .}}<li><label class="choice"><input type="checkbox" name="include" value="{{.Index}}"{{if .Imported}} checked{{end}}> {{t "Import it anyway: {amount} on {date}, “{this}” in this file, where the account has “{that}”." "amount" (money .Row.Amount $cur) "date" .Row.PostedOn "this" .Row.Description "that" .Twin.Description}}</label></li>
 {{end}}</ul>
 {{end}}
+{{if $d.Statement.Posted}}<p class="hint">{{t "{n} of its rows are charges that were pending here and have now posted. Each takes the pending charge's place, with its final date and amount, and keeps how it was sorted." "n" $d.Statement.Posted}}</p>{{end}}
 {{if $d.Statement.ByRule}}<p class="hint">{{t "The account's sorting rules will sort {n} of the new ones. They are marked, so you can check them." "n" $d.Statement.ByRule}}</p>{{end}}{{end}}
 {{if $d.Statement.Locked}}<p class="notice" role="alert">{{t "{n} of the new transactions fall in a period that has been reconciled, so this statement cannot be imported. If the bank really changed that period, reopen its statement first, on the month-by-month page." "n" $d.Statement.Locked}} <a href="/accounts/{{$d.Account.ID}}/months">{{t "Month by month"}}</a></p>{{end}}
 </section>

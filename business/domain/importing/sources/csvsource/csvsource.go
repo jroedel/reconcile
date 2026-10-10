@@ -65,6 +65,10 @@ type Mapping struct {
 	// in a card's export for several cards.
 	Holder string `json:"holder,omitempty"`
 
+	// Status names a column that says whether a charge has posted: a row
+	// whose status says pending is marked so (importbus.Record.Pending).
+	Status string `json:"status,omitempty"`
+
 	// DateFormat is a Go layout. Empty chooses one from the file (see the
 	// package comment).
 	DateFormat string `json:"date_format,omitempty"`
@@ -123,6 +127,11 @@ var (
 	debitNames   = []string{"debit", "withdrawal", "withdrawals", "money out", "paid out", "spent", "cargo", "cargos", "débito", "debito", "saída", "saida"}
 	creditNames  = []string{"credit", "deposit", "deposits", "money in", "paid in", "received", "abono", "abonos", "crédito", "credito", "entrada"}
 	balanceNames = []string{"balance", "running balance", "saldo", "saldo disponible"}
+
+	// pendingStatus is a status column's word for a charge not yet posted.
+	pendingStatus = regexp.MustCompile(`(?i)\b(pending|pendiente|pendente|authori[sz]ed|autorizad[ao])\b`)
+
+	statusNames = []string{"status", "transaction status", "estado", "situação", "situacao", "status da transação"}
 
 	// Not "name", which is a payee as often as a person.
 	holderNames = []string{
@@ -258,6 +267,10 @@ func toRecord(row []string, get func([]string, string) string, m Mapping, layout
 
 	if m.Holder != "" {
 		rec.Holder = strings.Join(strings.Fields(get(row, m.Holder)), " ")
+	}
+
+	if m.Status != "" {
+		rec.Pending = pendingStatus.MatchString(get(row, m.Status))
 	}
 
 	if m.Balance != "" {
@@ -566,6 +579,7 @@ func Detect(header []string) Mapping {
 		Amount:      pick(header, amountNames),
 		Balance:     pick(header, balanceNames),
 		Holder:      pick(header, holderNames),
+		Status:      pick(header, statusNames),
 	}
 
 	if m.Holder == m.Description {

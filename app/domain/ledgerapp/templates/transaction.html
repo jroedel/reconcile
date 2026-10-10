@@ -3,6 +3,7 @@
 <p class="crumbs"><a href="{{$v.Back}}">{{$e.Account.Name}}</a></p>
 <h1>{{if $t.Description}}{{$t.Description}}{{else}}{{t "A transaction with no description"}}{{end}}</h1>
 <p>{{$t.PostedOn}}{{with $t.Holder}} · {{.}}{{end}} · <span class="money {{if lt $t.Amount 0}}out{{else}}in{{end}}">{{money $t.Amount $cur}}</span></p>
+{{if $t.Pending}}<p class="notice"><span class="badge">{{t "pending"}}</span> {{t "This charge had not posted when its file was read. When a later statement posts it, it takes its final date and amount here, and keeps its parts, receipts and explanation."}}</p>{{end}}
 {{template "cleared" (dict "By" $v.ClearedBy "Currency" $cur)}}
 {{if $v.Explained}}<p><a href="/transactions/{{$t.ID}}/explain">{{t "What makes up this amount"}}</a> {{if $v.Settled}}<span class="badge ok">{{t "explained"}}</span>{{else}}<span class="badge">{{t "open"}}</span>{{end}}</p>
 {{else if not $v.ClearedBy}}<p class="hint"><a href="/transactions/{{$t.ID}}/explain">{{t "Explain this amount"}}</a> · {{t "which transactions make it up?"}}</p>{{end}}

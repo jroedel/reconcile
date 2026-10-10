@@ -154,20 +154,34 @@ them.
     the head of the list that add up to it, which is how a printed page
     lists them. Rows that do not add up to it are not marked, and the
     preview says the document states a pending total it could not place.
-  - A CSV's status column, when mapped, with "pending" in it.
-- **Stored marked pending**, shown as such, and counted in the document's
-  total check as the document counts them.
+    (On the printed pages read locally to build this, a stated total of
+    one pending charge and of two each matched the rows at the head
+    exactly, and the page's total activity counted them.)
+  - A CSV's status column, when mapped, with "pending" (or "authorized",
+    in English, Spanish or Portuguese) in it. The preview finds the
+    column by its heading, as it finds the others.
+- **Stored marked pending**, shown as such on the month, the transaction
+  and the preview, counted in the document's total check as the document
+  counts them, and in the accountant's package in a column of its own.
 - **Replaced when posted.** A later row of the same account (and
   cardholder) within ten days after it, not pending, whose description is
   alike (`ledgerdb.alike`, eumaeus' containment first), takes the pending
   row's place: its date, amount and description change to the posted
   ones, and it keeps its sorting, receipts and explanation. A one-part
   transaction's part follows the amount; with several parts the
-  difference goes to the last part and the transaction is marked for
-  checking. The history says "pending at 12.00, posted at 9.40".
+  difference goes to the last part -- the tip is the last thing added to
+  a charge -- unless that would leave it nothing or turn it round, when
+  the transaction goes back to one part, unsorted, to be split anew. The
+  history says "pending at 7.25, posted at 12.00", and when the parts were
+  undone. A posted row worded, dated and priced as its pending one was is
+  the same row (the ledger's duplicate check finds it) and only stops
+  being pending. A pending charge in a reconciled period is never
+  replaced.
 - **Never posted.** A pending row older than ten days past the latest
   statement of its account is listed on the account's page, "still
-  pending", with a way to remove it (a hold that was released).
+  pending", with a way for a bookkeeper to remove it (a hold that was
+  released), outside a reconciled period; the history keeps what it
+  was.
 
 ## Build order
 

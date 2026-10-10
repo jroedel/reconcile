@@ -288,11 +288,12 @@ type reader struct {
 	// checks paid -- and the number of a check whose row the page broke --
 	// or the daily balances, and a date there waiting for its amount.
 	dir        direction
+	held       bool
 	checks     bool
 	check      string
 	daily      bool
-	pending    day
-	hasPending bool
+	waiting    day
+	hasWaiting bool
 
 	// lonely is a date that was alone on its line, for the line after it
 	// (hasLone).
@@ -509,6 +510,9 @@ var (
 	openingLabel = regexp.MustCompile(`(?i)\b(previous|beginning|opening|starting) (statement )?balance\b|\bbalance (brought )?forward\b`)
 	closingLabel = regexp.MustCompile(`(?i)\b(new|ending|closing) (statement )?balance\b`)
 	totalLabel   = regexp.MustCompile(`(?i)\b(total|net) activity\b`)
+
+	// pendingLabel is a total of what has not posted yet.
+	pendingLabel = regexp.MustCompile(`(?i)\bpending (purchases|charges|transactions|activity|total|amount)\b|\b(compras|transa[çc][õo]es|lan[çc]amentos) pendentes\b|\b(compras|transacciones|cargos) pendientes\b`)
 )
 
 // row takes a line that is a row.
@@ -558,6 +562,7 @@ func (r *reader) row(l line, rw row) {
 		Amount:      rw.figures[0].amount,
 		Memo:        memo,
 		Holder:      memo,
+		Pending:     r.held,
 	}
 
 	if len(rw.figures) == 2 {
@@ -654,6 +659,10 @@ func (r *reader) stated(s string) {
 
 	if a, ok := at(totalLabel); ok && !r.res.Total.Known {
 		r.res.Total = importbus.Total{Amount: a, Known: true}
+	}
+
+	if a, ok := at(pendingLabel); ok && !r.res.Pending.Known {
+		r.res.Pending = importbus.Total{Amount: a, Known: true}
 	}
 }
 
