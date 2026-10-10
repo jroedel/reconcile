@@ -236,6 +236,7 @@ Owners, bookkeepers and accountants can download it (the Export permission). It 
    - Budgets: a project's, and an organization's year by category, income and expenses, set by owners (planned in `docs/budgets.md`)
    - Categorization rules and suggestions (eumaeus `categorizebus`; planned in `docs/sorting.md`). Rules (`rulebus`, `sort_rules`, applied at import and from the rules page), then suggestions and "Sort this month" (`/accounts/{id}/sort`)
    - The books through an API: scoped keys for anybody, an inbox that an Apps Script in the person's Google account fills with the statements their email brings, and endpoints and MCP tools through which Claude on claude.ai imports, sorts, writes and tests rules, and checks the result; reconciling stays a person's (planned in `docs/books-api.md`)
+   - From a phone: an installable app that photos and screenshots are shared to, many at once; check images that wait for their number or their check to clear, and are matched when it does; and MCP tools through which Claude sees a receipt and reads a check, held to the bank's amount (planned in `docs/phone.md`)
    - Thumbnails (stewards `imaging`, now `foundation/imaging`): a JPEG or PNG receipt has a small picture for lists and a large one for its page, upright and without EXIF, made the first time a page asks and kept beside the original by its hash (`files/sized/`). The original is unchanged, still a tap away, and is what the accountant's package holds. PDF, WebP and HEIC are shown or offered as they are
 
 ## Open items (do not block steps 1–8)
