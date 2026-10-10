@@ -341,6 +341,7 @@ func Expected(err error) bool {
 // preview to explain.
 func (b *Business) ImportProposals(ctx context.Context, now time.Time, actor types.ID, props []Proposal) (int, error) {
 	n := 0
+	failed := map[types.ID]bool{}
 
 	for _, p := range props {
 		if !p.Unattended() {
@@ -354,7 +355,15 @@ func (b *Business) ImportProposals(ctx context.Context, now time.Time, actor typ
 			n++
 		case !Expected(err):
 			return n, err
+		default:
+			failed[p.File.ID] = true
 		}
+	}
+
+	// A file from the inbox whose every part is now in its account leaves
+	// the inbox (inbox.go); one that was never in it is untouched.
+	if err := b.closeImported(ctx, now, actor, props, failed); err != nil {
+		return n, err
 	}
 
 	return n, nil

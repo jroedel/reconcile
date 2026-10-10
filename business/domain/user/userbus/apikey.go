@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -23,10 +24,69 @@ import (
 // And it says when it was last used, to the hour, so a key nobody remembers
 // using is visible as one.
 //
-// What a key reaches is not this package's business but the routes': only
-// /api/v1 and /mcp accept one, and nothing there reads anybody's books
-// (docs/translations.md, "The rules"). Who may make one is the caller's
-// question too, asked of the translation domain.
+// What a key may do is its scopes (below), which the person chose when they
+// made it; which route needs which scope is the routes' business, and what
+// the person may do once there is still asked of tenancybus every time, so a
+// key never reaches past its person. Who may hold a translating key is the
+// caller's question, asked of the translation domain.
+
+// Scope is one thing a key may be used for (docs/books-api.md, "Scopes").
+// The words are OAuth's way of writing scopes, so that a key given to a
+// program through OAuth and one made on the keys screen are described alike.
+type Scope string
+
+const (
+	// Translate is the interface's translations: only the site
+	// administrator and translators may hold it.
+	Translate Scope = "translate"
+
+	// Upload is putting files in the person's statement inbox, and
+	// nothing else -- not even reading the inbox back. It is the key a
+	// script in somebody's Google account holds, where whoever else can
+	// open that account can read it, so it must not be a key to the books.
+	Upload Scope = "upload"
+
+	// BooksRead is reading what the person's roles let them read.
+	BooksRead Scope = "books:read"
+
+	// BooksWrite is keeping the books as far as the person's roles let
+	// them. It includes BooksRead: nobody sorts a month blind.
+	BooksWrite Scope = "books:write"
+)
+
+// Scopes is every scope, in the order a page lists them.
+var Scopes = []Scope{Upload, BooksRead, BooksWrite, Translate}
+
+// Allows reports whether a key with these scopes may do what needs s.
+func Allows(scopes []Scope, s Scope) bool {
+	return slices.Contains(scopes, s) || (s == BooksRead && slices.Contains(scopes, BooksWrite))
+}
+
+// lifeOf is how long a key with these scopes lasts: a year for a key that
+// may only upload, which lives in a script that nobody should have to open
+// every three months and whose worst use is a file waiting in a queue;
+// APIKeyLife for any other.
+func lifeOf(scopes []Scope) time.Duration {
+	if len(scopes) == 1 && scopes[0] == Upload {
+		return UploadKeyLife
+	}
+
+	return APIKeyLife
+}
+
+// tidyScopes is the scopes given, known ones only, each once, in the order
+// of Scopes; nil when none is known.
+func tidyScopes(given []Scope) []Scope {
+	var out []Scope
+
+	for _, s := range Scopes {
+		if slices.Contains(given, s) {
+			out = append(out, s)
+		}
+	}
+
+	return out
+}
 
 const (
 	// APIKeyLife is ninety days, absolute, as a session is. A key lives in a
@@ -34,6 +94,9 @@ const (
 	// exactly the kind of place a credential is forgotten in; it ending on
 	// its own is the backstop for the person who forgets to revoke it.
 	APIKeyLife = 90 * 24 * time.Hour
+
+	// UploadKeyLife is how long a key that may only upload lasts (lifeOf).
+	UploadKeyLife = 365 * 24 * time.Hour
 
 	// MaxAPIKeys is how many live keys one person may have: a laptop, a
 	// desktop, and room to make a new one before revoking the old.
@@ -65,7 +128,13 @@ type APIKey struct {
 	// Client is the program the key was given to through OAuth, as its
 	// client_id (oauth.go); "" for a key a person made on the keys screen.
 	Client string
+
+	// Scopes is what it may be used for, at least one.
+	Scopes []Scope
 }
+
+// Allows reports whether the key may do what needs s.
+func (k APIKey) Allows(s Scope) bool { return Allows(k.Scopes, s) }
 
 // The errors making a key can give, for a page to word.
 var (
@@ -74,22 +143,31 @@ var (
 
 	// ErrTooManyKeys is a person who has MaxAPIKeys live keys already.
 	ErrTooManyKeys = errors.New("there are as many keys as allowed; revoke one first")
+
+	// ErrKeyScope is a key asked for with nothing it may be used for.
+	ErrKeyScope = errors.New("say what the key is for")
 )
 
-// CreateAPIKey makes a key for a person and returns it with the secret, the
-// only time the secret exists outside the request.
-func (b *Business) CreateAPIKey(ctx context.Context, now time.Time, userID types.ID, name string) (APIKey, string, error) {
+// CreateAPIKey makes a key for a person, for the scopes given, and returns
+// it with the secret, the only time the secret exists outside the request.
+// Whether the person may hold each scope -- Translate is the translation
+// domain's to say -- is the caller's question, asked before this.
+func (b *Business) CreateAPIKey(ctx context.Context, now time.Time, userID types.ID, name string, scopes []Scope) (APIKey, string, error) {
 	name = strings.TrimSpace(name)
+	scopes = tidyScopes(scopes)
 
-	if name == "" || utf8.RuneCountInString(name) > MaxKeyName {
+	switch {
+	case name == "" || utf8.RuneCountInString(name) > MaxKeyName:
 		return APIKey{}, "", ErrKeyName
+	case len(scopes) == 0:
+		return APIKey{}, "", ErrKeyScope
 	}
 
 	cred := mintCredential()
 
 	k := APIKey{
 		ID: cred.id, UserID: userID, Name: name, Hash: cred.hash,
-		CreatedAt: now, ExpiresAt: now.Add(APIKeyLife),
+		CreatedAt: now, ExpiresAt: now.Add(lifeOf(scopes)), Scopes: scopes,
 	}
 
 	made, err := b.store.CreateAPIKey(ctx, k, MaxAPIKeys)
@@ -124,41 +202,42 @@ func (b *Business) RevokeAPIKey(ctx context.Context, userID, id types.ID) error 
 	return nil
 }
 
-// AuthenticateAPIKey turns a presented key into the person it belongs to,
-// with the same single answer for every failure as a session (ErrDenied).
-func (b *Business) AuthenticateAPIKey(ctx context.Context, now time.Time, presented string) (User, error) {
+// AuthenticateAPIKey turns a presented key into the person it belongs to
+// and the key itself, whose scopes say what it may do, with the same single
+// answer for every failure as a session (ErrDenied).
+func (b *Business) AuthenticateAPIKey(ctx context.Context, now time.Time, presented string) (User, APIKey, error) {
 	rest, ok := strings.CutPrefix(presented, APIKeyPrefix)
 	if !ok {
-		return User{}, ErrDenied
+		return User{}, APIKey{}, ErrDenied
 	}
 
 	id, secret, err := splitCredential(rest)
 	if err != nil {
-		return User{}, ErrDenied
+		return User{}, APIKey{}, ErrDenied
 	}
 
 	k, err := b.store.APIKeyByID(ctx, id)
 
 	switch {
 	case errors.Is(err, ErrNotFound):
-		return User{}, ErrDenied
+		return User{}, APIKey{}, ErrDenied
 	case err != nil:
-		return User{}, fmt.Errorf("reading the API key: %w", err)
+		return User{}, APIKey{}, fmt.Errorf("reading the API key: %w", err)
 	}
 
 	if !verifySecret(k.Hash, secret) || !now.Before(k.ExpiresAt) {
-		return User{}, ErrDenied
+		return User{}, APIKey{}, ErrDenied
 	}
 
 	u, err := b.store.UserByID(ctx, k.UserID)
 
 	switch {
 	case errors.Is(err, ErrNotFound):
-		return User{}, ErrDenied
+		return User{}, APIKey{}, ErrDenied
 	case err != nil:
-		return User{}, fmt.Errorf("reading the key's user: %w", err)
+		return User{}, APIKey{}, fmt.Errorf("reading the key's user: %w", err)
 	case !u.Enabled:
-		return User{}, ErrDenied
+		return User{}, APIKey{}, ErrDenied
 	}
 
 	// One statement that only writes when the stamp is an hour old. A
@@ -168,5 +247,5 @@ func (b *Business) AuthenticateAPIKey(ctx context.Context, now time.Time, presen
 		b.log.Error("an API key's last use could not be recorded", "key_id", k.ID.String(), "error", err)
 	}
 
-	return u, nil
+	return u, k, nil
 }

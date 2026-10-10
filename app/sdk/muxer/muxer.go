@@ -244,10 +244,11 @@ func New(cfg Config) (http.Handler, error) {
 	// reached through the cookie's chain or the cookie through the API's: a
 	// page somebody is signed in to cannot be made to call it, and a key
 	// cannot open a page. Mounted only with sign-in on, like the screens,
-	// since a key is made on one. Translations only (apiapp).
+	// since a key is made on one. Translations and the statement inbox
+	// (apiapp), each endpoint behind the scope it needs.
 	api := http.NewServeMux()
 	if cfg.BaseURL != "" {
-		apiapp.Routes(api, apiapp.Config{Log: cfg.Log, Translations: cfg.Translations, BaseURL: cfg.BaseURL})
+		apiapp.Routes(api, apiapp.Config{Log: cfg.Log, Translations: cfg.Translations, Inbox: cfg.Ledger, BaseURL: cfg.BaseURL})
 	}
 
 	// Who is signed in, then the language, which may be theirs (mid.Lang).
@@ -282,6 +283,13 @@ func New(cfg Config) (http.Handler, error) {
 	shape.Handle("/api/", web.Wrap(apiInner, web.MaxBody(maxJSON), web.JSONOnly()))
 	if mcp != nil {
 		shape.Handle(mcpapp.Path, web.Wrap(mcp, web.MaxBody(maxJSON), web.JSONOnly()))
+	}
+
+	// A statement sent to the inbox is the file itself, not JSON: as big
+	// as a statement may be, of whatever type it is, and an upload's time
+	// to arrive. Still the API's branch, asked by a key and never a cookie.
+	for _, pattern := range apiapp.InboxPatterns {
+		shape.Handle(pattern, web.Wrap(apiInner, web.Deadline(receiptapp.UploadTime), web.MaxBody(apiapp.MaxInbox)))
 	}
 	for _, pattern := range ledgerapp.UploadPatterns {
 		shape.Handle(pattern, web.Wrap(inner,

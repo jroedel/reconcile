@@ -97,6 +97,12 @@ All in existing stores except one new table; every later column arrives as
   scopes (`docs/books-api.md`). This is the line that keeps a key on a laptop from being a key to
   somebody's books.
 
+  (Since `docs/books-api.md`'s first pull request, anybody may hold a key,
+  for what they say it is for, and a translating key is one of those
+  purposes: only the administrator and translators may choose it, and a key
+  for anything else reaches no translation. The line above is now drawn by
+  scopes rather than by who holds a key.)
+
 ## The API
 
 Bearer `rcn_…` only; a cookie is never read. JSON, up to 1 MB a request:

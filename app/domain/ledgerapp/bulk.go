@@ -21,6 +21,11 @@ import (
 // account found, and whether it can be imported with the others or needs
 // its own preview.
 //
+// The statements a script sent to the person's inbox (ledgerbus, inbox.go;
+// docs/books-api.md) are shown on the page before any files are chosen, as
+// a link to this same list with them on it, so that they are checked and
+// imported exactly as uploaded files are; and each may be put aside.
+//
 // The list keeps no state of its own. Which files are on it, and which
 // accounts a person chose, are in its address (f, and to-<key>), so that
 // it can be checked again after a choice, bookmarked, or come back to
@@ -62,6 +67,13 @@ type bulkView struct {
 	Imported int
 	Done     bool
 
+	// Inbox is the files waiting in the person's inbox, on the page
+	// before files are chosen, and InboxList the list with them on it.
+	// Dismissed is a file just put aside.
+	Inbox     []ledgerbus.InboxFile
+	InboxList string
+	Dismissed bool
+
 	Problem string
 }
 
@@ -76,7 +88,7 @@ func (bulkView) ProblemOf(err error) string { return problem(err) }
 func (a app) bulk(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
-	v := bulkView{Problem: q.Get("problem")}
+	v := bulkView{Problem: q.Get("problem"), Dismissed: q.Get("done") == "dismissed"}
 	if q.Has("imported") {
 		v.Imported, _ = strconv.Atoi(q.Get("imported"))
 		v.Done = true
@@ -101,6 +113,26 @@ func (a app) bulkPage(w http.ResponseWriter, r *http.Request, status int, q url.
 	}
 
 	v.Accounts = accounts
+
+	if len(files) == 0 {
+		inbox, err := a.cfg.Ledger.Inbox(r.Context(), me.ID)
+		if err != nil {
+			a.failed(w, r, err)
+
+			return
+		}
+
+		v.Inbox = inbox
+
+		var waiting []types.ID
+		for _, f := range inbox[:min(len(inbox), ledgerbus.MaxBatch)] {
+			waiting = append(waiting, f.FileID)
+		}
+
+		if len(waiting) > 0 {
+			v.InboxList = bulkAddress(waiting, nil, nil)
+		}
+	}
 
 	if len(files) > 0 {
 		props, err := a.cfg.Ledger.Propose(r.Context(), me.ID, files, chosen)
@@ -292,4 +324,30 @@ func (a app) bulkImport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, bulkAddress(files, chosen, url.Values{"imported": {strconv.Itoa(n)}}), http.StatusSeeOther)
+}
+
+// dismiss puts a file of the person's inbox aside without importing it.
+// One that is not in their inbox -- somebody else's, or put aside already
+// -- is a 404, as anything that is not theirs is.
+func (a app) dismiss(w http.ResponseWriter, r *http.Request) {
+	me, ok := actor(w, r)
+	if !ok {
+		return
+	}
+
+	id, err := types.ParseID(r.PathValue("id"))
+	if err != nil {
+		http.NotFound(w, r)
+
+		return
+	}
+
+	switch err := a.cfg.Ledger.Dismiss(r.Context(), a.cfg.Now(), me.ID, id); {
+	case errors.Is(err, ledgerbus.ErrNotFound):
+		http.NotFound(w, r)
+	case err != nil:
+		a.failed(w, r, err)
+	default:
+		http.Redirect(w, r, "/imports?done=dismissed", http.StatusSeeOther)
+	}
 }

@@ -21,6 +21,7 @@ type ctxKey int
 const (
 	langKey ctxKey = iota + 1
 	userKey
+	keyKey
 )
 
 // LangFrom is the language of the request, English outside one.

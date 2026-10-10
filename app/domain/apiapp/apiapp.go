@@ -1,16 +1,22 @@
 // Package apiapp is the JSON API at /api/v1: how a program -- a person's
-// own Claude -- fills the interface's translations without typing them into
-// a screen (docs/translations.md).
+// own Claude, a script in their Google account -- works with the site
+// without a screen. Today that is the interface's translations
+// (docs/translations.md) and the statement inbox (docs/books-api.md); the
+// books follow, in the order that plan builds them.
 //
-// # What is here, and what never will be
+// # Scopes
 //
-// Translations, and nothing else. A key acts as the person who made it
-// (mid.APIKey), and this app sells a stolen one cheaply on purpose: nothing
-// under /api/v1 reads an organization, an account, a project, a statement, a
-// receipt or an export, and nothing will without a plan of its own, with
-// scopes. Who may use these endpoints at all is the translation domain's
-// rule (translationbus.MayTranslate): the site administrator, and the
-// translators they name on the admin page, each for their languages.
+// A key acts as the person who made it (mid.APIKey), for the scopes they
+// chose (userbus.Scope), and every endpoint names the one it needs
+// (Endpoint.Scope, enforced by mid.RequireScope). The scope is the coarse
+// fence; the fine one is the business layer's, which asks tenancybus about
+// the person every time, so a key never reaches further than its person
+// does. Who may translate at all is the translation domain's rule
+// (translationbus.MayTranslate).
+//
+// A key that may only upload reads nothing, not even the inbox it fills:
+// it lives in a script, in somebody's Google account, which is exactly the
+// kind of place a credential is read by somebody it was not meant for.
 //
 // # The index is the route table
 //
@@ -30,10 +36,12 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 
 	"github.com/jroedel/reconcile/app/sdk/mid"
 	"github.com/jroedel/reconcile/business/domain/translation/translationbus"
+	"github.com/jroedel/reconcile/business/domain/user/userbus"
 	"github.com/jroedel/reconcile/foundation/web"
 )
 
@@ -46,6 +54,9 @@ type Config struct {
 	Log          *slog.Logger
 	Translations *translationbus.Business
 
+	// Inbox is where statement files sent to the API wait (inbox.go).
+	Inbox Inbox
+
 	// BaseURL is the public origin, for the links in answers: a program
 	// reading them may be anywhere.
 	BaseURL string
@@ -54,20 +65,20 @@ type Config struct {
 type app struct {
 	log          *slog.Logger
 	translations *translationbus.Business
+	inbox        Inbox
 	base         string
 }
 
 // Routes mounts the API on its own mux. Each route that needs a key is
-// behind mid.RequireKey; mid.APIKey, which reads the key, is the muxer's to
-// put around the whole of it.
+// behind mid.RequireScope with its scope; mid.APIKey, which reads the key,
+// is the muxer's to put around the whole of it.
 func Routes(mux *http.ServeMux, cfg Config) {
-	a := app{log: cfg.Log, translations: cfg.Translations, base: cfg.BaseURL}
-	require := mid.RequireKey()
+	a := app{log: cfg.Log, translations: cfg.Translations, inbox: cfg.Inbox, base: cfg.BaseURL}
 
 	for _, e := range a.Endpoints() {
 		h := http.Handler(e.handler)
-		if e.NeedsKey {
-			h = require(h)
+		if e.Scope != "" {
+			h = mid.RequireScope(e.Scope)(h)
 		}
 
 		mux.Handle(e.Method+" "+e.Path, h)
@@ -99,13 +110,17 @@ type Body struct {
 
 // Endpoint is one route, as the index describes it and as Routes mounts it.
 type Endpoint struct {
-	Method   string  `json:"method"`
-	Path     string  `json:"path"`
-	Summary  string  `json:"summary"`
-	NeedsKey bool    `json:"needs_key"`
-	Query    []Field `json:"query,omitempty"`
-	Body     *Body   `json:"body,omitempty"`
-	Returns  string  `json:"returns"`
+	Method  string `json:"method"`
+	Path    string `json:"path"`
+	Summary string `json:"summary"`
+
+	// Scope is what a key must be allowed to call it (userbus.Scope); ""
+	// for the index, which needs no key.
+	Scope userbus.Scope `json:"scope,omitempty"`
+
+	Query   []Field `json:"query,omitempty"`
+	Body    *Body   `json:"body,omitempty"`
+	Returns string  `json:"returns"`
 
 	// Tool is the endpoint's name as a tool on /mcp (mcpapp), which is how
 	// Claude on claude.ai reaches it; "" for the index itself.
@@ -129,7 +144,7 @@ func (a app) Endpoints() []Endpoint {
 	return append([]Endpoint{{
 		Method: http.MethodGet, Path: Prefix, Summary: "This index: every endpoint, what it takes, and the rules.",
 		Returns: "This document.", handler: a.index,
-	}}, a.translationEndpoints()...)
+	}}, slices.Concat(a.translationEndpoints(), a.inboxEndpoints())...)
 }
 
 func (a app) index(w http.ResponseWriter, r *http.Request) {
@@ -137,10 +152,11 @@ func (a app) index(w http.ResponseWriter, r *http.Request) {
 		API:     "Reconcile",
 		Version: "v1",
 		BaseURL: a.base,
-		Authentication: "Send Authorization: Bearer <key> on every endpoint but this one. A translator makes a key at " +
-			a.base + "/account/keys; it acts as them, is shown once, and lasts 90 days.",
+		Authentication: "Send Authorization: Bearer <key> on every endpoint but this one. A person makes a key at " +
+			a.base + "/account/keys, for what they say it is for; it acts as them, is shown once, and lasts 90 days, or a year for one that may only upload. " +
+			"Each endpoint names the scope its key needs: upload, books:read, books:write (which includes books:read) or translate.",
 		Rules: []string{
-			"This API is the interface's translations and nothing else: no organization, account, statement, receipt or export is reachable here.",
+			"A key reaches only what its person may, and only for its scopes. Nothing here reads an organization, account, statement, receipt or export yet; the inbox takes statement files and gives nothing back.",
 			"A translation is shown on every page as soon as it is written. A person looks it over afterwards, and one they approved or corrected is not changed through the API.",
 			"Every {placeholder} in the English must be in the translation exactly as it is, untranslated; the app fills it in. Its place in the sentence may move.",
 			"Translations are text, not markup: no < or > the English does not have.",

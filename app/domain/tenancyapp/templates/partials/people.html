@@ -105,7 +105,7 @@
 {{- else if eq .Action "receipt.added"}} {{t "added {n} receipts" "n" .Detail.count}}
 {{- else if eq .Action "receipt.removed"}} {{t "removed the receipt {what}" "what" .Detail.what}}
 {{- else if eq .Action "receipt.restored"}} {{t "brought back the receipt {what}" "what" .Detail.what}}
-{{- else}} {{t "made a change"}}{{end}}</li>
+{{- else}} {{t "made a change"}}{{end}}{{with .Via}} <span class="hint">· {{t "through {key}" "key" .}}</span>{{end}}</li>
 {{end}}
 </ol>
 </section>
