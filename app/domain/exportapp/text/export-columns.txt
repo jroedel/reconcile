@@ -19,3 +19,5 @@
 {{t "Check number"}}
 {{t "Paid to"}}
 {{t "Our description"}}
+{{t "Memo on the check"}}
+{{t "Written on"}}

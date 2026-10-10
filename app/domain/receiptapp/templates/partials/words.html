@@ -6,6 +6,8 @@
 {{- else if eq . "amount"}}{{t "The amount must be an amount, such as 12.50, or left empty."}}
 {{- else if eq . "merchant"}}{{t "The shop's name can be at most {max} characters." "max" 100}}
 {{- else if eq . "note"}}{{t "The note can be at most {max} characters." "max" 500}}
+{{- else if eq . "memo"}}{{t "The memo can be at most {max} characters." "max" 100}}
+{{- else if eq . "written_on"}}{{t "The date written must be a date, such as 2026-07-14, or left empty."}}
 {{- else if eq . "attached"}}{{t "The receipt is attached to a transaction. Take it off the transaction first."}}
 {{- else if eq . "removed"}}{{t "The receipt was removed. Bring it back first."}}
 {{- else if eq . "number"}}{{t "A check number is digits, such as 1176."}}

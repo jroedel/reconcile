@@ -324,7 +324,9 @@ func (b *Business) MatchChecks(ctx context.Context, now time.Time, actor, accoun
 }
 
 // saveCheck writes a waiting check image's number, attaching it to the
-// transaction that paid it when there is one, and writing its payee there.
+// transaction that paid it when there is one, and writing there what the
+// image says that the bank does not: its payee, its memo and the day it
+// was written.
 func (b *Business) saveCheck(ctx context.Context, now time.Time, actor types.ID, r Receipt, paid *ledgerbus.Transaction, ev *eventbus.Event) (Receipt, error) {
 	if paid != nil {
 		r = matched(r, *paid, actor, now)
@@ -334,22 +336,40 @@ func (b *Business) saveCheck(ctx context.Context, now time.Time, actor types.ID,
 		return r, err
 	}
 
-	if paid != nil && r.Merchant != "" {
-		if _, err := b.ledger.SetPayee(ctx, now, actor, paid.ID, r.Merchant); err != nil {
-			return r, err
+	if paid == nil {
+		return r, nil
+	}
+
+	return r, b.writeOnto(ctx, now, actor, paid.ID, Receipt{}, r)
+}
+
+// writeOnto writes on a transaction what a check image says that the bank
+// does not, where it differs from what the image said before.
+func (b *Business) writeOnto(ctx context.Context, now time.Time, actor, transactionID types.ID, before, after Receipt) error {
+	if after.Merchant != before.Merchant {
+		if _, err := b.ledger.SetPayee(ctx, now, actor, transactionID, after.Merchant); err != nil {
+			return err
 		}
 	}
 
-	return r, nil
+	if after.Memo != before.Memo || after.WrittenOn != before.WrittenOn {
+		if _, err := b.ledger.SetWritten(ctx, now, actor, transactionID, after.Memo, after.WrittenOn); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // CheckReading is what somebody read off a check's image: its number,
-// whom it was paid to, its amount and its date, as written on it.
+// whom it was paid to, its amount, its date and its memo, as written on
+// it.
 type CheckReading struct {
 	Number string
 	Payee  string
 	Amount money.Amount // as written: never negative
 	On     types.Date   // zero when not read
+	Memo   string       // "" when it has none, or it was not read
 }
 
 // AmountDiffers is a reading of a check whose amount is not the bank's for
@@ -399,6 +419,7 @@ func (b *Business) ReadCheck(ctx context.Context, now time.Time, actor, id types
 
 	n := importbus.CheckNumber(rd.Number)
 	payee := strings.Join(strings.Fields(rd.Payee), " ")
+	memo := strings.Join(strings.Fields(rd.Memo), " ")
 
 	switch {
 	case n == "":
@@ -407,6 +428,8 @@ func (b *Business) ReadCheck(ctx context.Context, now time.Time, actor, id types
 		return r, Invalid{Field: "amount", Err: errors.New("a check's amount is more than nothing")}
 	case utf8.RuneCountInString(payee) > ledgerbus.MaxPayee:
 		return r, Invalid{Field: "payee", Err: fmt.Errorf("at most %d characters", ledgerbus.MaxPayee)}
+	case utf8.RuneCountInString(memo) > ledgerbus.MaxCheckMemo:
+		return r, Invalid{Field: "memo", Err: fmt.Errorf("at most %d characters", ledgerbus.MaxCheckMemo)}
 	}
 
 	txs, err := b.ledger.WithCheck(ctx, r.Home.ID, n)
@@ -425,11 +448,18 @@ func (b *Business) ReadCheck(ctx context.Context, now time.Time, actor, id types
 		r.Merchant = payee
 	}
 
-	if !rd.On.Zero() {
-		r.SpentOn = rd.On
+	if memo != "" {
+		r.Memo = memo
 	}
 
-	ev := eventbus.New(now, actor, r.Home, CheckRead, map[string]string{"number": n, "amount": rd.Amount.String(), "payee": payee})
+	// The day written is kept as itself; it is the receipt's date too
+	// while the check waits, until attaching it gives it the day it
+	// cleared (matched).
+	if !rd.On.Zero() {
+		r.SpentOn, r.WrittenOn = rd.On, rd.On
+	}
+
+	ev := eventbus.New(now, actor, r.Home, CheckRead, map[string]string{"number": n, "amount": rd.Amount.String(), "payee": payee, "memo": memo})
 
 	return b.saveCheck(ctx, now, actor, r, paying(txs, r), &ev)
 }
@@ -451,17 +481,94 @@ func paying(txs []ledgerbus.Transaction, r Receipt) *ledgerbus.Transaction {
 }
 
 // paidTo writes a check image's shop -- to whom the check was written --
-// on the transactions it is attached to, when it has changed.
+// its memo and the day written on it, on the transactions it is attached
+// to, where they have changed.
 func (b *Business) paidTo(ctx context.Context, now time.Time, actor types.ID, before, after Receipt) error {
-	if !after.CheckImage || before.Merchant == after.Merchant {
+	if !after.CheckImage {
 		return nil
 	}
 
 	for _, l := range after.Links {
-		if _, err := b.ledger.SetPayee(ctx, now, actor, l.TransactionID, after.Merchant); err != nil {
+		if err := b.writeOnto(ctx, now, actor, l.TransactionID, before, after); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// Outstanding is the checks of an account that were written and not yet
+// cleared, as far as the site knows: images whose number has been read
+// and that are on no transaction, written on or before by when by is not
+// zero (one whose day written is not known is counted, since it may have
+// been). Total is the sum of those whose amount is known, and Unpriced how
+// many have none -- a number typed on its page, before anybody read its
+// amount -- so that a total is never taken for more than it adds up.
+type Outstanding struct {
+	Checks   []Receipt
+	Total    money.Amount
+	Unpriced int
+
+	// By is the day they were written by, as asked; zero for all.
+	By types.Date
+}
+
+// OutstandingChecks is an account's Outstanding, for anyone who may read
+// the account: a treasurer's list beside the bank's balance at a month's
+// end, and the accountant's of what was paid and has not left the bank.
+// Oldest written first, then by number.
+func (b *Business) OutstandingChecks(ctx context.Context, actor, accountID types.ID, by types.Date) (Outstanding, error) {
+	home := types.AccountScope(accountID)
+
+	if ok, err := b.can(ctx, actor, home, tenancybus.Read); err != nil {
+		return Outstanding{}, err
+	} else if !ok {
+		return Outstanding{}, ErrNotFound
+	}
+
+	waiting, err := b.store.InHomes(ctx, []types.Scope{home}, true)
+	if err != nil {
+		return Outstanding{}, err
+	}
+
+	out := Outstanding{By: by}
+
+	for _, r := range waiting {
+		if !r.CheckImage || r.Check == "" || !by.Zero() && !r.WrittenOn.Zero() && r.WrittenOn.String() > by.String() {
+			continue
+		}
+
+		out.Checks = append(out.Checks, r)
+
+		if r.HasAmount {
+			out.Total += r.Amount
+		} else {
+			out.Unpriced++
+		}
+	}
+
+	// Those whose day is not known after the rest; numbers as numbers,
+	// so that 998 comes before 1001.
+	slices.SortStableFunc(out.Checks, func(x, y Receipt) int {
+		switch {
+		case x.WrittenOn.Zero() != y.WrittenOn.Zero():
+			return cmp.Compare(btoi(x.WrittenOn.Zero()), btoi(y.WrittenOn.Zero()))
+		case x.WrittenOn != y.WrittenOn:
+			return strings.Compare(x.WrittenOn.String(), y.WrittenOn.String())
+		case len(x.Check) != len(y.Check):
+			return cmp.Compare(len(x.Check), len(y.Check))
+		}
+
+		return strings.Compare(x.Check, y.Check)
+	})
+
+	return out, nil
+}
+
+func btoi(b bool) int {
+	if b {
+		return 1
+	}
+
+	return 0
 }

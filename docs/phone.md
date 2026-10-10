@@ -228,6 +228,50 @@ which wait, and which were refused and why.
   checks", and reading them is, with importing, what Claude does without
   asking first: the bank's amount checks each reading.
 
+## 7. What else a check says, and the checks outstanding
+
+Issue #71, from reading the first month of real checks: an accountant
+preparing 1099s needs, for each check, who was paid, how much and **what
+for**, and which year it belongs to, which is the year it was written. The
+image says both; the bank says neither. A check written on 23 September
+and cleared on the 24th showed the 24th, and its memo line ("Cleaning",
+"Summer work") had nowhere to go.
+
+### As built (the seventh pull request)
+
+- **The memo and the day written** are a check image's
+  (`receipts.check_memo`, `receipts.check_written_on`, `Details.Memo` and
+  `WrittenOn`), read by Claude (`read_check`'s `memo` and `date`) or typed
+  on the image's page under "Memo" and "Date written". The receipt's own
+  date is still the day it cleared once attached; the day written is kept
+  apart from it.
+- **On the transaction** they are written beside the payee, as the payee is
+  (`transactions.check_memo`, `transactions.check_written_on`,
+  `ledgerbus.SetWritten`, with a line of history): when the image is
+  attached, when an import brings a check whose image was read before it
+  cleared, and when the image's page corrects them. The transaction's date
+  stays the day it cleared; its page says "The check was written on … and
+  cleared on …". Like the payee, a note and not money: whoever may attach
+  receipts may write it, in a reconciled period too.
+- **Shown**: the memo beside the payee on the month list, the sorting page,
+  the transaction's page and a project's book; the payee now on the
+  statement's list of what is not sorted and in a project's book too.
+- **Not the description.** The memo is not copied into the transaction's
+  own description (issue #70): it is shown already, and that description
+  is the person's to write. Claude's guide says so.
+- **The checks outstanding** (`receiptbus.OutstandingChecks`): an
+  account's check images with a number that are on no transaction, oldest
+  written first, with the total of those whose amount is known and how many
+  have none. On the account's month-by-month page, all of them; on a
+  statement's page, those written by the end of its period (or on a day not
+  read), beside its closing balance; to Claude, in `get_account_months`.
+- **The accountant's package** gains "Memo on the check" and "Written on",
+  after "Our description", as its last columns.
+- **Not built**: payees as records of their own, marked as 1099
+  contractors with a W-9 on file, and a year's payments per payee. That
+  needs a plan of its own: how two spellings of one payee become one, and
+  whose the W-9 flag is.
+
 ## Build order
 
 Six pull requests after this plan, each useful when merged:

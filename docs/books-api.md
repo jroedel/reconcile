@@ -184,7 +184,7 @@ from (`docs/design.md`). Lists take `limit` and a `cursor`.
 | `GET /api/v1/me` | `whoami` | The person, the key's scopes and when it ends |
 | `GET /api/v1/overview` | `get_overview` | `tenancybus.Overview`: organizations, accounts and projects, with each account's role, currency, last four, and (from the ledger and receipts) its last statement's end, unsorted count and receipts waiting |
 | `GET /api/v1/inbox` | `list_inbox` | The waiting files, each with its proposal: shape, account or accounts, period, how it checked, new transactions, and what needs a person, if anything |
-| `GET /api/v1/accounts/{account}/months` | `get_account_months` | `Coverage`: each month reconciled, imported, partial (which days), missing or still going, with its unsorted count |
+| `GET /api/v1/accounts/{account}/months` | `get_account_months` | `Coverage`: each month reconciled, imported, partial (which days), missing or still going, with its unsorted count; and the account's checks outstanding (`receiptbus.OutstandingChecks`, `docs/phone.md`, 7) |
 | `GET /api/v1/accounts/{account}/statements` | `list_statements` | `Statements` |
 | `GET /api/v1/statements/{statement}` | `get_statement` | `Review`: how it checked, the balances and where each was read, its transactions in and out, the unsorted, receipts that may belong |
 | `GET /api/v1/accounts/{account}/transactions?month=&show=` | `list_transactions` | `Transactions`, `show` one of `all`, `unsorted`, `by_rule`, `by_api`, `no_receipt` |
@@ -215,7 +215,7 @@ from (`docs/design.md`). Lists take `limit` and a `cursor`.
 | `POST /api/v1/accounts/{account}/rules/apply` | `apply_rules` | `SortUnsorted`: the account's rules over what is not sorted yet |
 | `POST /api/v1/receipts/{receipt}/attach` `{transaction}` | `attach_receipt` | `receiptbus.Attach` |
 | `POST /api/v1/receipts/{receipt}/detach` `{transaction}` | `detach_receipt` | `receiptbus.Detach`, which removes nothing: the receipt goes back to waiting |
-| `POST /api/v1/receipts/{receipt}/check` `{number, amount, payee, date}` | `read_check` | `receiptbus.ReadCheck`: a check image read, attached when the bank's amount for the number is the one read, refused with both when not (`docs/phone.md`, 6) |
+| `POST /api/v1/receipts/{receipt}/check` `{number, amount, payee, date, memo}` | `read_check` | `receiptbus.ReadCheck`: a check image read, attached when the bank's amount for the number is the one read, refused with both when not (`docs/phone.md`, 6); the memo and the day written go on the transaction too (7) |
 | `POST /api/v1/transactions/{transaction}/explanation/lines` `{add, remove, account, from, to}` | `gather_explanation` | `Gather`: lines into an explanation and out of it. Explaining changes nothing about a line (`docs/clearing.md`), so it is bookkeeping, not locking. With no difference left, the transaction is explained |
 
 As built: `import_from_inbox` takes `accounts` as a list of `{file, part,

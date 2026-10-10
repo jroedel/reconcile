@@ -78,3 +78,42 @@ func TestAChecksPayee(t *testing.T) {
 		t.Errorf("the check: %+v, %v", got, err)
 	}
 }
+
+// What a check's memo says and the day it was written are written down by
+// whoever may write its payee, with a line of history, and leave its date
+// the day it cleared.
+func TestAChecksMemoAndDay(t *testing.T) {
+	w := newWorld(t)
+	r := newRuled(w)
+	ctx := t.Context()
+
+	w.add(r.owner, r.account, "checks.csv", checks)
+
+	found, err := w.ledger.WithCheck(ctx, r.account, "1177")
+	if err != nil || len(found) != 1 {
+		t.Fatalf("check 1177: %+v, %v", found, err)
+	}
+
+	check := found[0]
+	written := date(t, "2026-07-06")
+
+	viewer := w.user("viewer@example.org")
+	w.grant(r.owner, types.AccountScope(r.account), "viewer@example.org", tenancybus.Viewer)
+
+	if _, err := w.ledger.SetWritten(ctx, now, viewer, check.ID, "Mine", written); !errors.Is(err, ledgerbus.ErrForbidden) {
+		t.Errorf("a viewer: %v", err)
+	}
+
+	if _, err := w.ledger.SetWritten(ctx, now, r.owner, check.ID, strings.Repeat("x", ledgerbus.MaxCheckMemo+1), written); !errors.Is(err, ledgerbus.ErrCheckMemo) {
+		t.Errorf("too long: %v", err)
+	}
+
+	got, err := w.ledger.SetWritten(ctx, now, r.owner, check.ID, " Summer  work", written)
+	if err != nil || got.CheckMemo != "Summer work" || got.WrittenOn != written || got.PostedOn.String() != "2026-07-09" {
+		t.Fatalf("written: %+v, %v", got, err)
+	}
+
+	if line := w.line(r.account, ledgerbus.TransactionWritten); line["memo"] != "Summer work" || line["written"] != "2026-07-06" || line["description"] != "Check 1177" {
+		t.Errorf("history: %v", line)
+	}
+}

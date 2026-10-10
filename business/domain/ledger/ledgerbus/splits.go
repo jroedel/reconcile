@@ -360,6 +360,8 @@ type ProjectLine struct {
 	PostedOn       types.Date
 	Description    string
 	OwnDescription string
+	Payee          string
+	CheckMemo      string
 	AccountID      types.ID
 	AccountName    string
 	Currency       string

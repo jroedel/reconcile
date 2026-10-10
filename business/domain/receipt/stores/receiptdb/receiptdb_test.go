@@ -112,8 +112,9 @@ CREATE TABLE receipts (
 ) STRICT;
 `
 
-// A database from before gains receipts.check_image: a receipt with a
-// check's number is a check image, and one without is not.
+// A database from before gains receipts.check_image, check_memo and
+// check_written_on: a receipt with a check's number is a check image, and
+// one without is not, and neither has a memo or a day written yet.
 func TestInitMarksOldCheckImages(t *testing.T) {
 	db, err := sqldb.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -159,7 +160,7 @@ func TestInitMarksOldCheckImages(t *testing.T) {
 
 	store := receiptdb.NewStore(db)
 
-	if r, err := store.ByID(ctx, check); err != nil || !r.CheckImage || r.Check != "1176" {
+	if r, err := store.ByID(ctx, check); err != nil || !r.CheckImage || r.Check != "1176" || r.Memo != "" || !r.WrittenOn.Zero() {
 		t.Errorf("the old check image: %+v, %v", r, err)
 	}
 

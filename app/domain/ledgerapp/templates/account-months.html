@@ -17,6 +17,7 @@
 {{if .Statements}}<p class="hint">{{range $i, $s := .Statements}}{{if $i}} · {{end}}<a href="/statements/{{$s.ID}}{{if not $s.Reconciled}}#reconcile{{end}}">{{t "{start} to {end}" "start" $s.Start "end" $s.End}}</a>{{if $s.Reconciled}} ✓{{end}}{{end}}</p>{{end}}
 </li>
 {{end}}</ul>
+{{if $v.Outstanding.Checks}}<section class="card">{{template "outstanding" (dict "Out" $v.Outstanding "Currency" $v.Account.Currency)}}</section>{{end}}
 {{if $v.CanExport}}
 <section class="card">
 <h2>{{t "For the accountant"}}</h2>

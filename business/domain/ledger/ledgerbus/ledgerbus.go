@@ -223,6 +223,10 @@ type Storer interface {
 	WithCheck(ctx context.Context, account types.ID, number string) ([]Transaction, error)
 	SetPayee(ctx context.Context, id types.ID, payee string, ev eventbus.Event) error
 
+	// SetWritten writes a check's memo and the day it was written, and
+	// ev (checks.go).
+	SetWritten(ctx context.Context, id types.ID, memo string, on types.Date, ev eventbus.Event) error
+
 	// SetOwnDescription writes a transaction's own description, the key
 	// it came through, and ev when there is one (describe.go).
 	SetOwnDescription(ctx context.Context, id types.ID, description, via string, ev *eventbus.Event) error

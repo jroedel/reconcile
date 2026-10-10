@@ -38,7 +38,7 @@ var Expected = sqldb.Expected{
 		"checked", "added", "already", "imported_by", "imported_at", "shape"},
 	"transactions": {"id", "account_id", "statement_id", "posted_on", "description", "amount", "balance",
 		"external_id", "hash", "occurrence", "holder", "pending", "check_number", "payee",
-		"own_description", "own_description_via"},
+		"own_description", "own_description_via", "check_memo", "check_written_on"},
 	"csv_mappings":        {"account_id", "fingerprint", "mapping", "updated_by", "updated_at"},
 	"splits":              {"id", "transaction_id", "position", "amount", "category_id", "project_id", "memo", "rule_id", "via"},
 	"transaction_aliases": {"account_id", "hash", "transaction_id", "created_at"},
@@ -155,6 +155,17 @@ CREATE TABLE IF NOT EXISTS csv_mappings (
 	}
 
 	if err := sqldb.AddColumn(ctx, db, "transactions", "own_description_via", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+
+	// What else a check's image says that the bank does not: its memo line
+	// and the day it was written, which is not the day it cleared
+	// (ledgerbus/checks.go). Later columns, empty until somebody reads them.
+	if err := sqldb.AddColumn(ctx, db, "transactions", "check_memo", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+
+	if err := sqldb.AddColumn(ctx, db, "transactions", "check_written_on", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
 
@@ -1058,7 +1069,7 @@ func inList(ids []types.ID) (string, []any) {
 	return strings.Join(marks, ", "), args
 }
 
-const transactionColumns = `id, account_id, statement_id, posted_on, description, amount, balance, external_id, hash, occurrence, holder, pending, check_number, payee, own_description, own_description_via`
+const transactionColumns = `id, account_id, statement_id, posted_on, description, amount, balance, external_id, hash, occurrence, holder, pending, check_number, payee, own_description, own_description_via, check_memo, check_written_on`
 
 func (s *Store) transactions(ctx context.Context, q string, args ...any) ([]ledgerbus.Transaction, error) {
 	rows, err := s.db.QueryContext(ctx, q, args...)
@@ -1073,19 +1084,21 @@ func (s *Store) transactions(ctx context.Context, q string, args ...any) ([]ledg
 		var (
 			t                      ledgerbus.Transaction
 			id, acct, stmt, posted string
+			written                string
 			amount                 int64
 			balance                sql.NullInt64
 		)
 
-		if err := rows.Scan(&id, &acct, &stmt, &posted, &t.Description, &amount, &balance, &t.ExternalID, &t.Hash, &t.Occurrence, &t.Holder, &t.Pending, &t.CheckNumber, &t.Payee, &t.OwnDescription, &t.OwnVia); err != nil {
+		if err := rows.Scan(&id, &acct, &stmt, &posted, &t.Description, &amount, &balance, &t.ExternalID, &t.Hash, &t.Occurrence, &t.Holder, &t.Pending, &t.CheckNumber, &t.Payee, &t.OwnDescription, &t.OwnVia, &t.CheckMemo, &written); err != nil {
 			return nil, fmt.Errorf("reading the transactions: %w", err)
 		}
 
-		var e [4]error
+		var e [5]error
 		t.ID, e[0] = types.ParseID(id)
 		t.AccountID, e[1] = types.ParseID(acct)
 		t.StatementID, e[2] = types.ParseID(stmt)
 		t.PostedOn, e[3] = types.ParseDate(posted)
+		t.WrittenOn, e[4] = types.ParseDate(written)
 
 		if err := errors.Join(e[:]...); err != nil {
 			return nil, fmt.Errorf("a stored transaction is unreadable: %w", err)
@@ -1228,7 +1241,7 @@ func (s *Store) OrgLines(ctx context.Context, orgID types.ID, from, to types.Dat
 func (s *Store) lines(ctx context.Context, where string, args ...any) ([]ledgerbus.ProjectLine, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT s.id, s.transaction_id, s.position, s.amount, s.category_id, s.project_id, s.memo, s.rule_id, s.via,
-       t.posted_on, t.description, t.own_description, a.id, a.name, a.currency, coalesce(c.name, ''), coalesce(c.kind, '')
+       t.posted_on, t.description, t.own_description, t.payee, t.check_memo, a.id, a.name, a.currency, coalesce(c.name, ''), coalesce(c.kind, '')
 FROM splits s
 JOIN transactions t ON t.id = s.transaction_id
 JOIN accounts a ON a.id = t.account_id
@@ -1249,7 +1262,7 @@ ORDER BY t.posted_on, t.rowid, s.position`, args...)
 			kind            string
 		)
 
-		l.Split, err = scanSplit(rows, &posted, &l.Description, &l.OwnDescription, &account, &l.AccountName, &l.Currency, &l.CategoryName, &kind)
+		l.Split, err = scanSplit(rows, &posted, &l.Description, &l.OwnDescription, &l.Payee, &l.CheckMemo, &account, &l.AccountName, &l.Currency, &l.CategoryName, &kind)
 		if err != nil {
 			return nil, err
 		}
