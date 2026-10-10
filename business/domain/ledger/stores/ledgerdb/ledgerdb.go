@@ -37,7 +37,7 @@ var Expected = sqldb.Expected{
 	"statements": {"id", "account_id", "file_id", "format", "period_start", "period_end", "opening", "closing",
 		"checked", "added", "already", "imported_by", "imported_at"},
 	"transactions": {"id", "account_id", "statement_id", "posted_on", "description", "amount", "balance",
-		"external_id", "hash", "occurrence", "holder", "pending"},
+		"external_id", "hash", "occurrence", "holder", "pending", "check_number"},
 	"csv_mappings":        {"account_id", "fingerprint", "mapping", "updated_by", "updated_at"},
 	"splits":              {"id", "transaction_id", "position", "amount", "category_id", "project_id", "memo", "rule_id"},
 	"transaction_aliases": {"account_id", "hash", "transaction_id", "created_at"},
@@ -121,6 +121,12 @@ CREATE TABLE IF NOT EXISTS csv_mappings (
 	// Whether its file listed it as not yet posted (docs/clearing.md, 4),
 	// a later column too; 0 for every row from before it.
 	if err := sqldb.AddColumn(ctx, db, "transactions", "pending", "INTEGER NOT NULL DEFAULT 0 CHECK (pending IN (0, 1))"); err != nil {
+		return err
+	}
+
+	// The number of the check it paid, when its file said (docs/shapes.md,
+	// 3), and a later column again; empty for every row from before it.
+	if err := sqldb.AddColumn(ctx, db, "transactions", "check_number", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
 
@@ -409,10 +415,10 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		}
 
 		if _, err := tx.ExecContext(ctx, `
-INSERT INTO transactions (id, account_id, statement_id, posted_on, description, amount, balance, external_id, hash, occurrence, holder, pending)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+INSERT INTO transactions (id, account_id, statement_id, posted_on, description, amount, balance, external_id, hash, occurrence, holder, pending, check_number)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			t.ID.String(), t.AccountID.String(), st.ID.String(), t.PostedOn.String(), t.Description, int64(t.Amount),
-			nullAmount(t.Balance, t.HasBalance), t.ExternalID, t.Hash, t.Occurrence, t.Holder, t.Pending); err != nil {
+			nullAmount(t.Balance, t.HasBalance), t.ExternalID, t.Hash, t.Occurrence, t.Holder, t.Pending, t.CheckNumber); err != nil {
 			return ledgerbus.Statement{}, fmt.Errorf("storing a transaction: %w", err)
 		}
 
@@ -967,7 +973,7 @@ func inList(ids []types.ID) (string, []any) {
 	return strings.Join(marks, ", "), args
 }
 
-const transactionColumns = `id, account_id, statement_id, posted_on, description, amount, balance, external_id, hash, occurrence, holder, pending`
+const transactionColumns = `id, account_id, statement_id, posted_on, description, amount, balance, external_id, hash, occurrence, holder, pending, check_number`
 
 func (s *Store) transactions(ctx context.Context, q string, args ...any) ([]ledgerbus.Transaction, error) {
 	rows, err := s.db.QueryContext(ctx, q, args...)
@@ -986,7 +992,7 @@ func (s *Store) transactions(ctx context.Context, q string, args ...any) ([]ledg
 			balance                sql.NullInt64
 		)
 
-		if err := rows.Scan(&id, &acct, &stmt, &posted, &t.Description, &amount, &balance, &t.ExternalID, &t.Hash, &t.Occurrence, &t.Holder, &t.Pending); err != nil {
+		if err := rows.Scan(&id, &acct, &stmt, &posted, &t.Description, &amount, &balance, &t.ExternalID, &t.Hash, &t.Occurrence, &t.Holder, &t.Pending, &t.CheckNumber); err != nil {
 			return nil, fmt.Errorf("reading the transactions: %w", err)
 		}
 

@@ -77,7 +77,7 @@
 <table class="ledger">
 <thead><tr><th>{{t "Date"}}</th><th>{{t "Description"}}</th><th>{{t "For"}}</th><th class="money">{{t "Amount"}}</th></tr></thead>
 <tbody>
-{{range $v.Shown}}<tr id="t-{{.ID}}"><td>{{.PostedOn}}</td><td><a href="/transactions/{{.ID}}">{{if .Description}}{{.Description}}{{else}}{{t "(no description)"}}{{end}}</a>{{if $v.ByHolder}}{{with .Holder}}<br><span class="hint">{{.}}</span>{{end}}{{end}}{{if .Pending}} <span class="badge">{{t "pending"}}</span>{{end}}</td>
+{{range $v.Shown}}<tr id="t-{{.ID}}"><td>{{.PostedOn}}</td><td><a href="/transactions/{{.ID}}">{{if .Description}}{{.Description}}{{else}}{{t "(no description)"}}{{end}}</a>{{if $v.ByHolder}}{{with .Holder}}<br><span class="hint">{{.}}</span>{{end}}{{end}}{{with .CheckUnsaid}}<br><span class="hint">{{t "Check number {number}" "number" .}}</span>{{end}}{{if .Pending}} <span class="badge">{{t "pending"}}</span>{{end}}</td>
 <td>{{if gt (len .Splits) 1}}{{t "{n} parts" "n" (len .Splits)}}{{if not .Sorted}} <span class="badge">{{t "not sorted yet"}}</span>{{end}}
 {{else}}{{range .Splits}}{{with index $v.Categories .CategoryID}}{{.}}{{else}}<span class="badge">{{t "not sorted yet"}}</span>{{end}}{{with index $v.Projects .ProjectID}} · {{.}}{{end}}{{if not .RuleID.Zero}} <span class="badge">{{t "by rule"}}</span>{{end}}{{end}}{{end}}</td>
 <td class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $cur}}{{with index $v.Receipts .ID}}<br><span class="hint">{{t "{n} receipts" "n" .}}</span>{{end}}

@@ -101,6 +101,7 @@ func toRecord(t ofxTransaction) (importbus.Record, *importbus.Warning) {
 		Description: describe(t),
 		Amount:      amount,
 		ExternalID:  strings.TrimSpace(t.FITID),
+		CheckNumber: importbus.CheckNumber(t.CheckNum),
 	}
 
 	if rec.ExternalID == "" {

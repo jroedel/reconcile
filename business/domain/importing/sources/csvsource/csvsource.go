@@ -70,6 +70,9 @@ type Mapping struct {
 	// whose status says pending is marked so (importbus.Record.Pending).
 	Status string `json:"status,omitempty"`
 
+	// Check names a column of check numbers (importbus.Record.CheckNumber).
+	Check string `json:"check,omitempty"`
+
 	// DateFormat is a Go layout. Empty chooses one from the file (see the
 	// package comment).
 	DateFormat string `json:"date_format,omitempty"`
@@ -133,6 +136,13 @@ var (
 	pendingStatus = regexp.MustCompile(`(?i)\b(pending|pendiente|pendente|authori[sz]ed|autorizad[ao])\b`)
 
 	statusNames = []string{"status", "transaction status", "estado", "situação", "situacao", "status da transação"}
+
+	// Not "number" or "num", which are the account's as often as the
+	// check's.
+	checkNames = []string{
+		"check number", "check no", "check no.", "check #", "check", "cheque",
+		"número de cheque", "numero de cheque", "número do cheque", "numero do cheque", "nº cheque", "cheque nº",
+	}
 
 	// Not "name", which is a payee as often as a person.
 	holderNames = []string{
@@ -301,6 +311,10 @@ func toRecord(row []string, get func([]string, string) string, m Mapping, layout
 
 	if m.Status != "" {
 		rec.Pending = pendingStatus.MatchString(get(row, m.Status))
+	}
+
+	if m.Check != "" {
+		rec.CheckNumber = importbus.CheckNumber(get(row, m.Check))
 	}
 
 	if m.Balance != "" {
@@ -610,10 +624,15 @@ func Detect(header []string) Mapping {
 		Balance:     pick(header, balanceNames),
 		Holder:      pick(header, holderNames),
 		Status:      pick(header, statusNames),
+		Check:       pick(header, checkNames),
 	}
 
 	if m.Holder == m.Description {
 		m.Holder = ""
+	}
+
+	if m.Check == m.Description {
+		m.Check = ""
 	}
 
 	if m.Amount == "" {

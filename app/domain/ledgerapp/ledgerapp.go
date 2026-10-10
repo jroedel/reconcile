@@ -722,6 +722,7 @@ func options(r *http.Request) (ledgerbus.Options, string) {
 		Invert:       f.Get("invert") == "1",
 		Holder:       f.Get("holder_column"),
 		Status:       f.Get("status"),
+		Check:        f.Get("check"),
 	}
 
 	// One signed column, or two unsigned ones: whichever was chosen.

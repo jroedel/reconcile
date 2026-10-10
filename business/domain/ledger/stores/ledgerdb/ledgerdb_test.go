@@ -149,8 +149,10 @@ CREATE TABLE IF NOT EXISTS splits (
 `
 
 // A database from before sorting rules gains splits.rule_id, and a part
-// already there reads as one no rule sorted. From before cardholders too,
-// it gains transactions.holder, and the row names nobody.
+// already there reads as one no rule sorted. From before cardholders,
+// pending charges and check numbers too, it gains transactions.holder,
+// pending and check_number, and the row names nobody, has posted, and paid
+// no check.
 func TestInitGivesOldPartsNoRule(t *testing.T) {
 	db, err := sqldb.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -208,8 +210,8 @@ INSERT INTO splits (id, transaction_id, position, amount, memo) VALUES (?, ?, 0,
 		t.Errorf("the part: %+v", tx.Splits)
 	}
 
-	if tx.Holder != "" || tx.Hash != id.String() || tx.Pending {
-		t.Errorf("the old row: holder %q, hash %q, pending %v", tx.Holder, tx.Hash, tx.Pending)
+	if tx.Holder != "" || tx.Hash != id.String() || tx.Pending || tx.CheckNumber != "" {
+		t.Errorf("the old row: holder %q, hash %q, pending %v, check %q", tx.Holder, tx.Hash, tx.Pending, tx.CheckNumber)
 	}
 
 	if err := sqldb.CheckSchema(ctx, db, ledgerdb.Expected); err != nil {

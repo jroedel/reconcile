@@ -110,12 +110,12 @@ reader carries them meanwhile when it can.
   the bank changed the layout -- and the preview says so.
 - **The first two**: `us-consolidated-checking-a` (checked by balances,
   or by totals in a month with activity on one day only) and
-  `us-card-activity-printout-a` (checked by its sum). Neither changes a
+  `us-cardholder-pdf-a` (checked by its sum). Neither changes a
   pattern: what they add is recognition and the check they are held to.
   Checked locally on the treasurer's real files: all 78 account-months of
-  the 26 consolidated statements and all 12 printouts are recognized,
+  the 26 consolidated statements and all 12 cardholder PDFs are recognized,
   proven their declared way, and ready to import, and none is a sighting.
-  That check changed both: the printouts' total is past the third page on
+  That check changed both: the cardholder PDFs' total is past the third page on
   a busy month, so they are recognized by the box at the top instead; and
   two quiet months balance by totals, not daily balances.
 - **Fixtures**: `pdfsourcetest.Fixtures` names each drawn document. A
@@ -188,6 +188,29 @@ inside a description ("Check 1176"). It becomes a field of its own:
 
 A PDF holding many checks, cut into one image per check, is a later
 source; matching by number is the same.
+
+### As built (the third pull request)
+
+- **The number** is kept as its digits without the leading zeros some
+  banks pad it with (`importbus.CheckNumber`), so that "0001176" in one
+  file and "1176" in another are one check; anything else in the column
+  -- a deposit slip's reference -- is no check number. It is no part of a
+  transaction's identity.
+- **Read** from a statement's checks paid (the general reader's, and so
+  every declaration's), OFX's `CHECKNUM`, and a CSV column found by its
+  heading ("Check number", "Check or Slip #", "Cheque", "Número do
+  cheque" and the like, never "Number" alone, which is an account's as
+  often) or chosen on the preview. A pending charge that posts keeps its
+  number if the posted row has none.
+- **Shown** on the transaction's page, and beside it in the month and the
+  preview when its description does not already say it: a statement
+  calls the row "Check 1176", and a CSV may call it "CHECK".
+- **The package** has it as its last column, "Check number", so that a
+  sheet an accountant set up for the earlier columns still finds them.
+- Checked locally on the treasurer's statements: all 133 checks paid in
+  26 months carry their number, and no other row has one.
+- The rename asked for along with it: the second declaration is
+  `us-cardholder-pdf-a`, "cardholder PDF" being what these are called.
 
 ## 4. Files to accounts, in bulk
 

@@ -50,6 +50,12 @@
 </div>
 
 <div class="field">
+  <label for="check">{{t "Check number"}}</label>
+  <select id="check" name="check">{{range $v.Options $m.Check true}}<option value="{{.}}"{{if eq . $m.Check}} selected{{end}}>{{if .}}{{.}}{{else}}{{t "(none)"}}{{end}}</option>{{end}}</select>
+  <p class="hint">{{t "If the file has one, the column with the numbers of the checks, so that each check can be matched to its image later."}}</p>
+</div>
+
+<div class="field">
   <label for="status">{{t "Status"}}</label>
   <select id="status" name="status">{{range $v.Options $m.Status true}}<option value="{{.}}"{{if eq . $m.Status}} selected{{end}}>{{if .}}{{.}}{{else}}{{t "(none)"}}{{end}}</option>{{end}}</select>
   <p class="hint">{{t "If the file says which charges are still pending, the column that says so."}}</p>
@@ -123,7 +129,7 @@
 <table class="ledger">
 <thead><tr><th>{{if $pdf}}{{t "Page"}}{{else}}{{t "Line"}}{{end}}</th><th>{{t "Date"}}</th><th>{{t "Description"}}</th><th class="money">{{t "Amount"}}</th>{{if $v.Balances}}<th class="money">{{t "Balance"}}</th>{{end}}</tr></thead>
 <tbody>
-{{range $v.Rows}}<tr><td>{{if $pdf}}{{.Page}}{{else}}{{.Line}}{{end}}</td><td>{{.Date.Format "2006-01-02"}}</td><td>{{.Description}}{{if .Pending}} <span class="badge">{{t "pending"}}</span>{{end}}{{with .Memo}}<br><span class="hint">{{.}}</span>{{else}}{{with .Holder}}<br><span class="hint">{{.}}</span>{{end}}{{end}}</td><td class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $cur}}</td>{{if $v.Balances}}<td class="money">{{if .HasBalance}}{{money .Balance $cur}}{{end}}</td>{{end}}</tr>
+{{range $v.Rows}}<tr><td>{{if $pdf}}{{.Page}}{{else}}{{.Line}}{{end}}</td><td>{{.Date.Format "2006-01-02"}}</td><td>{{.Description}}{{if .Pending}} <span class="badge">{{t "pending"}}</span>{{end}}{{with .CheckUnsaid}}<br><span class="hint">{{t "Check number {number}" "number" .}}</span>{{end}}{{with .Memo}}<br><span class="hint">{{.}}</span>{{else}}{{with .Holder}}<br><span class="hint">{{.}}</span>{{end}}{{end}}</td><td class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $cur}}</td>{{if $v.Balances}}<td class="money">{{if .HasBalance}}{{money .Balance $cur}}{{end}}</td>{{end}}</tr>
 {{end}}</tbody>
 </table>
 </div>
