@@ -29,8 +29,8 @@ accountant a package.
 
 ## Using it from Claude
 
-Claude on claude.ai can connect to the site and read your books as you,
-seeing only what you can: [`docs/claude.md`](docs/claude.md) says how to
+Claude on claude.ai can connect to the site and keep your books as you,
+seeing only what you can and never reconciling or removing anything: [`docs/claude.md`](docs/claude.md) says how to
 connect it and what to ask. A Google Apps Script in your own account can
 send the statements your email brings to your inbox on the site:
 [`apps-script/gmail-inbox`](apps-script/gmail-inbox/README.md).
