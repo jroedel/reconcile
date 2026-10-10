@@ -14,7 +14,7 @@
 {{t "Statement"}}
 {{t "Reconciled on"}}
 {{t "Cleared by"}}
-{{t "Cardholder"}}
+{{t "Holder"}}
 {{t "Pending"}}
 {{t "Check number"}}
 {{t "Paid to"}}

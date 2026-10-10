@@ -118,7 +118,7 @@ CREATE TABLE IF NOT EXISTS csv_mappings (
 		return err
 	}
 
-	// The cardholder a file said made the charge (docs/clearing.md, 3), a
+	// The holder a file said made the charge (docs/clearing.md, 3), a
 	// later column beside the CREATE; empty for every row from before it
 	// and for every file that names nobody.
 	if err := sqldb.AddColumn(ctx, db, "transactions", "holder", "TEXT NOT NULL DEFAULT ''"); err != nil {
@@ -353,9 +353,9 @@ ON CONFLICT (account_id, fingerprint) DO UPDATE SET mapping = excluded.mapping, 
 // importRows stores the statement and its new rows inside tx, and counts
 // them.
 func importRows(ctx context.Context, tx *sql.Tx, st ledgerbus.Statement, txs []ledgerbus.Transaction, also map[types.ID][]eventbus.Event) (ledgerbus.Statement, error) {
-	// The rows' identities were made under the account's cardholder option
+	// The rows' identities were made under the account's holder option
 	// as it was when the file was read. If it has changed since, rows that
-	// name a cardholder would be matched under the wrong rule; rows that
+	// name a holder would be matched under the wrong rule; rows that
 	// name nobody are the same under either.
 	on, err := byHolder(ctx, tx, st.AccountID)
 	if err != nil {
@@ -363,7 +363,7 @@ func importRows(ctx context.Context, tx *sql.Tx, st ledgerbus.Statement, txs []l
 	}
 
 	if on != st.ByHolder && slices.ContainsFunc(txs, func(t ledgerbus.Transaction) bool { return t.Holder != "" }) {
-		return ledgerbus.Statement{}, fmt.Errorf("%w: the account's cardholder option changed while the file was read", ledgerbus.ErrUnstable)
+		return ledgerbus.Statement{}, fmt.Errorf("%w: the account's holder option changed while the file was read", ledgerbus.ErrUnstable)
 	}
 
 	if _, err := tx.ExecContext(ctx, `
@@ -571,7 +571,7 @@ WHERE external_id = '' AND id = (SELECT transaction_id FROM transaction_aliases 
 // description is t's cut short or the other way round, oldest first; with
 // unclaimed, only those no bank identifier has claimed.
 //
-// On an account split by cardholder, only rows of t's cardholder count,
+// On an account split by holder, only rows of t's holder count,
 // and rows that name nobody (ledgerbus.SameHolder).
 func cutShort(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction, unclaimed, byHolder bool) ([]int64, error) {
 	q := `SELECT rowid, description, holder FROM transactions WHERE account_id = ? AND posted_on = ? AND amount = ? AND statement_id <> ?`

@@ -62,7 +62,7 @@ type Mapping struct {
 	// Balance names a running-balance column, if the export has one.
 	Balance string `json:"balance,omitempty"`
 
-	// Holder names the column that says which cardholder made a charge,
+	// Holder names the column that says which holder made a charge,
 	// in a card's export for several cards.
 	Holder string `json:"holder,omitempty"`
 

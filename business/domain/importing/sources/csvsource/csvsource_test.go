@@ -242,7 +242,7 @@ func TestDetectPrefersExactMatches(t *testing.T) {
 
 // A card's export for several cards says whose each charge was; "Name" is
 // a payee as often as a person, and is never taken for one.
-func TestTheCardholderColumn(t *testing.T) {
+func TestTheHolderColumn(t *testing.T) {
 	m := csvsource.Detect([]string{"Date", "Description", "Card Member", "Amount"})
 	if m.Holder != "Card Member" {
 		t.Errorf("Detect = %+v", m)

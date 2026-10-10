@@ -54,7 +54,7 @@ type Layout struct {
 	// The column headings: a line whose first heading is a Date, with a
 	// Description after it and an Amount after that, is the table's
 	// headings, and a column between the date and the amount headed as a
-	// Person is the cardholder's, kept apart from the description.
+	// Person is the holder's, kept apart from the description.
 	DateHeading   string `json:"date_heading,omitempty"`
 	DescHeading   string `json:"description_heading,omitempty"`
 	AmountHeading string `json:"amount_heading,omitempty"`

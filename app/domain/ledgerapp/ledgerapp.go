@@ -254,8 +254,8 @@ type transactionsView struct {
 	Clearing ledgerbus.Clearing
 
 	// ByHolder is whether the account's statements arrive one file per
-	// cardholder, which an owner may change (CanManage); Holders is the
-	// month by cardholder (docs/clearing.md, 3).
+	// holder, which an owner may change (CanManage); Holders is the
+	// month by holder (docs/clearing.md, 3).
 	ByHolder  bool
 	CanManage bool
 	Holders   ledgerbus.HolderMonth
@@ -333,7 +333,7 @@ func (a app) transactionsPage(w http.ResponseWriter, r *http.Request, status int
 			return
 		}
 
-		if view.Holders, err = a.cfg.Ledger.Cardholders(ctx, me.ID, id, view.Month); err != nil {
+		if view.Holders, err = a.cfg.Ledger.Holders(ctx, me.ID, id, view.Month); err != nil {
 			a.failed(w, r, err)
 
 			return
@@ -553,7 +553,7 @@ func (v previewView) Options(chosen string, optional bool) []string {
 	return out
 }
 
-// NewHolder is the cardholder chosen for a file that names none, when it
+// NewHolder is the holder chosen for a file that names none, when it
 // is nobody the account has seen before: the "somebody new" field's value.
 func (v previewView) NewHolder() string {
 	if slices.Contains(v.Draft.Holders, v.Draft.Holder) {
@@ -742,7 +742,7 @@ func options(r *http.Request) (ledgerbus.Options, string) {
 	// Which account of a file that holds several.
 	opts.Part = f.Get("part")
 
-	// Whose a file is that names no cardholder: one seen before, or a
+	// Whose a file is that names no holder: one seen before, or a
 	// name typed for somebody new.
 	opts.Holder = strings.TrimSpace(f.Get("holder_new"))
 	if opts.Holder == "" {

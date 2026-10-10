@@ -56,7 +56,7 @@
     {{else if gt $d.Statement.Locked 0}}{{t "Some of it falls in a reconciled period."}}
     {{else if not $d.Check.OK}}{{t "Nothing in it could be checked. Its own page asks for its balances."}}
     {{else if gt $d.Statement.SetAside 0}}{{t "Some rows look like ones already here. Its own page says which."}}
-    {{else if gt $d.Unnamed 0}}{{t "Some rows name no cardholder. Its own page asks whose they are."}}
+    {{else if gt $d.Unnamed 0}}{{t "Some rows name no holder. Its own page asks whose they are."}}
     {{else if or (gt $d.Result.Skipped 0) $d.Result.Unplaced}}{{t "Something in it could not be read. Its own page says what."}}{{end}}
     <a href="/accounts/{{.Account}}/imports/{{.File.ID}}">{{t "Look at it on its own page"}}</a>
   </p>

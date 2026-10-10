@@ -178,12 +178,12 @@ type Storer interface {
 	Examples(ctx context.Context, account types.ID) ([]rulebus.Example, error)
 
 	// ByHolder is whether the account's statements arrive one file per
-	// cardholder (holders.go), and SetByHolder turns it on or off, giving
+	// holder (holders.go), and SetByHolder turns it on or off, giving
 	// every stored row its identity again in the same transaction.
 	ByHolder(ctx context.Context, account types.ID) (bool, error)
 	SetByHolder(ctx context.Context, account types.ID, on bool, by types.ID, ev eventbus.Event) error
 
-	// Holders is the cardholders the account's rows have named, by name;
+	// Holders is the holders the account's rows have named, by name;
 	// HolderTotals what each one's rows come to from start up to end.
 	Holders(ctx context.Context, account types.ID) ([]string, error)
 	HolderTotals(ctx context.Context, account types.ID, start, end types.Date) ([]HolderTotal, error)
@@ -266,8 +266,8 @@ type Options struct {
 	// although the count rule sets them aside (Doubt).
 	Import []int
 
-	// Holder is whose a file is that names no cardholder, on an account
-	// whose statements arrive one file per cardholder: a person's answer
+	// Holder is whose a file is that names no holder, on an account
+	// whose statements arrive one file per holder: a person's answer
 	// on the preview (Draft.Unnamed).
 	Holder string
 
@@ -319,7 +319,7 @@ type Draft struct {
 	Choose bool
 
 	// ByHolder is whether the account's statements arrive one file per
-	// cardholder (holders.go). Holders is the cardholders its rows have
+	// holder (holders.go). Holders is the holders its rows have
 	// named before, Unnamed how many of this file's rows name none, and
 	// Holder whose a person said they are.
 	ByHolder bool

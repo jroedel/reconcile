@@ -15,7 +15,7 @@ import (
 
 // Many files at once (docs/shapes.md, 4). A person sends a month's
 // statements together -- a consolidated statement for three accounts, a
-// file from each cardholder, a CSV from the savings bank -- and each file,
+// file from each holder, a CSV from the savings bank -- and each file,
 // or each account's part of one, is proposed an account:
 //
 //   - by its number: the last four digits the file prints for it, matching

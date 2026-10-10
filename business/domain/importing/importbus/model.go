@@ -45,14 +45,14 @@ type Record struct {
 	ExternalID string
 
 	// Memo is what the file says about the transaction beside its
-	// description: on a card's printout, which cardholder made the charge.
+	// description: on a card's printout, which holder made the charge.
 	// It becomes the memo of the transaction's one part, and is no part of
 	// its identity.
 	Memo string
 
-	// Holder is the cardholder the file says made the charge: a PDF's
-	// person column, or a CSV's column mapped as the cardholder. On an
-	// account whose statements arrive one file per cardholder it is part
+	// Holder is the holder the file says made the charge: a PDF's
+	// person column, or a CSV's column mapped as the holder. On an
+	// account whose statements arrive one file per holder it is part
 	// of the row's identity (docs/clearing.md, 3).
 	Holder string
 

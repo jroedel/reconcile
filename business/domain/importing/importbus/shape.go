@@ -12,7 +12,7 @@ import (
 // contents: what tells one bank's layout from another's, and nothing about
 // whose money is in it (docs/shapes.md, 1). Each reader fills it with the
 // words its own rules recognized -- a heading it matched, a label it read
-// a balance after -- and never a whole line, so that a cardholder's name
+// a balance after -- and never a whole line, so that a holder's name
 // printed beside a heading cannot come with it. Every digit is taken out.
 type Structure struct {
 	// Frame is what every file of the layout says, whatever its month: its

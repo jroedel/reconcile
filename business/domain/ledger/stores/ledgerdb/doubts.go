@@ -62,8 +62,8 @@ CREATE INDEX IF NOT EXISTS transaction_aliases_transaction ON transaction_aliase
 // descriptions are likest a stored row's, and each is paired with the
 // stored row it is likest, each stored row once.
 //
-// On an account split by cardholder the day and amount are the cardholder's
-// too: a cardholder's rows are counted against that cardholder's stored
+// On an account split by holder the day and amount are the holder's
+// too: a holder's rows are counted against that holder's stored
 // rows and those that name nobody, and a row that names nobody against
 // all of them (docs/clearing.md, 3).
 func countRule(ctx context.Context, tx *sql.Tx, statement types.ID, txs []ledgerbus.Transaction, fresh []int, byHolder bool) ([]ledgerbus.Doubt, error) {

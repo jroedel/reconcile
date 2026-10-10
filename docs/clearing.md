@@ -1,4 +1,4 @@
-# Explaining an amount: clearing, cardholders, and pending charges
+# Explaining an amount: clearing, holders, and pending charges
 
 A plan for step 9 (`docs/plan.md`, build order). It comes from one
 treasurer's month, said in general terms, because the app is for anyone's:
@@ -36,7 +36,7 @@ several programmes. So it is built once, for any transaction.
 |---|---|
 | The need | **General.** Nothing here names a bank, a card or a household; another treasurer, in another country, uses the same pages |
 | Explaining | **One tool for any transaction**: "Explain this amount" gathers the transactions and lines that make it up, and says the difference |
-| Cardholders | **An option on an account**: its statements arrive one file per cardholder. Without it, nothing changes |
+| Holders | **An option on an account**: its statements arrive one file per holder, a person or card on the account. Without it, nothing changes. (Called "cardholders" when decided; renamed "holder" on 2026-10-09, since nothing in it is about cards, and "segment" or "sub-account" is what an accountant calls part of a chart of accounts) |
 | Pending | **Read from the document**, marked, and replaced by the posted charge when it arrives |
 
 ## 1. Entries by hand
@@ -74,7 +74,7 @@ the transaction:
 2. **Compare.** The lines add up, beside the amount, in the account
    holder's signs: a withdrawal of 4,210.55 is explained by charges that
    come to 4,210.55. The difference is shown, and the lines are grouped
-   by account, so a missing cardholder or month shows as a missing group.
+   by account, so a missing holder or month shows as a missing group.
 3. **Settle.** With no difference the transaction is **explained**. With
    one, it stays **open**, or the person accepts the difference with a
    note ("two parking holds settled lower than pending"), which the
@@ -113,28 +113,31 @@ months the lines were last gathered from, for the next one like it -- and
 added_at)`, both `STRICT`, both going with their transactions (`ON DELETE
 CASCADE`), and history lines for made, changed and settled.
 
-## 3. Statements split by cardholder
+## 3. Statements split by holder
 
-An account option: **"Statements arrive one file per cardholder."** Off for
+A **holder** is a person or card on an account: most often each person on a
+shared card, each of whose months arrives as a file of its own.
+
+An account option: **"Statements arrive one file per holder."** Off for
 every account that exists, and for any account that does not need it.
 
 - **Who a row belongs to.** A PDF's person column (pdfsource already reads
-  it, today into the memo), or a CSV's column mapped as "Cardholder". A
+  it, today into the memo), or a CSV's column mapped as "Holder". A
   file with neither is asked for on the preview: whose is it, from the
-  cardholders seen before, or a new name.
-- **Identity.** On such an account the cardholder is part of each row's
+  holders seen before, or a new name.
+- **Identity.** On such an account the holder is part of each row's
   content key, and the count rule (`docs/duplicates.md`) and the cut-short
-  rule compare a cardholder's rows only with that cardholder's. Two people
+  rule compare a holder's rows only with that holder's. Two people
   who park in one garage on one day for one price are two charges. A file
-  for the whole card, with no cardholder, is compared with all of them.
+  for the whole account, with no holder, is compared with all of them.
 - **Turning it on or off** recomputes the stored rows' hashes in one
   transaction, in Go, because the hash is computed in Go (eumaeus did the
   same when its hash changed).
-- **The month list** shows a total per cardholder, and who is missing: a
-  cardholder with a statement in either of the two months before and none
-  in this one. "September: 5 of 6 cardholders."
-- **The accountant's package** gains a "Cardholder" column.
-- **Storage.** `transactions.holder`, the cardholder a file named, kept
+- **The month list** shows a total per holder, and who is missing: a
+  holder with a statement in either of the two months before and none
+  in this one. "September: 5 of 6 holders."
+- **The accountant's package** gains a "Holder" column.
+- **Storage.** `transactions.holder`, the holder a file named, kept
   for every account; it joins the identity only where the option is on.
   The option itself is a row of the ledger's `holder_accounts`, not a
   column of `accounts`, so that turning it on or off and giving every row
@@ -164,7 +167,7 @@ them.
   and the preview, counted in the document's total check as the document
   counts them, and in the accountant's package in a column of its own.
 - **Replaced when posted.** A later row of the same account (and
-  cardholder) within ten days after it, not pending, whose description is
+  holder) within ten days after it, not pending, whose description is
   alike (`ledgerdb.alike`, eumaeus' containment first), takes the pending
   row's place: its date, amount and description change to the posted
   ones, and it keeps its sorting, receipts and explanation. A one-part
@@ -190,7 +193,7 @@ Four pull requests:
 1. **Entries by hand**, with their document, in `ledgerbus`/`ledgerapp`.
 2. **Explain this amount**: the tables, the page, "cleared by", the
    back-to-zero rule, the package's column and file, the stranger walk.
-3. **Split by cardholder**: the account option, the content key, the
+3. **Split by holder**: the account option, the content key, the
    count and cut-short rules, the preview's question, the month list's
    totals and who is missing, the package's column.
 4. **Pending charges**: the readers' marks, the replacement at import, the
@@ -198,10 +201,10 @@ Four pull requests:
 
 ## Verification
 
-Each with invented accounts, cardholders and amounts:
+Each with invented accounts, holders and amounts:
 
-- Six cardholders' files for two months imported into one split account;
-  two cardholders with the same charge on the same day are two charges.
+- Six holders' files for two months imported into one split account;
+  two holders with the same charge on the same day are two charges.
 - A withdrawal explained by the card's two months and a hand entry for a
   ticket, with a difference left by two pending holds; the holds post
   lower the next month, and the difference becomes zero.
