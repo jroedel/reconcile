@@ -46,7 +46,7 @@ func TestANewLayoutThatProvesNothing(t *testing.T) {
 		t.Fatalf("import: %d", rec.Code)
 	}
 
-	wantBody(t, rec, "nothing in it shows that every row was read")
+	wantBody(t, rec, "Nothing in this PDF shows that every row of it was read")
 
 	admin := newBrowser(t, h)
 	admin.post("/sign-in/first", url.Values{"email": {"admin@example.org"}, "secret": {secret}})

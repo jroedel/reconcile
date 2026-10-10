@@ -136,7 +136,8 @@ signs in and how), `tenancy` (organizations, accounts, projects, and who may
 do what on each), `event` (the history, written by the domain that made
 the change, in its transaction), `file` (what people upload, bytes kept once
 per content outside anything Apache serves), `importing` (reading a bank's
-CSV, OFX or PDF into records, knowing nothing of accounts), `category` (each
+CSV, OFX or PDF into records, knowing nothing of accounts, and the
+declarations of statement layouts that say how), `category` (each
 organization's list, or a personal account's, each category one of the four
 kinds of money), `ledger` (statements,
 transactions and their splits: checking, deduplicating, storing, sorting,

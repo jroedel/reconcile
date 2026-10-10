@@ -14,10 +14,12 @@ import (
 // here (docs/shapes.md, 2).
 //
 // General is what the reader has always used, and reads every bank it has
-// been shown. A declaration for one bank's layout adjusts it.
+// been shown. A declaration for one bank's layout adjusts it: its JSON
+// names the patterns it changes, and the rest are General's
+// (business/domain/importing/shapes).
 type Layout struct {
 	// Name is what the preview calls a document read with it.
-	Name string
+	Name string `json:"-"`
 
 	// The headings of sections. A heading is a few words alone on a line,
 	// outside the description's column (sections.go); its words say what
@@ -26,26 +28,45 @@ type Layout struct {
 	// number), Daily the table of each day's ending balance, Pending the
 	// charges not yet posted, and Stop anything else, whose lines are not
 	// rows: a summary, a page of disclosures.
-	In, Out, Checks, Daily, Pending, Stop string
+	In      string `json:"in,omitempty"`
+	Out     string `json:"out,omitempty"`
+	Checks  string `json:"checks,omitempty"`
+	Daily   string `json:"daily,omitempty"`
+	Pending string `json:"pending,omitempty"`
+	Stop    string `json:"stop,omitempty"`
 
 	// AccountNumber names the account the lines after it are about. Its
 	// last group is the number, of which the last four digits are kept.
-	AccountNumber string
+	AccountNumber string `json:"account_number,omitempty"`
 
 	// The labels a balance or total is printed after, outside the rows or
 	// as a row of its own: the balance before the period, the balance
 	// after it, the total of the rows, and the total still pending.
-	Opening, Closing, Total, PendingTotal string
+	Opening      string `json:"opening,omitempty"`
+	Closing      string `json:"closing,omitempty"`
+	Total        string `json:"total,omitempty"`
+	PendingTotal string `json:"pending_total,omitempty"`
 
 	// Noise is lines that are never part of a row, wherever they are: a
 	// page count, an address, marks a bank hides in the text.
-	Noise string
+	Noise string `json:"noise,omitempty"`
 
 	// The column headings: a line whose first heading is a Date, with a
 	// Description after it and an Amount after that, is the table's
 	// headings, and a column between the date and the amount headed as a
 	// Person is the cardholder's, kept apart from the description.
-	DateHeading, DescHeading, AmountHeading, PersonHeading string
+	DateHeading   string `json:"date_heading,omitempty"`
+	DescHeading   string `json:"description_heading,omitempty"`
+	AmountHeading string `json:"amount_heading,omitempty"`
+	PersonHeading string `json:"person_heading,omitempty"`
+}
+
+// Check reports a pattern of the layout's that is not one, as reading by
+// it would.
+func (l Layout) Check() error {
+	_, err := l.compile()
+
+	return err
 }
 
 // General is the reader as it reads a layout nobody has declared: the
