@@ -152,7 +152,8 @@ CREATE TABLE IF NOT EXISTS splits (
 // already there reads as one no rule sorted. From before cardholders,
 // pending charges and check numbers too, it gains transactions.holder,
 // pending, check_number and payee, and the row names nobody, has posted,
-// and paid no check to anybody.
+// and paid no check to anybody. And a statement from before layouts were
+// kept gains statements.shape, and was in none.
 func TestInitGivesOldPartsNoRule(t *testing.T) {
 	db, err := sqldb.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -191,6 +192,14 @@ INSERT INTO splits (id, transaction_id, position, amount, memo) VALUES (?, ?, 0,
 		t.Fatal(err)
 	}
 
+	statement := types.NewID()
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO statements (id, account_id, file_id, format, period_start, period_end, checked, imported_by, imported_at)
+VALUES (?, ?, ?, 'csv', '2026-07-01', '2026-07-31', 'none', ?, 0)`,
+		statement.String(), types.NewID().String(), types.NewID().String(), types.NewID().String()); err != nil {
+		t.Fatal(err)
+	}
+
 	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys = ON`); err != nil {
 		t.Fatal(err)
 	}
@@ -212,6 +221,11 @@ INSERT INTO splits (id, transaction_id, position, amount, memo) VALUES (?, ?, 0,
 
 	if tx.Holder != "" || tx.Hash != id.String() || tx.Pending || tx.CheckNumber != "" || tx.Payee != "" {
 		t.Errorf("the old row: holder %q, hash %q, pending %v, check %q, payee %q", tx.Holder, tx.Hash, tx.Pending, tx.CheckNumber, tx.Payee)
+	}
+
+	var shape string
+	if err := db.QueryRowContext(ctx, `SELECT shape FROM statements WHERE id = ?`, statement.String()).Scan(&shape); err != nil || shape != "" {
+		t.Errorf("the old statement's layout: %q, %v", shape, err)
 	}
 
 	if err := sqldb.CheckSchema(ctx, db, ledgerdb.Expected); err != nil {

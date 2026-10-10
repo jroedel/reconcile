@@ -66,6 +66,11 @@ type Statement struct {
 
 	Checked Method
 
+	// Shape is the signature of its file's layout (importbus.Shape), so
+	// that the next file in the same layout can be proposed for the same
+	// account (bulk.go). Empty for statements from before it was kept.
+	Shape string
+
 	// Added is how many transactions this statement brought in; Already is
 	// how many it listed that an earlier one had.
 	Added, Already int

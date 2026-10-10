@@ -35,7 +35,7 @@ var _ ledgerbus.Storer = (*Store)(nil)
 // Expected is what CheckSchema verifies at startup and on every /healthz.
 var Expected = sqldb.Expected{
 	"statements": {"id", "account_id", "file_id", "format", "period_start", "period_end", "opening", "closing",
-		"checked", "added", "already", "imported_by", "imported_at"},
+		"checked", "added", "already", "imported_by", "imported_at", "shape"},
 	"transactions": {"id", "account_id", "statement_id", "posted_on", "description", "amount", "balance",
 		"external_id", "hash", "occurrence", "holder", "pending", "check_number", "payee"},
 	"csv_mappings":        {"account_id", "fingerprint", "mapping", "updated_by", "updated_at"},
@@ -109,6 +109,13 @@ CREATE TABLE IF NOT EXISTS csv_mappings (
 
 	if _, err := db.ExecContext(ctx, schema); err != nil {
 		return fmt.Errorf("creating the ledger tables: %w", err)
+	}
+
+	// The signature of a statement's file's layout (docs/shapes.md, 4), a
+	// later column; empty for every statement from before it, which then
+	// proposes nothing for the next file in its layout.
+	if err := sqldb.AddColumn(ctx, db, "statements", "shape", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
 	}
 
 	// The cardholder a file said made the charge (docs/clearing.md, 3), a
@@ -360,11 +367,11 @@ func importRows(ctx context.Context, tx *sql.Tx, st ledgerbus.Statement, txs []l
 	}
 
 	if _, err := tx.ExecContext(ctx, `
-INSERT INTO statements (id, account_id, file_id, format, period_start, period_end, opening, closing, checked, imported_by, imported_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+INSERT INTO statements (id, account_id, file_id, format, period_start, period_end, opening, closing, checked, imported_by, imported_at, shape)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		st.ID.String(), st.AccountID.String(), st.FileID.String(), string(st.Format), st.Start.String(), st.End.String(),
 		nullAmount(st.Opening, st.HasOpening), nullAmount(st.Closing, st.HasClosing), string(st.Checked),
-		st.ImportedBy.String(), st.ImportedAt.UnixMilli()); err != nil {
+		st.ImportedBy.String(), st.ImportedAt.UnixMilli(), st.Shape); err != nil {
 		return ledgerbus.Statement{}, fmt.Errorf("storing the statement: %w", err)
 	}
 
@@ -605,7 +612,7 @@ func cutShort(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction, unclaime
 // --- statements -------------------------------------------------------------
 
 const statementColumns = `s.id, s.account_id, s.file_id, f.name, s.format, s.period_start, s.period_end, s.opening, s.closing,
-s.checked, s.added, s.already, s.imported_by, s.imported_at,
+s.checked, s.added, s.already, s.imported_by, s.imported_at, s.shape,
 r.period_start, r.period_end, r.note, r.reconciled_by, r.reconciled_at`
 
 const statementFrom = ` FROM statements s JOIN files f ON f.id = s.file_id
@@ -635,6 +642,44 @@ WHERE s.account_id = ? AND f.sha256 = ? ORDER BY s.imported_at LIMIT 1`, account
 	}
 
 	return st, true, nil
+}
+
+// Shaped is those of the accounts given that have a statement whose file
+// was in the layout with this signature.
+func (s *Store) Shaped(ctx context.Context, signature string, accounts []types.ID) ([]types.ID, error) {
+	if signature == "" || len(accounts) == 0 {
+		return nil, nil
+	}
+
+	args := []any{signature}
+	for _, a := range accounts {
+		args = append(args, a.String())
+	}
+
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT account_id FROM statements WHERE shape = ? AND account_id IN (`+
+		strings.TrimSuffix(strings.Repeat("?, ", len(accounts)), ", ")+`) ORDER BY account_id`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("reading the accounts of a layout: %w", err)
+	}
+	defer rows.Close()
+
+	var out []types.ID
+
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("reading the accounts of a layout: %w", err)
+		}
+
+		a, err := types.ParseID(id)
+		if err != nil {
+			return nil, fmt.Errorf("reading the accounts of a layout: %w", err)
+		}
+
+		out = append(out, a)
+	}
+
+	return out, rows.Err()
 }
 
 // Statements is an account's, newest period first.
@@ -723,7 +768,7 @@ func scanStatement(row scanner) (ledgerbus.Statement, error) {
 	)
 
 	if err := row.Scan(&id, &account, &file, &st.FileName, &format, &start, &end, &opening, &closing,
-		&chkd, &st.Added, &st.Already, &by, &at, &rStart, &rEnd, &rNote, &rBy, &rAt); err != nil {
+		&chkd, &st.Added, &st.Already, &by, &at, &st.Shape, &rStart, &rEnd, &rNote, &rBy, &rAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ledgerbus.Statement{}, err
 		}

@@ -288,6 +288,18 @@ func New(cfg Config) (http.Handler, error) {
 			web.Deadline(receiptapp.UploadTime), web.MaxBody(ledgerapp.MaxUpload), web.MultipartOnly()))
 	}
 
+	// Many statements at once, and the pages that read them all
+	// (ledgerapp, bulk.go): longer to arrive and to answer than a page.
+	for _, pattern := range ledgerapp.BulkPatterns {
+		shape.Handle(pattern, web.Wrap(inner,
+			web.Deadline(ledgerapp.BulkTime), web.MaxBody(ledgerapp.MaxBulkUpload), web.MultipartOnly()))
+	}
+
+	for _, pattern := range ledgerapp.SlowPatterns {
+		shape.Handle(pattern, web.Wrap(inner,
+			web.Deadline(ledgerapp.BulkTime), web.MaxBody(maxBody), web.FormEncodedOnly()))
+	}
+
 	for _, pattern := range receiptapp.UploadPatterns {
 		shape.Handle(pattern, web.Wrap(inner,
 			web.Deadline(receiptapp.UploadTime), web.MaxBody(receiptapp.MaxUpload), web.MultipartOnly()))

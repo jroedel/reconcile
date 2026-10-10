@@ -1,0 +1,91 @@
+{{define "title"}}{{t "Import several statements"}}{{end}}
+{{define "content"}}{{$v := .Data}}
+<h1>{{t "Import several statements"}}</h1>
+
+{{if eq $v.Problem "too-many"}}<p class="notice" role="alert">{{t "Only the first {max} files were kept. Send the rest after these." "max" $v.Max}}</p>
+{{else if eq $v.Problem "too-big-some"}}<p class="notice" role="alert">{{t "Some files were too big to be statements, and were left out."}}</p>
+{{else}}{{template "problem" $v.Problem}}{{end}}
+{{if $v.Done}}<p class="notice ok" role="status">{{t "Imported: {count}. Those left need a look on their own page." "count" $v.Imported}}</p>{{end}}
+
+{{if not $v.Accounts}}
+<p class="notice">{{t "You keep the books of no account yet. Statements can be imported once you make an account, or somebody gives you the bookkeeper role on one."}}</p>
+{{else}}
+
+{{if $v.Rows}}
+<form method="get" action="/imports">
+{{range $v.Files}}<input type="hidden" name="f" value="{{.}}">{{end}}
+<section class="card">
+<h2>{{t "The files"}}</h2>
+<p class="hint">{{t "Each file is proposed an account: by the last four digits of the number it prints, or the account a file like it went to before. Check them, and choose one where none was found."}}</p>
+<ul class="list">
+{{range $v.Rows}}{{$d := .Draft}}{{$row := .}}
+<li>
+  <div class="who-line"><strong>{{.File.Name}}</strong>{{with .Part}} <span class="hint">{{t "the part for the account ending {last4}" "last4" .}}</span>{{end}}</div>
+  {{if and .Problem (.Account.Zero)}}{{template "problem" ($v.ProblemOf .Problem)}}
+  {{else}}
+  <div class="field">
+    <label for="to-{{.Key}}">{{t "Account"}}</label>
+    <select id="to-{{.Key}}" name="to-{{.Key}}">
+      <option value=""{{if .Account.Zero}} selected{{end}}>{{t "Choose an account"}}</option>
+      {{range $v.Accounts}}<option value="{{.ID}}"{{if eq .ID.String $row.Account.String}} selected{{end}}>{{.Name}}{{with .Last4}} ···{{.}}{{end}}</option>
+      {{end}}
+    </select>
+    {{if eq (printf "%s" .By) "number"}}<p class="hint">{{t "Found by the number it prints."}}</p>
+    {{else if eq (printf "%s" .By) "remembered"}}<p class="hint">{{t "Where a file like it went before."}}</p>
+    {{else if .Account.Zero}}<p class="hint">{{t "No account could be told from the file. Choose one, then check again."}}</p>{{end}}
+  </div>
+  {{if not .Account.Zero}}
+  {{if .Problem}}{{template "problem" ($v.ProblemOf .Problem)}}
+  {{else if .Imported}}<p><span class="badge ok">{{t "Imported"}}</span> <a href="/statements/{{$d.Earlier.ID}}">{{t "See the statement"}}</a></p>
+  {{else}}
+  <p>
+    {{if $d.Choose}}<span class="badge warn">{{t "This account's number is not in the file"}}</span>
+    {{else}}
+    {{if not $d.Statement.Start.Zero}}{{t "{start} to {end}" "start" $d.Statement.Start.String "end" $d.Statement.End.String}} · {{end}}
+    {{t "Transactions: {count}, of them new: {added}." "count" (len $d.Result.Records) "added" $d.Statement.Added}}
+    {{if $d.Check.OK}}{{template "method" (printf "%s" $d.Check.Method)}}
+    {{else if $d.Check.Failed}}<span class="badge warn">{{t "does not balance"}}</span>
+    {{else}}<span class="badge warn">{{t "not checked"}}</span>{{end}}
+    {{end}}
+  </p>
+  {{if .Unattended}}<p><span class="badge ok">{{t "Ready to import"}}</span></p>
+  {{else}}
+  <p class="hint">
+    {{if $d.Unproven}}{{t "Its own figures do not show it was read whole, so it cannot be imported."}}
+    {{else if $d.Check.Failed}}{{t "It does not balance, so it cannot be imported as it is."}}
+    {{else if gt $d.Statement.Locked 0}}{{t "Some of it falls in a reconciled period."}}
+    {{else if not $d.Check.OK}}{{t "Nothing in it could be checked. Its own page asks for its balances."}}
+    {{else if gt $d.Statement.SetAside 0}}{{t "Some rows look like ones already here. Its own page says which."}}
+    {{else if gt $d.Unnamed 0}}{{t "Some rows name no cardholder. Its own page asks whose they are."}}
+    {{else if or (gt $d.Result.Skipped 0) $d.Result.Unplaced}}{{t "Something in it could not be read. Its own page says what."}}{{end}}
+    <a href="/accounts/{{.Account}}/imports/{{.File.ID}}">{{t "Look at it on its own page"}}</a>
+  </p>
+  {{end}}
+  {{end}}
+  {{end}}
+  {{end}}
+</li>
+{{end}}
+</ul>
+<div class="actions">
+  <button type="submit" class="quiet">{{t "Check again"}}</button>
+  {{if $v.Ready}}<button type="submit" formmethod="post" formaction="/imports/import">{{t "Import the ready ones: {count}" "count" $v.Ready}}</button>
+  {{else}}<p class="hint">{{t "None is ready to import with the others."}}</p>{{end}}
+</div>
+</section>
+</form>
+{{end}}
+
+<section class="card">
+<h2>{{if $v.Rows}}{{t "Start again with other files"}}{{else}}{{t "Choose the files"}}{{end}}</h2>
+<form method="post" action="/imports" enctype="multipart/form-data">
+  <div class="field">
+    <label for="files">{{t "Statement files"}}</label>
+    <input id="files" name="files" type="file" multiple required accept=".csv,.ofx,.qfx,.txt,.pdf,text/csv,application/pdf">
+    <p class="hint">{{t "Up to {max} at once, of any of your accounts: CSV, OFX, QFX or PDF. Each is shown before anything is imported." "max" $v.Max}}</p>
+  </div>
+  <button type="submit">{{t "Upload"}}</button>
+</form>
+</section>
+{{end}}
+{{end}}

@@ -42,6 +42,10 @@ func Read(data []byte) (importbus.Result, error) {
 		res.Warn(importbus.Warning{Problem: importbus.SeveralStatements})
 	}
 
+	if len(statements) == 1 {
+		res.Last4 = importbus.Last4(statements[0].AccountID)
+	}
+
 	for _, st := range statements {
 		// The first statement to state a balance wins: a later account's
 		// balance would be a wrong number rather than a missing one.

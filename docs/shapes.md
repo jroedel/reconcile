@@ -282,6 +282,32 @@ count rules; those that balance are imported together, and the rest are
 left on the list for a person, one by one. Only accounts the person keeps
 the books of are proposed.
 
+### As built (the sixth pull request)
+
+- **Where**: `/imports`, linked from the front page and from each
+  account's "Add a statement". Up to 40 files at once, each as large as a
+  statement may be.
+- **Proposed**, for each file or each account's part of one, among the
+  accounts the person keeps the books of (`ledgerbus.Propose`): by the
+  last four digits it prints (a PDF's account number, now kept for a file
+  of one account too, or an OFX `ACCTID`); else the account a file in its
+  layout went to before -- for a CSV, the account whose columns were
+  chosen for its header, which every CSV ever imported has recorded; for
+  anything else, a statement in its layout (`statements.shape`, a later
+  column). Two accounts that fit is no proposal: the person is asked. A
+  remembered account whose own number differs from the file's is not
+  proposed.
+- **Read** for its account as its own preview reads it, and shown with its
+  period, its count of transactions and new ones, and how it checked.
+- **Imported together** only when nothing in it needs a person: it checks
+  by the file's own figures, and the count rule set nothing aside, no row
+  was skipped or left unplaced, and no row waits to be told its
+  cardholder (`Proposal.Unattended`). Each goes through the same `Import`
+  as a single file. Everything else stays on the list with a link to its
+  own preview, which asks what it needs.
+- **The list keeps no state**: its files and the accounts chosen are in
+  its address, and anybody else's files are left off it.
+
 ## Naming (decided 2026-10-09)
 
 Built-in declarations are **named generically** ("us-consolidated-checking-a"),
