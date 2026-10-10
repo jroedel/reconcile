@@ -18,9 +18,10 @@
   <fieldset class="field">
     <legend>{{t "Where do they go?"}}</legend>
     {{range $i, $c := $v.Choices}}<label class="choice"><input type="radio" name="to" value="{{$c.Value}}" required{{if eq (len $v.Choices) 1}} checked{{end}}>
-    {{if $c.Checks}}{{t "Check images · {account}" "account" $c.Name}}{{else if $c.Project}}{{t "Receipts · {project} (project)" "project" $c.Name}}{{else}}{{t "Receipts · {account}" "account" $c.Name}}{{end}}</label>
+    {{if $c.Mine}}{{t "Your checks, from any account"}}{{else if $c.Checks}}{{t "Check images · {account}" "account" $c.Name}}{{else if $c.Project}}{{t "Receipts · {project} (project)" "project" $c.Name}}{{else}}{{t "Receipts · {account}" "account" $c.Name}}{{end}}</label>
     {{end}}
     <p class="hint">{{t "Check images are attached to the transaction with their number, or wait for it. Receipts wait for a match."}}</p>
+    {{with index $v.Choices 0}}{{if .Mine}}<p class="hint">{{t "Your checks are seen by nobody else until each is filed under the account it is drawn on, by you or by Claude."}}</p>{{end}}{{end}}
   </fieldset>
   <div class="field">
     <label for="share-files">{{t "Photos or PDFs"}}</label>

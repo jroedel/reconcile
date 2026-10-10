@@ -161,9 +161,19 @@ import { shrink } from "./shrink.mjs";
     result.scrollIntoView({ block: "start" });
   });
 
+  // Said once the form is this script's to send, for the browser tests:
+  // a module loads when it likes, and an Add pressed before then is the
+  // form's own post, which is right for a person and a race for a test.
+  form.dataset.sending = "ready";
+
   // done is the inbox the files went to, saying what happened, in the
-  // query the inbox reads after an upload of its own.
+  // query the inbox reads after an upload of its own: an account's or a
+  // project's, or the person's own checks.
   function done(to, kept, attached, already) {
+    if (to === "mine") {
+      return `/checks?${new URLSearchParams({ done: "added", n: kept, already })}`;
+    }
+
     const [kind, id] = to.split(":");
     const inbox = `/${kind === "project" ? "projects" : "accounts"}/${encodeURIComponent(id)}/receipts`;
     const q = kind === "checks"

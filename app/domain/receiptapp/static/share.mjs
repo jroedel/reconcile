@@ -54,7 +54,7 @@ const REMEMBER = "reconcile-share-to";
   // there, not on every page, so that somebody who looks something up
   // between the share and Add comes back to the files still there.
   const q = new URLSearchParams(location.search);
-  if (/^\/(accounts|projects)\/[^/]+\/receipts$/.test(location.pathname) && q.has("done")) {
+  if ((/^\/(accounts|projects)\/[^/]+\/receipts$/.test(location.pathname) || location.pathname === "/checks") && q.has("done")) {
     await caches.delete(STASH).catch(() => {});
     return;
   }

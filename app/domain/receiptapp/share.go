@@ -31,9 +31,10 @@ import (
 // (static/share-worker.mjs) takes that post on the phone, before it reaches
 // the server, keeps the files in the phone's Cache Storage, and opens the
 // share page, whose script (static/share.mjs) puts them in its file input
-// as though they had been chosen there. The page asks where they go -- a
-// checking account's check images, or an account's or a project's receipts
-// -- and from there they are an upload like any other.
+// as though they had been chosen there. The page asks where they go -- the
+// person's own checks, to be filed by account afterwards (checkinbox.go),
+// a checking account's check images, or an account's or a project's
+// receipts -- and from there they are an upload like any other.
 //
 // Why not let Chrome's post reach the server? It arrives before anybody has
 // said where the files go, and the server would have to keep them
@@ -176,11 +177,12 @@ func serveStatic(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, name, startup, bytes.NewReader(body))
 }
 
-// shareChoice is one place a share can go: a checking account's check
-// images, or an account's or a project's receipts. Its Value is what the
-// form sends.
+// shareChoice is one place a share can go: the person's own checks, a
+// checking account's check images, or an account's or a project's
+// receipts. Its Value is what the form sends.
 type shareChoice struct {
 	Value  string
+	Mine   bool
 	Checks bool
 	Name   string
 
@@ -225,7 +227,9 @@ func (a app) sharePage(w http.ResponseWriter, r *http.Request) {
 
 // shareChoices is every inbox the actor may add receipts to, an account's
 // check images first among its own, since that is what a checking
-// account's share most often is.
+// account's share most often is; and before them all the actor's own
+// checks, for a month's stack from several accounts, when there is an
+// account to file them in.
 func (a app) shareChoices(r *http.Request, me types.ID) ([]shareChoice, error) {
 	ov, err := a.cfg.Tenancy.Overview(r.Context(), me)
 	if err != nil {
@@ -250,6 +254,10 @@ func (a app) shareChoices(r *http.Request, me types.ID) ([]shareChoice, error) {
 			return nil, err
 		} else if !ok {
 			continue
+		}
+
+		if len(out) == 0 {
+			out = append(out, shareChoice{Value: mine, Mine: true})
 		}
 
 		if acct.Kind == tenancybus.Checking {
@@ -308,6 +316,20 @@ func (a app) share(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The person's own checks are nobody's but theirs to add to.
+	if to.kind == mine {
+		got, err := a.receiveFrom(r, mr, me.ID)
+		if err != nil {
+			a.failed(w, r, err)
+
+			return
+		}
+
+		a.addToCheckInbox(w, r, me.ID, got)
+
+		return
+	}
+
 	kind, id, home := to.kind, to.id, to.home
 
 	if !a.mayAdd(w, r, me.ID, home) {
@@ -330,8 +352,12 @@ func (a app) share(w http.ResponseWriter, r *http.Request) {
 	a.addReceipts(w, r, me.ID, home, got)
 }
 
+// mine is the share's destination that is the person's own checks
+// (checkinbox.go), which names no account.
+const mine = "mine"
+
 // where is a share's destination, as its form's first part says it:
-// "checks:<account>", "account:<account>" or "project:<project>".
+// "mine", "checks:<account>", "account:<account>" or "project:<project>".
 type where struct {
 	kind string
 	id   types.ID
@@ -351,6 +377,9 @@ func readWhere(mr *multipart.Reader) (where, bool) {
 	part.Close()
 
 	kind, rawID, _ := strings.Cut(strings.TrimSpace(string(to)), ":")
+	if kind == mine && rawID == "" {
+		return where{kind: mine, ok: true}, true
+	}
 
 	id, err := types.ParseID(rawID)
 	if err != nil || kind != "checks" && kind != "account" && kind != "project" {
@@ -404,21 +433,23 @@ func (a app) sendOne(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	access, err := a.cfg.Tenancy.AccessTo(r.Context(), me.ID, to.home)
+	if to.kind != mine {
+		access, err := a.cfg.Tenancy.AccessTo(r.Context(), me.ID, to.home)
 
-	switch {
-	case err != nil:
-		a.failedJSON(w, r, err)
+		switch {
+		case err != nil:
+			a.failedJSON(w, r, err)
 
-		return
-	case !access.Can(tenancybus.Read):
-		refuse(http.StatusNotFound, "to", "to")
+			return
+		case !access.Can(tenancybus.Read):
+			refuse(http.StatusNotFound, "to", "to")
 
-		return
-	case !access.Can(tenancybus.Receipts):
-		refuse(http.StatusForbidden, "to", "to")
+			return
+		case !access.Can(tenancybus.Receipts):
+			refuse(http.StatusForbidden, "to", "to")
 
-		return
+			return
+		}
 	}
 
 	got, err := a.receiveFrom(r, mr, me.ID)
@@ -444,7 +475,13 @@ func (a app) sendOne(w http.ResponseWriter, r *http.Request) {
 
 	answer := sent{Outcome: "kept"}
 
-	held, err := a.cfg.Receipts.Holds(r.Context(), me.ID, to.home, got.files[0])
+	var held bool
+	if to.kind == mine {
+		held, err = a.cfg.Receipts.CheckInboxHolds(r.Context(), me.ID, got.files[0])
+	} else {
+		held, err = a.cfg.Receipts.Holds(r.Context(), me.ID, to.home, got.files[0])
+	}
+
 	if err != nil {
 		a.failedJSON(w, r, err)
 
@@ -458,7 +495,14 @@ func (a app) sendOne(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if to.kind == "checks" {
+	switch to.kind {
+	case mine:
+		if _, err := a.cfg.Receipts.AddToCheckInbox(r.Context(), a.cfg.Now(), me.ID, got.files); err != nil {
+			a.failedJSON(w, r, err)
+
+			return
+		}
+	case "checks":
 		receipts, err := a.cfg.Receipts.AddChecks(r.Context(), a.cfg.Now(), me.ID, to.id, got.files, "", "")
 		if err != nil {
 			a.failedJSON(w, r, err)
@@ -467,10 +511,12 @@ func (a app) sendOne(w http.ResponseWriter, r *http.Request) {
 		}
 
 		answer.Attached = len(receipts) == 1 && !receipts[0].Waiting()
-	} else if _, err := a.cfg.Receipts.Add(r.Context(), a.cfg.Now(), me.ID, to.home, got.files, false, receiptbus.Details{}); err != nil {
-		a.failedJSON(w, r, err)
+	default:
+		if _, err := a.cfg.Receipts.Add(r.Context(), a.cfg.Now(), me.ID, to.home, got.files, false, receiptbus.Details{}); err != nil {
+			a.failedJSON(w, r, err)
 
-		return
+			return
+		}
 	}
 
 	web.WriteJSON(w, http.StatusOK, answer)

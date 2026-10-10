@@ -1,0 +1,101 @@
+{{define "title"}}{{t "Your checks"}}{{end}}
+{{define "content"}}{{$v := .Data}}
+<p class="crumbs"><a href="/">{{t "Your organizations"}}</a></p>
+<h1>{{t "Your checks"}}</h1>
+<p class="hint">{{t "Images of checks that only you can see, until each is filed under the account it is drawn on. Claude can file them for you by the account number printed on each check, or you can choose the account for each one below."}}</p>
+
+{{with $v.Done}}<p class="notice ok" role="status">
+{{- if eq . "filed-attached"}}{{t "Filed, and attached to the transaction that paid the check."}}
+{{- else if eq . "filed-waiting"}}{{t "Filed. It waits in the account's receipts, for its number or for the transaction that paid it."}}
+{{- else if eq . "check-removed"}}{{t "Removed. It is under Removed checks below, and can be brought back."}}
+{{- else if eq . "check-restored"}}{{t "Brought back. It is waiting to be filed."}}
+{{- end}}</p>{{end}}
+{{with $v.Uploaded}}
+{{if .Added}}<p class="notice ok" role="status">{{t "{n} check images added. File each one under its account below, or ask Claude to." "n" .Added}}</p>{{end}}
+{{if .WrongKind}}<div class="notice" role="alert"><p>{{t "These are not photos or PDFs, and were not kept:"}}</p><ul>{{range .WrongKind}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
+{{if .TooBig}}<div class="notice" role="alert"><p>{{t "These were too big, or one too many for one upload, and were not kept. Add them on their own:"}}</p><ul>{{range .TooBig}}<li>{{.}}</li>{{end}}</ul></div>{{end}}
+{{if .Already}}<p class="notice ok" role="status">{{t "{n} were among your checks already, and were not added again." "n" .Already}}</p>{{end}}
+{{if .Cut}}<p class="notice" role="alert">{{t "The upload stopped part way: it was too big, or the connection dropped. What arrived whole is above; add the rest again."}}</p>{{end}}
+{{end}}
+{{with $v.Problem}}<p class="notice" role="alert">
+{{- if eq . "account"}}{{t "Choose the account the check is drawn on. Nothing was filed."}}
+{{- else if eq . "number"}}{{t "A check number is digits, such as 1176. Nothing was filed."}}
+{{- else if eq . "filed"}}{{t "That check was filed or removed already. The lists below say where it is."}}
+{{- else}}{{t "Something went wrong at our end. Please try again in a few minutes."}}{{end}}</p>{{end}}
+
+<section class="card">
+<form method="post" action="/checks" enctype="multipart/form-data" class="upload">
+  <div class="field">
+    <label for="check-files">{{t "Photos or screenshots of checks"}}</label>
+    <input id="check-files" name="files" type="file" multiple required accept="image/*,application/pdf">
+    <p class="hint">{{t "Checks from any of your accounts, all at once. Each file is one check. From a phone, share them to Reconcile and choose Your checks."}}</p>
+  </div>
+  <button type="submit">{{t "Add to your checks"}}</button>
+</form>
+</section>
+
+<section class="card">
+<h2>{{t "Waiting to be filed"}}</h2>
+{{if $v.Inbox.Waiting}}
+{{if not $v.Accounts}}<p class="hint">{{t "There is no account you may add receipts to, so these cannot be filed yet. Somebody who keeps an organization's books can give you a role on one."}}</p>{{end}}
+<ul class="receipts">
+{{range $v.Inbox.Waiting}}<li>
+<a href="/checks/{{.ID}}/image" class="receipt-line">{{template "inbox-check-thumb" .}}
+<span><strong>{{t "A check"}}</strong><br><span class="hint">{{t "added {date}" "date" (.AddedAt.Format "2006-01-02")}}</span></span></a>
+{{if $v.Accounts}}
+<form method="post" action="/checks/{{.ID}}/file">
+  <div class="field">
+    <label for="account-{{.ID}}">{{t "Drawn on"}}</label>
+    <select id="account-{{.ID}}" name="account" required>
+      <option value="">{{t "(choose the account)"}}</option>
+      {{range $v.Accounts}}<option value="{{.ID}}">{{.Name}}{{with .Last4}} ···{{.}}{{end}}</option>{{end}}
+    </select>
+  </div>
+  <div class="field">
+    <label for="number-{{.ID}}">{{t "Check number (optional)"}}</label>
+    <input id="number-{{.ID}}" name="number" type="text" inputmode="numeric" maxlength="12">
+  </div>
+  <button type="submit">{{t "File it"}}</button>
+</form>
+{{end}}
+<form method="post" action="/checks/{{.ID}}/remove" class="inline">
+<input type="hidden" name="removed" value="1">
+<button type="submit" class="quiet">{{t "Remove"}}</button>
+</form>
+</li>
+{{end}}</ul>
+{{else}}<p class="hint">{{t "None. Every check you added is filed."}}</p>{{end}}
+</section>
+
+{{if $v.Inbox.Filed}}
+<section class="card">
+<h2>{{t "Filed"}}</h2>
+<ul class="receipts">
+{{range $v.Inbox.Filed}}{{$r := index $v.Filed .ID}}<li>
+{{if $r.ID.String}}{{$acct := index $v.Names $r.Home.ID}}<a href="/receipts/{{$r.ID}}" class="receipt-line">{{template "inbox-check-thumb" .}}
+<span><strong>{{if $r.Check}}{{t "Check {number}" "number" $r.Check}}{{else}}{{t "A check"}}{{end}}</strong>
+<br><span class="hint">{{with $acct.Name}}{{.}} · {{end}}{{if $r.Waiting}}{{t "waiting for the transaction that paid it"}}{{else}}{{t "attached"}}{{end}}</span></span></a>
+{{else}}<span class="receipt-line">{{template "inbox-check-thumb" .}}<span><strong>{{t "A check"}}</strong><br><span class="hint">{{t "filed in an account you no longer see"}}</span></span></span>{{end}}
+</li>{{end}}
+</ul>
+</section>
+{{end}}
+
+{{if $v.Inbox.Removed}}
+<details><summary>{{t "Removed checks"}}</summary>
+<ul class="receipts">
+{{range $v.Inbox.Removed}}<li>
+<a href="/checks/{{.ID}}/image" class="receipt-line">{{template "inbox-check-thumb" .}}<span><strong>{{t "A check"}}</strong></span></a>
+<form method="post" action="/checks/{{.ID}}/remove" class="inline">
+<input type="hidden" name="removed" value="0">
+<button type="submit" class="quiet">{{t "Bring back"}}</button>
+</form>
+</li>{{end}}
+</ul>
+</details>
+{{end}}
+{{end}}
+
+{{/* inbox-check-thumb is the small picture of a check in a person's own
+     inbox, as "thumb" is a receipt's. */}}
+{{define "inbox-check-thumb"}}{{with .File}}{{if or (eq .ContentType "image/jpeg") (eq .ContentType "image/png") (eq .ContentType "image/webp")}}<img class="thumb" src="/checks/{{$.ID}}/image{{if ne .ContentType "image/webp"}}/small{{end}}" alt="" loading="lazy">{{else}}<span class="thumb doc">{{if eq .ContentType "application/pdf"}}PDF{{else}}{{t "Photo"}}{{end}}</span>{{end}}{{end}}{{end}}

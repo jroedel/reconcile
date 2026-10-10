@@ -1,6 +1,7 @@
 // Package receiptapp is the pages for receipts: an account's or a project's
 // inbox, uploading into it from a phone, the list of receipts waiting for a
-// match, one receipt with its pages, and attaching it to a transaction.
+// match, one receipt with its pages, and attaching it to a transaction; and
+// a person's own inbox of the images of checks (checkinbox.go).
 //
 // Uploading is one form that works without JavaScript: the file picker
 // takes several photos at once, from the camera or the library, and each
@@ -53,6 +54,7 @@ var UploadPatterns = []string{
 	"POST " + SharePath,
 	"POST " + sharedPath,
 	"POST " + SendPath,
+	"POST " + CheckInboxPath,
 }
 
 // The limits on one upload. A phone's photo is three to eight megabytes;
@@ -111,7 +113,9 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	handle(UploadPatterns[4], a.share)
 	handle(UploadPatterns[5], a.shared)
 	handle(UploadPatterns[6], a.sendOne)
+	handle(UploadPatterns[7], a.uploadToCheckInbox)
 	a.shareRoutes(mux, guard)
+	a.checkInboxRoutes(handle)
 	handle("GET /receipts/{id}", a.receipt)
 	handle("GET /receipts/{id}/files/{n}", a.file)
 	handle("GET /receipts/{id}/files/{n}/{size}", a.picture)

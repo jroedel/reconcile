@@ -19,6 +19,10 @@ import { sessionCookie, startServer } from "../../../../scripts/testserver.mjs";
 let server, base, browser, page, account;
 let stand = () => "through";
 
+// sendReady is the share page's sender having taken over its form
+// (send.mjs); pressing Add before that posts the form itself.
+const sendReady = `document.querySelector("form[data-share]")?.dataset.sending === "ready"`;
+
 // between runs fn with each file the page sends passed to answer, by the
 // order it was sent in, counting from 1 and counting every try.
 async function between(answer, fn) {
@@ -137,6 +141,7 @@ test("files shared to the app wait in the share page, and go where it says", opt
 
   const checks = account.replace("/accounts/", "checks:");
   await page.evaluate(`document.querySelector('input[name="to"][value="${checks}"]').click(), true`);
+  await page.waitFor(sendReady);
   await page.evaluate(`document.querySelector("form[data-share] button[type=submit]").click(), true`);
 
   await page.waitFor(`location.pathname === "${account}/receipts"`, 60_000);
@@ -168,6 +173,7 @@ const colours = (n, from) =>
 async function add(files) {
   await share(files);
   await page.waitFor(`location.pathname === "/receipts/share" && document.querySelector("#share-files").files.length === ${files.length}`);
+  await page.waitFor(sendReady);
   await page.evaluate(`document.querySelector("form[data-share] button[type=submit]").click(), true`);
   return page.waitFor(`location.pathname === "${account}/receipts" && location.search`, 120_000);
 }
@@ -206,12 +212,14 @@ test("pressing Add again sends only the files that did not arrive", opts, async 
   await page.waitFor(`location.pathname === "/receipts/share" && document.querySelector("#share-files").files.length === 2`);
 
   await between((n) => (n === 2 ? "signed out" : "through"), async () => {
+    await page.waitFor(sendReady);
     await page.evaluate(`document.querySelector("form[data-share] button[type=submit]").click(), true`);
     await page.waitFor(`/signed out while sending/.test(document.querySelector("#sent").innerText)`, 60_000);
   });
   assert.match(await page.evaluate(`document.querySelector("#sent").innerText`), /1 added/);
 
   const before = posts("/receipts/share/one");
+  await page.waitFor(sendReady);
   await page.evaluate(`document.querySelector("form[data-share] button[type=submit]").click(), true`);
   assert.equal(await page.waitFor(`location.pathname === "${account}/receipts" && location.search`, 60_000), "?done=checks&n=0&waiting=1&already=1");
   assert.equal(posts("/receipts/share/one") - before, 1, "only the second file was sent again");
