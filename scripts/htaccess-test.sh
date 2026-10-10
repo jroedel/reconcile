@@ -52,6 +52,7 @@ echo
 echo "order, which is the whole of what a rewrite file is"
 
 acme="$(where '^RewriteRule \^\\\.well-known/')"
+oauth="$(where '^RewriteCond %\{REQUEST_URI\} !\^/\\\.well-known/oauth-')"
 https="$(where 'https://%\{HTTP_HOST\}')"
 index="$(where '\^index')"
 catchall="$(where '\^\(\.\*\)\$ http://127')"
@@ -62,10 +63,13 @@ before() { [ -n "$1" ] && [ -n "$2" ] && [ "$1" -lt "$2" ]; }
 # for a reason nobody connects to this file.
 check "the ACME path is exempted before anything else rewrites" before "$acme" "$catchall"
 
-# And nothing conditions it: a RewriteCond binds to the rule right after it,
-# so one on the line before would quietly narrow the exemption.
-check "nothing narrows the ACME exemption" \
-	bash -c '[ -n "$0" ] && [ "$0" -gt 1 ] && ! sed -n "$(( $0 - 1 ))p" "$1" | grep -q "^RewriteCond"' "$acme" <(printf '%s\n' "$RENDERED")
+# The one exception to it: the OAuth discovery documents go to the app, or
+# Claude cannot find where to sign in. A RewriteCond binds to the rule right
+# after it, so it must be the line before the ACME rule and nowhere else.
+check "the OAuth discovery documents are the one exception, on the ACME rule itself" \
+	bash -c '[ -n "$0" ] && [ "$0" -eq $(( $1 - 1 )) ]' "$oauth" "$acme"
+check "and the exception names them exactly" \
+	has '^RewriteCond %\{REQUEST_URI\} !\^/\\\.well-known/oauth-\(authorization-server\|protected-resource\)\(/\|\$\)$'
 
 check "the index rule comes before the catch-all that would swallow it" before "$index" "$catchall"
 

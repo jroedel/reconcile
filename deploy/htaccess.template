@@ -28,6 +28,13 @@ RewriteEngine On
 # this path, and a rewrite that swallowed it would let the certificate lapse
 # silently -- which is discovered by the site going down, months later, for a
 # reason nobody connects to this file.
+#
+# Except the OAuth discovery documents, which are the app's: Claude reads them
+# to learn where to sign in (oauthapp, mcpapp), and Apache has no file by
+# either name. Named exactly, so the exception can never reach the ACME path.
+# Stewards found this; it reached this repository only with Claude's first
+# connection to the books, which failed with "Couldn't start sign-in".
+RewriteCond %{REQUEST_URI} !^/\.well-known/oauth-(authorization-server|protected-resource)(/|$)
 RewriteRule ^\.well-known/ - [L]
 
 RewriteCond %{HTTPS} !=on
