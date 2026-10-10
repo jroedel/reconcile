@@ -567,15 +567,17 @@ func TestClaudeSignsInAsATranslatorAndItsKeyReachesTheAPI(t *testing.T) {
 	}
 }
 
-// Somebody who does not translate may connect Claude too: the page says it
-// will read their books and says nothing of translating, and the key Claude
-// gets reads the books and translates nothing.
-func TestAnybodyMayConnectClaudeToReadTheirBooks(t *testing.T) {
+// Anybody signed in may connect claude.ai to keep their books, or, with
+// the box ticked, only to read them; the page says which, and the key
+// claude.ai gets is what the person chose. Translating is offered only to
+// those who translate.
+func TestAnybodyMayConnectClaudeToKeepTheirBooks(t *testing.T) {
 	s := newTranslatingSite(t)
 	stranger := signUp(t, s.h, s.sent, "stranger@example.org")
 
 	rec := stranger.get(authorize(asking()))
-	wantBody(t, rec, "Let Claude work as you?", "read your books", "It cannot change anything in your books")
+	wantBody(t, rec, "Let Claude work as you?", "keep your books", "sort transactions, write sorting rules",
+		"It cannot reconcile a month", `name="reading" value="only"`)
 
 	if strings.Contains(rec.Body.String(), "Spanish and Portuguese") {
 		t.Error("the page offers translating to somebody who does not translate")
@@ -583,27 +585,50 @@ func TestAnybodyMayConnectClaudeToReadTheirBooks(t *testing.T) {
 
 	wantBody(t, s.admin.get(authorize(asking())), "Spanish and Portuguese")
 
-	form := asking()
-	form.Set("answer", "allow")
+	connect := func(reading string) string {
+		t.Helper()
 
-	code := sentBack(t, stranger.post("/oauth/authorize", form)).Get("code")
+		form := asking()
+		form.Set("answer", "allow")
 
-	rec = s.program("/oauth/token", url.Values{
-		"grant_type": {"authorization_code"}, "code": {code}, "client_id": {claudeAI},
-		"redirect_uri": {callback}, "code_verifier": {verifier}, "resource": {base + "/mcp"},
-	})
+		if reading != "" {
+			form.Set("reading", reading)
+		}
 
-	var tok oauth.Token
-	if err := json.Unmarshal(rec.Body.Bytes(), &tok); rec.Code != http.StatusOK || err != nil {
-		t.Fatalf("the trade: %d %s", rec.Code, rec.Body)
+		code := sentBack(t, stranger.post("/oauth/authorize", form)).Get("code")
+
+		rec := s.program("/oauth/token", url.Values{
+			"grant_type": {"authorization_code"}, "code": {code}, "client_id": {claudeAI},
+			"redirect_uri": {callback}, "code_verifier": {verifier}, "resource": {base + "/mcp"},
+		})
+
+		var tok oauth.Token
+		if err := json.Unmarshal(rec.Body.Bytes(), &tok); rec.Code != http.StatusOK || err != nil {
+			t.Fatalf("the trade: %d %s", rec.Code, rec.Body)
+		}
+
+		return tok.AccessToken
 	}
 
-	if rec := s.api(http.MethodGet, "/api/v1/overview", tok.AccessToken, ""); rec.Code != http.StatusOK {
-		t.Errorf("the books with Claude's key: %d %s", rec.Code, rec.Body)
-	}
+	for reading, want := range map[string]string{"": "books:write", "only": "books:read"} {
+		key := connect(reading)
 
-	if rec := s.api(http.MethodGet, "/api/v1/translations/pending?lang=es", tok.AccessToken, ""); rec.Code != http.StatusForbidden {
-		t.Errorf("the translations with Claude's key: %d", rec.Code)
+		if scopes := field(s.get(t, "/api/v1/me", key), "scopes").([]any); len(scopes) != 1 || scopes[0] != want {
+			t.Errorf("reading %q: the key's scopes are %v, want %s", reading, scopes, want)
+		}
+
+		if rec := s.api(http.MethodGet, "/api/v1/translations/pending?lang=es", key, ""); rec.Code != http.StatusForbidden {
+			t.Errorf("reading %q: the translations with Claude's key: %d", reading, rec.Code)
+		}
+
+		code := http.StatusOK
+		if want == "books:read" {
+			code = http.StatusForbidden
+		}
+
+		if rec := s.api(http.MethodPost, "/api/v1/inbox/import", key, "{}"); rec.Code != code {
+			t.Errorf("reading %q: importing from the inbox: %d, want %d", reading, rec.Code, code)
+		}
 	}
 }
 

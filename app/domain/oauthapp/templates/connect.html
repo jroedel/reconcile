@@ -2,13 +2,14 @@
 {{define "content"}}{{with .Data}}
 {{if .Host}}
 <h1>{{t "Let {program} work as you?" "program" .Name}}</h1>
-<p>{{t "{host} is asking to read your books on this site, as you ({email})." "host" .Host "email" .Email}}</p>
+<p>{{t "{host} is asking to keep your books on this site, as you ({email})." "host" .Host "email" .Email}}</p>
 
 {{if eq .Problem "too-many"}}<p class="notice" role="alert">{{t "Too many programs have asked to connect as you in the last few minutes. Wait a while and try again."}}</p>{{end}}
 
 <section class="card">
   <p>{{t "It can read what you can: your organizations, accounts and projects, their statements, transactions, sorting rules and receipts, and the statements waiting in your inbox. Only what you have been given; nobody else's."}}</p>
-  <p>{{t "It cannot change anything in your books, import a statement, or download a statement or receipt."}}</p>
+  <p>{{t "It can import statements from your inbox, sort transactions, write sorting rules, attach receipts, and gather what explains an amount, as far as your role allows. What it sorts and the rules it writes are marked as its own until you save them yourself, and every change is in the history."}}</p>
+  <p>{{t "It cannot reconcile a month, reopen one, remove a statement or a receipt, or download a statement or receipt."}}</p>
   {{if .Translates}}<p>{{t "Because you translate this site, it can also read and write the Spanish and Portuguese of its pages. What it writes is shown at once, and you can look it over afterwards."}}</p>{{end}}
   <p>{{t "It gets a key that lasts 90 days. You can end it at any time on your API keys page, where it is listed as “{name}”." "name" .KeyName}}</p>
   <p><a href="/account/keys">{{t "Your API keys"}}</a></p>
@@ -21,6 +22,7 @@
   <input type="hidden" name="code_challenge" value="{{.Request.Challenge}}">
   <input type="hidden" name="code_challenge_method" value="{{.Request.Method}}">
   <input type="hidden" name="response_type" value="{{.Request.ResponseType}}">
+  <label class="choice"><input type="checkbox" name="reading" value="only"> {{t "Only let it read: it changes nothing in your books"}}</label>
   <button type="submit" name="answer" value="allow">{{t "Allow"}}</button>
   <button type="submit" name="answer" value="deny" class="quiet">{{t "No"}}</button>
   <p class="hint">{{t "Either button takes you back to {place}." "place" .BackTo}}</p>

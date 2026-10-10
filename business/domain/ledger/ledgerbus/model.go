@@ -228,6 +228,15 @@ type Split struct {
 	// sorted or nobody has (docs/sorting.md). Saving the transaction's
 	// parts clears it: then a person has said.
 	RuleID types.ID
+
+	// Via is the name of the key a person's program sorted it through --
+	// their Claude, usually -- and "" for a part sorted on the web or by
+	// nobody (docs/books-api.md, "Telling afterwards what the API did").
+	// Like RuleID it is a mark to check, and saving the parts on the web
+	// clears it. A rule applied through a key marks its parts with the
+	// rule, not with the key: which rule sorted a part is the more useful
+	// thing to know, and a rule written through a key is marked itself.
+	Via string
 }
 
 // ByRule reports whether a rule sorted any of the transaction's parts.
@@ -239,6 +248,18 @@ func (t Transaction) ByRule() bool {
 	}
 
 	return false
+}
+
+// Through is the name of the key any of the transaction's parts were
+// sorted through, or "" when none was.
+func (t Transaction) Through() string {
+	for _, s := range t.Splits {
+		if s.Via != "" {
+			return s.Via
+		}
+	}
+
+	return ""
 }
 
 // Month is one month of an account's transactions, summed.
@@ -255,6 +276,10 @@ type Month struct {
 	// ByRule is how many of them a sorting rule sorted that nobody has
 	// saved since: the ones to check.
 	ByRule int
+
+	// ThroughKey is how many were sorted through a key, by a person's
+	// Claude, that nobody has saved on the web since: the others to check.
+	ThroughKey int
 
 	// Operations is the month's parts by kind, beside the cash.
 	Operations Operations

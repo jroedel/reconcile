@@ -9,7 +9,8 @@
 {{else if not $v.ClearedBy}}<p class="hint"><a href="/transactions/{{$t.ID}}/explain">{{t "Explain this amount"}}</a> · {{t "which transactions make it up?"}}</p>{{end}}
 {{template "parts-problem" $v}}
 {{template "done" $v.Done}}
-{{if $t.ByRule}}<p class="hint"><span class="badge">{{t "sorted by rule"}}</span> {{t "A sorting rule chose this. Saving it, changed or not, says a person has checked it."}}</p>{{end}}
+{{if $t.ByRule}}<p class="hint"><span class="badge">{{t "sorted by rule"}}</span> {{t "A sorting rule chose this. Saving it, changed or not, says a person has checked it."}}</p>
+{{else}}{{with $t.Through}}<p class="hint"><span class="badge">{{t "sorted by a program"}}</span> {{t "A program sorted this through the API key “{name}”. Saving it, changed or not, says a person has checked it." "name" .}}</p>{{end}}{{end}}
 {{if $e.Lock.Made}}<p class="notice">{{t "This transaction is in a reconciled period, {start} to {end}, so its parts cannot change. Receipts can still be attached." "start" $e.Lock.Start "end" $e.Lock.End}} <a href="/statements/{{$e.Lock.StatementID}}#reconcile">{{t "See the statement"}}</a></p>{{end}}
 {{if eq $v.Done "receipts"}}{{template "uploaded" $v.Uploaded}}{{end}}
 

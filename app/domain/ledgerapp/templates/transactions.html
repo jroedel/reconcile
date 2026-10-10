@@ -67,9 +67,10 @@
 <ul class="list">{{range .Totals}}<li>{{if .Holder}}{{.Holder}}{{else}}{{t "Nobody in particular"}}{{end}} · {{t "{n} transactions" "n" .Count}} · <span class="money {{if lt .Sum 0}}out{{else}}in{{end}}">{{money .Sum $cur}}</span></li>
 {{end}}</ul>
 {{else if .Missing}}<p><strong>{{t "No file yet from {names}" "names" .MissingNames}}</strong></p>{{end}}{{end}}
-{{if or $v.Unsorted $v.ByRule}}<p><a href="?month={{.Month}}">{{t "Show all of the month"}}</a></p>
+{{if or $v.Unsorted $v.ByRule $v.Through}}<p><a href="?month={{.Month}}">{{t "Show all of the month"}}</a></p>
 {{else}}<p>{{if .Unsorted}}<a href="?month={{.Month}}&amp;unsorted=1">{{t "{n} not sorted yet" "n" .Unsorted}}</a>{{if $v.CanBookkeep}} · <a href="{{$v.Path}}/sort?month={{.Month}}">{{t "Sort them on one page"}}</a>{{end}}{{else}}<span class="hint">{{t "Every transaction this month is sorted."}}</span>{{end}}
 {{- if .ByRule}} · <a href="?month={{.Month}}&amp;byrule=1">{{t "{n} sorted by rule, to check" "n" .ByRule}}</a>{{end}}
+{{- if .ThroughKey}} · <a href="?month={{.Month}}&amp;through=1">{{t "{n} sorted by a program, to check" "n" .ThroughKey}}</a>{{end}}
 {{- if $v.CanBookkeep}} · <a href="{{$v.Path}}/rules">{{t "Sorting rules"}}</a>{{end}}</p>{{end}}
 {{end}}{{end}}
 
@@ -80,7 +81,8 @@
 <tbody>
 {{range $v.Shown}}<tr id="t-{{.ID}}"><td>{{.PostedOn}}</td><td><a href="/transactions/{{.ID}}">{{if .Description}}{{.Description}}{{else}}{{t "(no description)"}}{{end}}</a>{{if $v.ByHolder}}{{with .Holder}}<br><span class="hint">{{.}}</span>{{end}}{{end}}{{with .CheckUnsaid}}<br><span class="hint">{{t "Check number {number}" "number" .}}</span>{{end}}{{with .Payee}}<br><span class="hint">{{t "Paid to {payee}" "payee" .}}</span>{{end}}{{if .Pending}} <span class="badge">{{t "pending"}}</span>{{end}}</td>
 <td>{{if gt (len .Splits) 1}}{{t "{n} parts" "n" (len .Splits)}}{{if not .Sorted}} <span class="badge">{{t "not sorted yet"}}</span>{{end}}
-{{else}}{{range .Splits}}{{with index $v.Categories .CategoryID}}{{.}}{{else}}<span class="badge">{{t "not sorted yet"}}</span>{{end}}{{with index $v.Projects .ProjectID}} · {{.}}{{end}}{{if not .RuleID.Zero}} <span class="badge">{{t "by rule"}}</span>{{end}}{{end}}{{end}}</td>
+{{else}}{{range .Splits}}{{with index $v.Categories .CategoryID}}{{.}}{{else}}<span class="badge">{{t "not sorted yet"}}</span>{{end}}{{with index $v.Projects .ProjectID}} · {{.}}{{end}}{{if not .RuleID.Zero}} <span class="badge">{{t "by rule"}}</span>{{else}}{{with .Via}} <span class="badge">{{t "by {name}" "name" .}}</span>{{end}}{{end}}{{end}}{{end}}
+{{- if gt (len .Splits) 1}}{{with .Through}} <span class="badge">{{t "by {name}" "name" .}}</span>{{end}}{{end}}</td>
 <td class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $cur}}{{with index $v.Receipts .ID}}<br><span class="hint">{{t "{n} receipts" "n" .}}</span>{{end}}
 {{- with index $v.Clearing.By .ID}}<br>{{if .Hidden}}<span class="badge">{{t "cleared"}}</span>{{else}}<a href="/transactions/{{.Transaction.ID}}/explain" class="badge">{{t "cleared {date}" "date" .Transaction.PostedOn}}</a>{{end}}{{end}}
 {{- $state := $v.Clearing.State .ID}}{{if $state}}<br><a href="/transactions/{{.ID}}/explain" class="badge{{if eq $state "explained"}} ok{{end}}">{{if eq $state "explained"}}{{t "explained"}}{{else}}{{t "open"}}{{end}}</a>{{end}}</td></tr>

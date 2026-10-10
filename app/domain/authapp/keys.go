@@ -63,6 +63,7 @@ type keyRow struct {
 var purposes = map[string][]userbus.Scope{
 	"upload":     {userbus.Upload},
 	"books-read": {userbus.BooksRead},
+	"books-keep": {userbus.BooksWrite},
 	"translate":  {userbus.Translate},
 }
 

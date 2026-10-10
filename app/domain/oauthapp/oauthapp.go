@@ -254,8 +254,10 @@ type connectView struct {
 	Problem string
 }
 
-// scopesFor is what a program connected as this person may do: read their
-// books, and translate if they may.
+// scopesFor is what a program connected as this person may do: keep their
+// books, and translate if they may. The consent's box narrows keeping to
+// reading (answer); claude.ai sends no scope worth trusting, so what the
+// person chose on the page is the key's scopes.
 func (a app) scopesFor(w http.ResponseWriter, r *http.Request) (userbus.User, []userbus.Scope, bool) {
 	me, _ := mid.UserFrom(r.Context())
 
@@ -267,7 +269,7 @@ func (a app) scopesFor(w http.ResponseWriter, r *http.Request) (userbus.User, []
 		return userbus.User{}, nil, false
 	}
 
-	scopes := []userbus.Scope{userbus.BooksRead}
+	scopes := []userbus.Scope{userbus.BooksWrite}
 	if ok {
 		scopes = append(scopes, userbus.Translate)
 	}
@@ -333,6 +335,14 @@ func (a app) answer(w http.ResponseWriter, r *http.Request) {
 		a.back(w, r, req, url.Values{"error": {"access_denied"}, "error_description": {"the person said no"}})
 
 		return
+	}
+
+	if r.PostForm.Get("reading") == "only" {
+		for i, s := range scopes {
+			if s == userbus.BooksWrite {
+				scopes[i] = userbus.BooksRead
+			}
+		}
 	}
 
 	code, err := a.cfg.Users.GrantAccess(r.Context(), a.cfg.Now(), me.ID, req.ClientID, keyName(c), req.Redirect, req.Challenge, scopes)

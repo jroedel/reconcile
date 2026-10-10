@@ -30,9 +30,10 @@
 {{if $b.Rules}}
 <ul class="list">
 {{range $b.Rules}}{{$r := .Rule}}<li>
-<strong>“{{$r.Match}}”</strong> · {{template "direction" $r.Direction}}
+<strong>“{{$r.Match}}”</strong> · {{template "direction" $r.Direction}}{{with $r.Via}} <span class="badge">{{t "by {name}" "name" .}}</span>{{end}}
 <br>{{if not $r.CategoryID.Zero}}{{index $v.CategoryNames $r.CategoryID}}{{end}}{{if and (not $r.CategoryID.Zero) (not $r.ProjectID.Zero)}} · {{end}}{{if not $r.ProjectID.Zero}}{{with index $v.ProjectNames $r.ProjectID}}{{.}}{{else}}{{t "a project you have no role on"}}{{end}}{{end}}
 <br><span class="hint">{{t "Sorted {n} that nobody has changed since." "n" .Parts}}{{if .Waiting}} {{t "Would sort {n} not sorted yet." "n" .Waiting}}{{end}}</span>
+{{with $r.Via}}<br><span class="hint">{{t "A program wrote this through the API key “{name}”. Saving it here says a person has checked it." "name" .}}</span>{{end}}
 {{with .Problem}}<br><span class="badge warn">{{template "rule-problem" .}}</span>{{end}}
 <details><summary>{{t "Change it"}}</summary>
 <form method="post" action="/rules/{{$r.ID}}">

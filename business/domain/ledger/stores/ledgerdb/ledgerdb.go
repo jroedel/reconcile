@@ -39,7 +39,7 @@ var Expected = sqldb.Expected{
 	"transactions": {"id", "account_id", "statement_id", "posted_on", "description", "amount", "balance",
 		"external_id", "hash", "occurrence", "holder", "pending", "check_number", "payee"},
 	"csv_mappings":        {"account_id", "fingerprint", "mapping", "updated_by", "updated_at"},
-	"splits":              {"id", "transaction_id", "position", "amount", "category_id", "project_id", "memo", "rule_id"},
+	"splits":              {"id", "transaction_id", "position", "amount", "category_id", "project_id", "memo", "rule_id", "via"},
 	"transaction_aliases": {"account_id", "hash", "transaction_id", "created_at"},
 	"explanations": {"transaction_id", "note", "accepted", "sources", "back_from", "back_to",
 		"created_by", "created_at", "updated_by", "updated_at"},
@@ -259,7 +259,14 @@ WHERE NOT EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id)`); err !
 	// column beside the CREATE; NULL for a part a person sorted or nobody
 	// has. Not a foreign key: removing a rule leaves what it sorted as it
 	// is, still saying a rule did it, until a person saves the transaction.
-	return sqldb.AddColumn(ctx, db, "splits", "rule_id", "TEXT")
+	if err := sqldb.AddColumn(ctx, db, "splits", "rule_id", "TEXT"); err != nil {
+		return err
+	}
+
+	// The key a part was sorted through (docs/books-api.md, "Telling
+	// afterwards what the API did"), another later column; '' for a part
+	// sorted on the web, which is every part before it.
+	return sqldb.AddColumn(ctx, db, "splits", "via", "TEXT NOT NULL DEFAULT ''")
 }
 
 // --- importing ----------------------------------------------------------------
@@ -822,7 +829,8 @@ SELECT substr(posted_on, 1, 7), count(*),
        coalesce(sum(CASE WHEN amount < 0 THEN amount END), 0),
        min(posted_on),
        sum(EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id AND s.category_id IS NULL)),
-       sum(EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id AND s.rule_id IS NOT NULL))
+       sum(EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id AND s.rule_id IS NOT NULL)),
+       sum(EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id AND s.via <> ''))
 FROM transactions t WHERE account_id = ?
 GROUP BY 1 ORDER BY 1 DESC`, account.String())
 	if err != nil {
@@ -839,7 +847,7 @@ GROUP BY 1 ORDER BY 1 DESC`, account.String())
 			earliest string
 		)
 
-		if err := rows.Scan(&m.Month, &m.Count, &in, &outs, &earliest, &m.Unsorted, &m.ByRule); err != nil {
+		if err := rows.Scan(&m.Month, &m.Count, &in, &outs, &earliest, &m.Unsorted, &m.ByRule, &m.ThroughKey); err != nil {
 			return nil, fmt.Errorf("reading the months: %w", err)
 		}
 
@@ -1081,7 +1089,7 @@ func (s *Store) transactions(ctx context.Context, q string, args ...any) ([]ledg
 
 // --- splits -----------------------------------------------------------------
 
-const splitColumns = `id, transaction_id, position, amount, category_id, project_id, memo, rule_id`
+const splitColumns = `id, transaction_id, position, amount, category_id, project_id, memo, rule_id, via`
 
 // splits reads the parts matching a condition, by transaction, in order.
 func (s *Store) splits(ctx context.Context, where string, args ...any) (map[types.ID][]ledgerbus.Split, error) {
@@ -1114,7 +1122,7 @@ func scanSplit(row scanner, extra ...any) (ledgerbus.Split, error) {
 		rule              sql.NullString
 	)
 
-	if err := row.Scan(append([]any{&id, &tx, &sp.Position, &amount, &category, &project, &sp.Memo, &rule}, extra...)...); err != nil {
+	if err := row.Scan(append([]any{&id, &tx, &sp.Position, &amount, &category, &project, &sp.Memo, &rule, &sp.Via}, extra...)...); err != nil {
 		return sp, fmt.Errorf("reading a part: %w", err)
 	}
 
@@ -1145,9 +1153,9 @@ func scanSplit(row scanner, extra ...any) (ledgerbus.Split, error) {
 
 func insertSplits(ctx context.Context, tx *sql.Tx, splits []ledgerbus.Split) error {
 	for _, sp := range splits {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO splits (`+splitColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		if _, err := tx.ExecContext(ctx, `INSERT INTO splits (`+splitColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			sp.ID.String(), sp.TransactionID.String(), sp.Position, int64(sp.Amount),
-			nullID(sp.CategoryID), nullID(sp.ProjectID), sp.Memo, nullID(sp.RuleID)); err != nil {
+			nullID(sp.CategoryID), nullID(sp.ProjectID), sp.Memo, nullID(sp.RuleID), sp.Via); err != nil {
 			return fmt.Errorf("storing a part: %w", err)
 		}
 	}
@@ -1206,7 +1214,7 @@ func (s *Store) OrgLines(ctx context.Context, orgID types.ID, from, to types.Dat
 // and category.
 func (s *Store) lines(ctx context.Context, where string, args ...any) ([]ledgerbus.ProjectLine, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT s.id, s.transaction_id, s.position, s.amount, s.category_id, s.project_id, s.memo, s.rule_id,
+SELECT s.id, s.transaction_id, s.position, s.amount, s.category_id, s.project_id, s.memo, s.rule_id, s.via,
        t.posted_on, t.description, a.id, a.name, a.currency, coalesce(c.name, ''), coalesce(c.kind, '')
 FROM splits s
 JOIN transactions t ON t.id = s.transaction_id

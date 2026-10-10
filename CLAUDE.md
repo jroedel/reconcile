@@ -156,7 +156,7 @@ over them are `homeapp`, `authapp`, `tenancyapp`, `ledgerapp`,
 `categoryapp`, `ruleapp`, `budgetapp`, `receiptapp`, `exportapp`, `adminapp` and
 `translationapp` (the review screen); a program's ways
 in are `apiapp` (`/api/v1`: the translations, the statement inbox a
-person's Gmail script fills, and reading the books, each endpoint behind the
+person's Gmail script fills, and reading and keeping the books, each endpoint behind the
 scope a key needs; `docs/books-api.md`), `mcpapp` (the same as tools on `/mcp`, listing only
 those a key's scopes reach) and `oauthapp` (how Claude on claude.ai gets a
 key). The rest is
