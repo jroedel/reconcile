@@ -239,9 +239,11 @@ type transactionsView struct {
 
 	// Unsorted shows only the month's transactions with a part that has
 	// no category: the treasurer's to-do list. ByRule shows only those a
-	// sorting rule sorted, for checking what a statement brought.
+	// sorting rule sorted, for checking what a statement brought; Through
+	// those a person's program sorted through an API key, their Claude.
 	Unsorted bool
 	ByRule   bool
+	Through  bool
 
 	// Names of the categories and projects the shown parts point at.
 	Categories map[types.ID]string
@@ -360,6 +362,9 @@ func (a app) transactionsPage(w http.ResponseWriter, r *http.Request, status int
 	case q.Get("byrule") == "1":
 		view.ByRule = true
 		view.Shown = slices.DeleteFunc(view.Shown, func(t ledgerbus.Transaction) bool { return !t.ByRule() })
+	case q.Get("through") == "1":
+		view.Through = true
+		view.Shown = slices.DeleteFunc(view.Shown, func(t ledgerbus.Transaction) bool { return t.Through() == "" })
 	}
 
 	if err := a.names(r, me.ID, account, &view); err != nil {

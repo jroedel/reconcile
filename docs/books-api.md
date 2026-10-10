@@ -14,6 +14,11 @@ scopes." This is that plan, and scopes are the first thing in it.
 
 ## Where things stand
 
+All three pull requests of the build order are built: the inbox and the
+Gmail script, reading the books, and keeping them. What follows was the
+state of things when this plan was written, kept because the decisions
+below answer it.
+
 - `/api/v1` and `/mcp` exist and carry translations only (`apiapp`,
   `mcpapp`). Each endpoint is declared once, as an `Endpoint`, which mounts
   the route, writes the index at `GET /api/v1`, and names the MCP tool; the
@@ -210,6 +215,13 @@ from (`docs/design.md`). Lists take `limit` and a `cursor`.
 | `POST /api/v1/receipts/{receipt}/detach` `{transaction}` | `detach_receipt` | `receiptbus.Detach`, which removes nothing: the receipt goes back to waiting |
 | `POST /api/v1/transactions/{transaction}/explanation/lines` `{add, remove, account, from, to}` | `gather_explanation` | `Gather`: lines into an explanation and out of it. Explaining changes nothing about a line (`docs/clearing.md`), so it is bookkeeping, not locking. With no difference left, the transaction is explained |
 
+As built: `import_from_inbox` takes `accounts` as a list of `{file, part,
+account}`, the part as `list_inbox` gives it; `gather_explanation` takes the
+accounts as `account`, the same word `list_explanation_candidates` uses;
+`sort_transactions` answers what it left alone because somebody had sorted
+or split it already, so that Claude does not report it sorted; and
+`apply_rules` marks what it sorts with the rule, not the key (below).
+
 ### Not in the API, on purpose
 
 Reconciling a period, reopening one, removing a statement, removing or
@@ -244,6 +256,10 @@ too.
   by rule" and a filter for it, and the split editor says it in words.
 - **A rule written through the API says so** on the rules page (`sort_rules.via`),
   until a person changes it there.
+- **A part a rule sorted says which rule**, even when the rules were
+  applied through a key (`apply_rules`, or an import that applied them):
+  which rule chose a part is the more useful thing to know, and "sorted by
+  rule" is already a mark to check. A rule Claude wrote carries its own.
 - **`list_changes`** reads the history by person and `via`, so that a
   check at the end of a session is one call.
 

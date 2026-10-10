@@ -27,7 +27,7 @@ var _ rulebus.Storer = (*Store)(nil)
 
 // Expected is what CheckSchema verifies at startup and on every /healthz.
 var Expected = sqldb.Expected{
-	"sort_rules": {"id", "account_id", "match", "match_key", "direction", "category_id", "project_id", "created_by", "created_at", "updated_at"},
+	"sort_rules": {"id", "account_id", "match", "match_key", "direction", "category_id", "project_id", "created_by", "created_at", "updated_at", "via"},
 }
 
 // Init creates the table. After tenancydb and categorydb, which it
@@ -60,7 +60,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS sort_rules_match ON sort_rules (account_id, ma
 		return fmt.Errorf("creating the sorting rules table: %w", err)
 	}
 
-	return nil
+	// The key a rule was last written through (docs/books-api.md), a later
+	// column; '' for one written on the web, which is every rule before it.
+	return sqldb.AddColumn(ctx, db, "sort_rules", "via", "TEXT NOT NULL DEFAULT ''")
 }
 
 func nullID(id types.ID) any {
@@ -75,10 +77,10 @@ func nullID(id types.ID) any {
 func (s *Store) Create(ctx context.Context, r rulebus.Rule, ev eventbus.Event) error {
 	return s.inTx(ctx, ev, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `
-INSERT INTO sort_rules (id, account_id, match, match_key, direction, category_id, project_id, created_by, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+INSERT INTO sort_rules (id, account_id, match, match_key, direction, category_id, project_id, created_by, created_at, updated_at, via)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			r.ID.String(), r.AccountID.String(), r.Match, rulebus.Key(r.Match), string(r.Direction),
-			nullID(r.CategoryID), nullID(r.ProjectID), r.CreatedBy.String(), r.CreatedAt.UnixMilli(), r.UpdatedAt.UnixMilli())
+			nullID(r.CategoryID), nullID(r.ProjectID), r.CreatedBy.String(), r.CreatedAt.UnixMilli(), r.UpdatedAt.UnixMilli(), r.Via)
 
 		return err
 	})
@@ -88,8 +90,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 func (s *Store) Update(ctx context.Context, r rulebus.Rule, ev eventbus.Event) error {
 	return s.inTx(ctx, ev, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `
-UPDATE sort_rules SET match = ?, match_key = ?, direction = ?, category_id = ?, project_id = ?, updated_at = ? WHERE id = ?`,
-			r.Match, rulebus.Key(r.Match), string(r.Direction), nullID(r.CategoryID), nullID(r.ProjectID), r.UpdatedAt.UnixMilli(), r.ID.String())
+UPDATE sort_rules SET match = ?, match_key = ?, direction = ?, category_id = ?, project_id = ?, updated_at = ?, via = ? WHERE id = ?`,
+			r.Match, rulebus.Key(r.Match), string(r.Direction), nullID(r.CategoryID), nullID(r.ProjectID), r.UpdatedAt.UnixMilli(), r.Via, r.ID.String())
 
 		return err
 	})
@@ -130,7 +132,7 @@ func (s *Store) inTx(ctx context.Context, ev eventbus.Event, fn func(tx *sql.Tx)
 	return nil
 }
 
-const columns = `id, account_id, match, direction, category_id, project_id, created_by, created_at, updated_at`
+const columns = `id, account_id, match, direction, category_id, project_id, created_by, created_at, updated_at, via`
 
 // ByID finds one.
 func (s *Store) ByID(ctx context.Context, id types.ID) (rulebus.Rule, error) {
@@ -176,7 +178,7 @@ func scan(row scanner) (rulebus.Rule, error) {
 		created, updated     int64
 	)
 
-	if err := row.Scan(&id, &account, &r.Match, &dir, &category, &project, &by, &created, &updated); err != nil {
+	if err := row.Scan(&id, &account, &r.Match, &dir, &category, &project, &by, &created, &updated, &r.Via); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return r, err
 		}

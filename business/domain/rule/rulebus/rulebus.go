@@ -94,6 +94,12 @@ type Rule struct {
 	CreatedBy types.ID
 	CreatedAt time.Time
 	UpdatedAt time.Time
+
+	// Via is the name of the API key the rule was last written through --
+	// a person's Claude, usually -- and "" when a person wrote it on the
+	// web (docs/books-api.md). The rules page says so until a person saves
+	// it there, which writes "" and so clears it.
+	Via string
 }
 
 // Key is the text compared: lower case, spaces tidied.
@@ -307,6 +313,7 @@ func (b *Business) Save(ctx context.Context, now time.Time, actor, accountID typ
 	r := Rule{
 		ID: types.NewID(), AccountID: accountID, Match: f.Match, Direction: f.Direction,
 		CategoryID: f.CategoryID, ProjectID: f.ProjectID, CreatedBy: actor, CreatedAt: now, UpdatedAt: now,
+		Via: eventbus.ViaFrom(ctx),
 	}
 
 	if err := b.store.Create(ctx, r, eventbus.New(now, actor, a.Scope(), Made, detail(r))); err != nil {
@@ -337,6 +344,7 @@ func (b *Business) Change(ctx context.Context, now time.Time, actor, id types.ID
 
 func (b *Business) update(ctx context.Context, now time.Time, actor types.ID, r Rule, f Fields) (Rule, error) {
 	r.Match, r.Direction, r.CategoryID, r.ProjectID, r.UpdatedAt = f.Match, f.Direction, f.CategoryID, f.ProjectID, now
+	r.Via = eventbus.ViaFrom(ctx)
 
 	if err := b.store.Update(ctx, r, eventbus.New(now, actor, types.AccountScope(r.AccountID), Changed, detail(r))); err != nil {
 		return Rule{}, err

@@ -1,8 +1,8 @@
 // Package apiapp is the JSON API at /api/v1: how a program -- a person's
 // own Claude, a script in their Google account -- works with the site
 // without a screen. Today that is the interface's translations
-// (docs/translations.md), the statement inbox, and reading the books
-// (docs/books-api.md); keeping the books follows, as that plan builds it.
+// (docs/translations.md), the statement inbox, and reading and keeping
+// the books (docs/books-api.md).
 //
 // # Scopes
 //
@@ -148,7 +148,7 @@ func (a app) Endpoints() []Endpoint {
 	return append([]Endpoint{{
 		Method: http.MethodGet, Path: Prefix, Summary: "This index: every endpoint, what it takes, and the rules.",
 		Returns: "This document.", handler: a.index,
-	}}, slices.Concat(a.bookEndpoints(), a.inboxEndpoints(), a.translationEndpoints())...)
+	}}, slices.Concat(a.bookEndpoints(), a.keepEndpoints(), a.inboxEndpoints(), a.translationEndpoints())...)
 }
 
 func (a app) index(w http.ResponseWriter, r *http.Request) {
@@ -164,6 +164,7 @@ func (a app) index(w http.ResponseWriter, r *http.Request) {
 			"Reading the books changes nothing. Start with get_overview. Every statement, transaction, rule, receipt and project in an answer has a url: send the person there to see it, or to do what is theirs to do, such as reconciling a month.",
 			"Amounts are strings with their sign, money in positive and money out negative, beside their currency. Dates are YYYY-MM-DD and months YYYY-MM.",
 			"What the app counts -- a sum, a difference, whether a statement balances -- is the answer; do not work it out again from the lines.",
+			"Keeping the books (books:write) changes what the person's role lets them change, and is marked: a transaction sorted and a rule written through a key say so on the site until the person saves them there, and every change is in the history with the key's name. Reconciling, reopening, removing a statement or receipt and accepting an explanation's difference are the person's alone, on the web; there is no endpoint for them.",
 			"A translation is shown on every page as soon as it is written. A person looks it over afterwards, and one they approved or corrected is not changed through the API.",
 			"Every {placeholder} in the English must be in the translation exactly as it is, untranslated; the app fills it in. Its place in the sentence may move.",
 			"Translations are text, not markup: no < or > the English does not have.",

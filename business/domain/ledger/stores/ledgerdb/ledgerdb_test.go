@@ -148,8 +148,9 @@ CREATE TABLE IF NOT EXISTS splits (
 ) STRICT;
 `
 
-// A database from before sorting rules gains splits.rule_id, and a part
-// already there reads as one no rule sorted. From before holders,
+// A database from before sorting rules gains splits.rule_id and
+// splits.via, and a part already there reads as one no rule sorted, and
+// sorted through no API key. From before holders,
 // pending charges and check numbers too, it gains transactions.holder,
 // pending, check_number and payee, and the row names nobody, has posted,
 // and paid no check to anybody. And a statement from before layouts were
@@ -215,7 +216,7 @@ VALUES (?, ?, ?, 'csv', '2026-07-01', '2026-07-31', 'none', ?, 0)`,
 		t.Fatal(err)
 	}
 
-	if len(tx.Splits) != 1 || tx.Splits[0].Memo != "bread" || !tx.Splits[0].RuleID.Zero() || tx.ByRule() {
+	if len(tx.Splits) != 1 || tx.Splits[0].Memo != "bread" || !tx.Splits[0].RuleID.Zero() || tx.ByRule() || tx.Through() != "" {
 		t.Errorf("the part: %+v", tx.Splits)
 	}
 

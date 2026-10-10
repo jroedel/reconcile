@@ -214,11 +214,16 @@ func (b *Business) SetSplits(ctx context.Context, now time.Time, actor, id types
 		return Transaction{}, err
 	}
 
+	// Saved through a key, the parts say so until a person saves them on
+	// the web, which says nothing and so clears it.
+	via := eventbus.ViaFrom(ctx)
+
 	splits := make([]Split, len(parts))
 	for i, p := range parts {
 		splits[i] = Split{
 			ID: types.NewID(), TransactionID: t.ID, Position: i,
 			Amount: p.Amount, CategoryID: p.CategoryID, ProjectID: p.ProjectID, Memo: strings.TrimSpace(p.Memo),
+			Via: via,
 		}
 	}
 

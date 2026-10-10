@@ -51,6 +51,13 @@ type Ledger interface {
 	Explain(ctx context.Context, actor, id types.ID) (ledgerbus.Explanation, error)
 	Candidates(ctx context.Context, actor, id types.ID, accounts []types.ID, from, to string) ([]ledgerbus.Line, error)
 	ProjectBook(ctx context.Context, actor, projectID types.ID) (ledgerbus.Book, error)
+
+	// What keeping the books changes (keeping.go).
+	ImportProposals(ctx context.Context, now time.Time, actor types.ID, props []ledgerbus.Proposal) (int, error)
+	SortMany(ctx context.Context, now time.Time, actor, accountID types.ID, choices []ledgerbus.Choice) (int, map[types.ID]error, error)
+	SetSplits(ctx context.Context, now time.Time, actor, id types.ID, parts []ledgerbus.Part) (ledgerbus.Transaction, error)
+	SortUnsorted(ctx context.Context, now time.Time, actor, accountID types.ID) (int, error)
+	Gather(ctx context.Context, now time.Time, actor, id types.ID, add, remove, accounts []types.ID, from, to string) error
 }
 
 // Tenancy is the slice of tenancybus the books endpoints read.
@@ -70,6 +77,8 @@ type Receipts interface {
 	Waiting(ctx context.Context, actor types.ID) ([]receiptbus.Receipt, error)
 	Suggestions(ctx context.Context, actor types.ID, receipts []receiptbus.Receipt) (map[types.ID][]ledgerbus.Transaction, error)
 	OnTransactions(ctx context.Context, ids []types.ID) (map[types.ID][]receiptbus.Receipt, error)
+	Attach(ctx context.Context, now time.Time, actor, receiptID, transactionID types.ID) (receiptbus.Receipt, error)
+	Detach(ctx context.Context, actor, receiptID, transactionID types.ID) (receiptbus.Receipt, error)
 }
 
 // History is what a person changed through a key.
@@ -86,10 +95,11 @@ type Books struct {
 	Categories Categories
 	Receipts   Receipts
 	History    History
+	Rules      Rules
 }
 
 func (b Books) complete() bool {
-	return b.Ledger != nil && b.Tenancy != nil && b.Categories != nil && b.Receipts != nil && b.History != nil
+	return b.Ledger != nil && b.Tenancy != nil && b.Categories != nil && b.Receipts != nil && b.History != nil && b.Rules != nil
 }
 
 // --- the endpoints ----------------------------------------------------------------
@@ -273,6 +283,10 @@ type partOut struct {
 	ProjectName  string       `json:"project_name,omitempty"`
 	Memo         string       `json:"memo,omitempty"`
 	ByRule       bool         `json:"by_rule,omitempty"`
+
+	// Through is the API key a program sorted the part through, until a
+	// person saves it on the web.
+	Through string `json:"through,omitempty"`
 }
 
 type txOut struct {
@@ -335,6 +349,7 @@ type ruleOut struct {
 	Parts        *int   `json:"parts_sorted,omitempty"`
 	Waiting      *int   `json:"would_sort_now,omitempty"`
 	Problem      string `json:"problem,omitempty"`
+	Through      string `json:"through,omitempty"`
 	URL          string `json:"url,omitempty"`
 }
 
@@ -456,7 +471,7 @@ func (rd *reader) tx(t ledgerbus.Transaction, a tenancybus.Account) txOut {
 	}
 
 	for _, s := range t.Splits {
-		p := partOut{Amount: s.Amount, Memo: s.Memo, ByRule: !s.RuleID.Zero()}
+		p := partOut{Amount: s.Amount, Memo: s.Memo, ByRule: !s.RuleID.Zero(), Through: s.Via}
 
 		if !s.CategoryID.Zero() {
 			c := rd.category(a, s.CategoryID)
@@ -515,7 +530,7 @@ func (rd *reader) statement(st ledgerbus.Statement) statementOut {
 }
 
 func (rd *reader) rule(r rulebus.Rule, a tenancybus.Account) ruleOut {
-	out := ruleOut{Match: r.Match, Direction: string(r.Direction)}
+	out := ruleOut{Match: r.Match, Direction: string(r.Direction), Through: r.Via}
 
 	if !r.ID.Zero() {
 		out.ID, out.URL = r.ID.String(), rd.url("/accounts/"+a.ID.String()+"/rules")
@@ -550,10 +565,26 @@ func (rd *reader) done(w http.ResponseWriter, r *http.Request, v any) {
 // for what their role does not allow, 422 for a field that will not do.
 func (a app) bookRefused(w http.ResponseWriter, r *http.Request, err error, what string) bool {
 	invalid, isInvalid := errors.AsType[rulebus.Invalid](err)
+	part, isPart := errors.AsType[ledgerbus.Invalid](err)
 
 	switch {
 	case err == nil:
 		return false
+	case errors.Is(err, ledgerbus.ErrLocked):
+		web.WriteJSON(w, http.StatusConflict, web.Problem("", "That is in a reconciled period, so it cannot change. Reopening the period is its person's, on the statement's page; tell them rather than asking again."))
+	case errors.Is(err, ledgerbus.ErrExplained):
+		web.WriteJSON(w, http.StatusConflict, web.Problem("", "That transaction is part of another explanation, or is not one list_explanation_candidates offers for these accounts and months. Ask for the candidates again and add only those."))
+	case errors.Is(err, rulebus.ErrDuplicate):
+		web.WriteJSON(w, http.StatusConflict, web.Problem("match", "The account already has a rule with that text. Change that rule instead, or save the rule again with save_rule, which corrects the rule with the same text."))
+	case errors.Is(err, receiptbus.ErrRemoved):
+		web.WriteJSON(w, http.StatusConflict, web.Problem("", "That receipt was removed. Restoring it is its person's, on its page."))
+	case isPart:
+		field := "parts"
+		if part.Index >= 0 {
+			field = fmt.Sprintf("parts[%d].%s", part.Index, part.Field)
+		}
+
+		web.WriteJSON(w, http.StatusUnprocessableEntity, web.Problem(field, "That will not do: "+part.Err.Error()+"."))
 	case errors.Is(err, ledgerbus.ErrNotFound), errors.Is(err, tenancybus.ErrNotFound):
 		web.WriteJSON(w, http.StatusNotFound, web.Problem("", fmt.Sprintf("There is no such %s, or it is not one you may see.", what)))
 	case errors.Is(err, ledgerbus.ErrForbidden):
@@ -1341,6 +1372,12 @@ func (a app) getExplanation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	rd.done(w, r, rd.explanation(x))
+}
+
+// explanation is an explanation as get_explanation answers it, and as
+// gather_explanation answers after changing it.
+func (rd *reader) explanation(x ledgerbus.Explanation) map[string]any {
 	rd.accts[x.Account.ID] = x.Account
 	for _, c := range x.Choices {
 		rd.accts[c.ID] = c
@@ -1372,14 +1409,14 @@ func (a app) getExplanation(w http.ResponseWriter, r *http.Request) {
 		choices = append(choices, idName{ID: c.ID.String(), Name: c.Name})
 	}
 
-	rd.done(w, r, map[string]any{
+	return map[string]any{
 		"transaction": rd.named(x.Transaction, x.Account), "lines": lines,
 		"hidden": map[string]any{"count": x.Hidden, "sum": x.HiddenSum},
 		"sum":    x.Sum, "difference": x.Difference(), "state": state, "note": x.Note,
 		"gather":      map[string]any{"accounts": sources, "from": x.From(), "to": x.To()},
 		"may_draw_on": choices,
-		"url":         rd.url("/transactions/" + id.String() + "/explain"),
-	})
+		"url":         rd.url("/transactions/" + x.Transaction.ID.String() + "/explain"),
+	}
 }
 
 func (a app) explanationCandidates(w http.ResponseWriter, r *http.Request) {
