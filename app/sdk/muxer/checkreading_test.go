@@ -107,3 +107,116 @@ func TestClaudeSeesAReceipt(t *testing.T) {
 		t.Errorf("a PDF through the tool: %v %s", err, toolText(res))
 	}
 }
+
+// Claude on claude.ai reads a month's screenshots of checks: lists them,
+// looks at each, and says what it read. A reading the bank agrees with
+// attaches the image, with whom it was paid to beside the check in the
+// month; one it does not is refused with both amounts and changes
+// nothing; one not cleared waits. The account's history says what was
+// read, and through which key, and so does list_changes.
+func TestClaudeReadsChecksThroughMCP(t *testing.T) {
+	s := newTranslatingSite(t)
+	e := newEstate(t, s.h, s.sent)
+	key := keyFor(t, e.owner, "Claude", "books-keep")
+
+	preview := uploaded(t, e.owner, e.account, "july.csv", "Date,Description,Amount,Balance,Check Number\n"+
+		"2026-07-01,OPENING DEPOSIT,1000.00,1000.00,\n"+
+		"2026-07-02,CHECK,-120.00,880.00,1176\n"+
+		"2026-07-09,CHECK,-30.00,850.00,1177\n")
+	form := columns("import")
+	form.Set("check", "Check Number")
+
+	if rec := e.owner.post(preview, form); rec.Code != http.StatusSeeOther {
+		t.Fatalf("import: %d", rec.Code)
+	}
+
+	rec := e.owner.receipts(e.account+"/checks", nil,
+		[2]string{"Screenshot_1.jpg", drawnPhoto(t, 900, 400)}, [2]string{"Screenshot_2.jpg", drawnPhoto(t, 901, 400)}, [2]string{"Screenshot_3.jpg", drawnPhoto(t, 902, 400)})
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("the screenshots: %d", rec.Code)
+	}
+
+	srv := httptest.NewServer(s.h)
+	t.Cleanup(srv.Close)
+
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "v0"}, nil).Connect(t.Context(), &mcp.StreamableClientTransport{
+		Endpoint:   srv.URL + "/mcp",
+		HTTPClient: &http.Client{Transport: bearer{key}},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { cs.Close() })
+
+	call := func(name string, args map[string]any) (*mcp.CallToolResult, string) {
+		t.Helper()
+
+		res, err := cs.CallTool(t.Context(), &mcp.CallToolParams{Name: name, Arguments: args})
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+
+		return res, toolText(res)
+	}
+
+	var shots []string
+
+	for _, rc := range list(t, s.get(t, "/api/v1/receipts/waiting", key), "receipts") {
+		if field(rc, "check_image") == true {
+			shots = append(shots, field(rc, "id").(string))
+		}
+	}
+
+	if len(shots) != 3 {
+		t.Fatalf("%d check images waiting, want 3", len(shots))
+	}
+
+	for _, id := range shots {
+		if res, _ := call("get_receipt_image", map[string]any{"receipt": id}); res.IsError {
+			t.Errorf("looking at %s: %s", id, toolText(res))
+		}
+	}
+
+	res, text := call("read_check", map[string]any{"receipt": shots[0], "number": "1176", "amount": "120.00", "payee": "Hilltop Plumbing", "date": "2026-06-30"})
+	if res.IsError || !strings.Contains(text, `"attached": true`) || !strings.Contains(text, `"check": "1176"`) {
+		t.Fatalf("read_check 1176: %s", text)
+	}
+
+	res, text = call("read_check", map[string]any{"receipt": shots[1], "number": "1177", "amount": "80.00"})
+	if !res.IsError || !strings.Contains(text, "The bank paid check 1177 for 30.00, and you read 80.00") {
+		t.Errorf("a misread: %s", text)
+	}
+
+	res, text = call("read_check", map[string]any{"receipt": shots[2], "number": "1190", "amount": "45.50", "payee": "Diocesan Office"})
+	if res.IsError || !strings.Contains(text, `"attached": false`) {
+		t.Errorf("a check not cleared: %s", text)
+	}
+
+	res, text = call("read_check", map[string]any{"receipt": shots[0], "number": "1176", "amount": "120.00"})
+	if !res.IsError || !strings.Contains(text, "attached to a transaction already") {
+		t.Errorf("reading an attached check again: %s", text)
+	}
+
+	wantBody(t, e.owner.get(e.account+"/transactions?month=2026-07"), "Paid to Hilltop Plumbing")
+	wantBody(t, e.owner.get(e.account), "read the image of check 1176, for 120.00", "read the image of check 1190, for 45.50")
+
+	_, text = call("list_changes", map[string]any{})
+	if !strings.Contains(text, "receipt.check_read") {
+		t.Errorf("list_changes does not say what was read: %s", text)
+	}
+
+	// A key that only reads may look, and may not say.
+	reader := keyFor(t, e.owner, "Claude", "books-read")
+	if rec := s.api(http.MethodPost, "/api/v1/receipts/"+shots[1]+"/check", reader, `{"number": "1177", "amount": "30.00"}`); rec.Code != http.StatusForbidden {
+		t.Errorf("a reading key: %d", rec.Code)
+	}
+
+	stranger := signUp(t, s.h, s.sent, "stranger@example.org")
+	if rec := s.api(http.MethodPost, "/api/v1/receipts/"+shots[1]+"/check", keyFor(t, stranger, "Claude", "books-keep"), `{"number": "1177", "amount": "30.00"}`); rec.Code != http.StatusNotFound {
+		t.Errorf("a stranger's key: %d", rec.Code)
+	}
+
+	if rec := s.api(http.MethodPost, "/api/v1/receipts/"+shots[1]+"/check", key, `{"number": "1177"}`); rec.Code != http.StatusBadRequest {
+		t.Errorf("no amount: %d", rec.Code)
+	}
+}

@@ -68,6 +68,10 @@ const (
 	Added    eventbus.Action = "receipt.added"
 	Removed  eventbus.Action = "receipt.removed"
 	Restored eventbus.Action = "receipt.restored"
+
+	// CheckRead is a check's image read through the API (ReadCheck): what
+	// Claude says a check is, which the history keeps beside who said it.
+	CheckRead eventbus.Action = "receipt.check_read"
 )
 
 // Accept is the kinds of file a receipt may be.
@@ -178,8 +182,9 @@ type Storer interface {
 	Update(ctx context.Context, r Receipt, ev *eventbus.Event) error
 
 	// SaveCheck writes a check image's number and details, and its links,
-	// in one transaction (checks.go).
-	SaveCheck(ctx context.Context, r Receipt) error
+	// and the history when there is a line to write, in one transaction
+	// (checks.go).
+	SaveCheck(ctx context.Context, r Receipt, ev *eventbus.Event) error
 }
 
 // Business is the set of operations on receipts.

@@ -214,6 +214,7 @@ from (`docs/design.md`). Lists take `limit` and a `cursor`.
 | `POST /api/v1/accounts/{account}/rules/apply` | `apply_rules` | `SortUnsorted`: the account's rules over what is not sorted yet |
 | `POST /api/v1/receipts/{receipt}/attach` `{transaction}` | `attach_receipt` | `receiptbus.Attach` |
 | `POST /api/v1/receipts/{receipt}/detach` `{transaction}` | `detach_receipt` | `receiptbus.Detach`, which removes nothing: the receipt goes back to waiting |
+| `POST /api/v1/receipts/{receipt}/check` `{number, amount, payee, date}` | `read_check` | `receiptbus.ReadCheck`: a check image read, attached when the bank's amount for the number is the one read, refused with both when not (`docs/phone.md`, 6) |
 | `POST /api/v1/transactions/{transaction}/explanation/lines` `{add, remove, account, from, to}` | `gather_explanation` | `Gather`: lines into an explanation and out of it. Explaining changes nothing about a line (`docs/clearing.md`), so it is bookkeeping, not locking. With no difference left, the transaction is explained |
 
 As built: `import_from_inbox` takes `accounts` as a list of `{file, part,

@@ -185,6 +185,24 @@ that has not cleared keeps its number and waits for 2. The Claude guide
 waiting check images, look at each, read it, and say which were matched,
 which wait, and which were refused and why.
 
+### As built (the sixth pull request)
+
+- **`receiptbus.ReadCheck`** takes a `CheckReading`: number, payee,
+  amount (required) and date. One transaction with the number and another
+  amount is `AmountDiffers`, and nothing changes; several, the one with the
+  amount read, if exactly one has it; none, the image waits with the
+  number, amount, payee and date read.
+- **Matching on import** is now held to an amount the image carries,
+  read by Claude or typed by a person: an image whose amount is not the
+  bank's waits for somebody to look again. Numbering on the image's page
+  is a person's word and still takes the bank's amount over one typed.
+- **The history** has a line for each reading, "read the image of check
+  1176, for 120.00", which says the key it came through, and
+  `list_changes` lists it.
+- **The guide** (`app/domain/mcpapp/guide.md`) gains "The images of
+  checks", and reading them is, with importing, what Claude does without
+  asking first: the bank's amount checks each reading.
+
 ## Build order
 
 Six pull requests after this plan, each useful when merged:

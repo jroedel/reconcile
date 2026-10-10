@@ -301,6 +301,7 @@ func TestTheAPIsWritesAreTheList(t *testing.T) {
 		"POST /api/v1/inbox upload",
 		"POST /api/v1/inbox/import books:write",
 		"POST /api/v1/receipts/{receipt}/attach books:write",
+		"POST /api/v1/receipts/{receipt}/check books:write",
 		"POST /api/v1/receipts/{receipt}/detach books:write",
 		"POST /api/v1/transactions/{transaction}/explanation/lines books:write",
 		"PUT /api/v1/rules/{rule} books:write",
@@ -352,6 +353,7 @@ func TestNobodyKeepsTheBooksTheyWereNotGiven(t *testing.T) {
 		"change_rule":        map[string]any{"match": "electric co", "category": k.categories["Groceries"]},
 		"attach_receipt":     map[string]string{"transaction": grocery},
 		"detach_receipt":     map[string]string{"transaction": grocery},
+		"read_check":         map[string]string{"number": "1176", "amount": "120.00"},
 		"gather_explanation": map[string]any{"add": []string{}},
 		"apply_rules":        map[string]any{},
 		"import_from_inbox":  map[string]any{},
@@ -401,8 +403,8 @@ func TestNobodyKeepsTheBooksTheyWereNotGiven(t *testing.T) {
 		}
 	}
 
-	if walked != 10 {
-		t.Errorf("%d keeping endpoints were walked, want 10", walked)
+	if walked != 11 {
+		t.Errorf("%d keeping endpoints were walked, want 11", walked)
 	}
 
 	if after := s.api(http.MethodGet, "/api/v1/accounts/"+k.account+"/transactions?month=2026-07", k.key, "").Body.String(); after != before {

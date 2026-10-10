@@ -126,6 +126,17 @@ func (a app) keepEndpoints() []Endpoint {
 			Returns: "{receipt, transaction}", handler: a.detachReceipt,
 		},
 		{
+			Method: http.MethodPost, Path: Prefix + "/receipts/{receipt}/check", Scope: write, Tool: "read_check",
+			Summary: "Say what the image of a check says, after looking at it with get_receipt_image: its number, whom it was paid to, its amount and its date. It is attached to the account's transaction with that number when the bank's amount for it is the amount you read; when the amounts differ nothing changes, and the answer says both, so look again. A check that has not cleared waits with what you read, and is attached when the statement that lists it is imported, if the amounts agree. Only for a waiting check image (list_waiting_receipts, check_image).",
+			Body: &Body{Encoding: "json", Fields: []Field{
+				{Name: "number", Type: "string", Required: true, Description: "The check's number, as printed at its top right and again in the line of digits at its foot."},
+				{Name: "amount", Type: "string", Required: true, Description: "The amount in figures, such as \"120.00\": what it was written for, never negative. Where the figures and the words disagree, the words are what the bank pays."},
+				{Name: "payee", Type: "string", Description: fmt.Sprintf("Whom it is paid to, as written on the \"Pay to the order of\" line; at most %d characters. Written on the transaction too.", ledgerbus.MaxPayee)},
+				{Name: "date", Type: "string", Description: "The date written on it, YYYY-MM-DD, if it can be read."},
+			}},
+			Returns: "{receipt, attached, transaction}; transaction is the one it was attached to, when it was", handler: a.readCheck,
+		},
+		{
 			Method: http.MethodPost, Path: Prefix + "/transactions/{transaction}/explanation/lines", Scope: write, Tool: "gather_explanation",
 			Summary: "Add lines to what explains a transaction's amount, and take others out, then read back the app's sum and difference: the count is the app's, not yours. Only lines list_explanation_candidates offers for the same accounts and months may be added. Explaining changes nothing about a line. With no difference left the transaction is explained; accepting a difference is the person's, on its page, with their note.",
 			Body: &Body{Encoding: "json", Fields: []Field{
@@ -649,6 +660,65 @@ func (a app) linkReceipt(w http.ResponseWriter, r *http.Request, attach bool) {
 	out.Receipts = new(len(on[tx]))
 
 	rd.done(w, r, map[string]any{"receipt": rd.receipts([]receiptbus.Receipt{rc})[0], "transaction": out})
+}
+
+// readCheck is what Claude read off a check's image (receiptbus.ReadCheck).
+func (a app) readCheck(w http.ResponseWriter, r *http.Request) {
+	id, ok := a.pathID(w, r, "receipt", "receipt")
+	if !ok {
+		return
+	}
+
+	var in struct {
+		Number string        `json:"number"`
+		Amount *money.Amount `json:"amount"`
+		Payee  string        `json:"payee"`
+		Date   string        `json:"date"`
+	}
+
+	if !a.body(w, r, &in) {
+		return
+	}
+
+	if in.Amount == nil {
+		web.WriteJSON(w, http.StatusBadRequest, web.Problem("amount", "Give the amount the check was written for, such as \"120.00\"."))
+
+		return
+	}
+
+	rd := receiptbus.CheckReading{Number: in.Number, Payee: in.Payee, Amount: *in.Amount}
+
+	if in.Date != "" {
+		on, err := types.ParseDate(in.Date)
+		if err != nil {
+			web.WriteJSON(w, http.StatusBadRequest, web.Problem("date", "Give the date as YYYY-MM-DD, or leave it out."))
+
+			return
+		}
+
+		rd.On = on
+	}
+
+	rdr := a.reader(r)
+	ctx := r.Context()
+
+	rc, err := a.books.Receipts.ReadCheck(ctx, time.Now(), rdr.me, id, rd)
+	if a.bookRefused(w, r, err, "receipt") {
+		return
+	}
+
+	out := map[string]any{"receipt": rdr.receipts([]receiptbus.Receipt{rc})[0], "attached": !rc.Waiting()}
+
+	if !rc.Waiting() {
+		e, err := a.books.Ledger.Transaction(ctx, rdr.me, rc.Links[0].TransactionID)
+		if a.bookRefused(w, r, err, "transaction") {
+			return
+		}
+
+		out["transaction"] = rdr.named(e.Transaction, e.Account)
+	}
+
+	rdr.done(w, r, out)
 }
 
 // --- explaining -------------------------------------------------------------------

@@ -82,6 +82,7 @@ type Receipts interface {
 	OnTransactions(ctx context.Context, ids []types.ID) (map[types.ID][]receiptbus.Receipt, error)
 	Attach(ctx context.Context, now time.Time, actor, receiptID, transactionID types.ID) (receiptbus.Receipt, error)
 	File(ctx context.Context, actor, id types.ID, n int) (filebus.File, error)
+	ReadCheck(ctx context.Context, now time.Time, actor, id types.ID, rd receiptbus.CheckReading) (receiptbus.Receipt, error)
 	Detach(ctx context.Context, actor, receiptID, transactionID types.ID) (receiptbus.Receipt, error)
 }
 
@@ -584,6 +585,8 @@ func (rd *reader) done(w http.ResponseWriter, r *http.Request, v any) {
 func (a app) bookRefused(w http.ResponseWriter, r *http.Request, err error, what string) bool {
 	invalid, isInvalid := errors.AsType[rulebus.Invalid](err)
 	part, isPart := errors.AsType[ledgerbus.Invalid](err)
+	receipt, isReceipt := errors.AsType[receiptbus.Invalid](err)
+	differs, isDiffers := errors.AsType[receiptbus.AmountDiffers](err)
 
 	switch {
 	case err == nil:
@@ -596,6 +599,12 @@ func (a app) bookRefused(w http.ResponseWriter, r *http.Request, err error, what
 		web.WriteJSON(w, http.StatusConflict, web.Problem("match", "The account already has a rule with that text. Change that rule instead, or save the rule again with save_rule, which corrects the rule with the same text."))
 	case errors.Is(err, receiptbus.ErrRemoved):
 		web.WriteJSON(w, http.StatusConflict, web.Problem("", "That receipt was removed. Restoring it is its person's, on its page."))
+	case errors.Is(err, receiptbus.ErrAttached):
+		web.WriteJSON(w, http.StatusConflict, web.Problem("", "That check's image is attached to a transaction already. If it is on the wrong one, detach_receipt it first, then read it again."))
+	case isDiffers:
+		web.WriteJSON(w, http.StatusConflict, web.Problem("amount", fmt.Sprintf("The bank paid check %s for %s, and you read %s. Nothing was changed. Look at the image again: one of the number's digits or the amount's is misread. If the image really says %s, tell the person rather than reading it again.", differs.Number, differs.Bank, differs.Read, differs.Read)))
+	case isReceipt:
+		web.WriteJSON(w, http.StatusUnprocessableEntity, web.Problem(receipt.Field, "The "+receipt.Field+" will not do: "+receipt.Err.Error()+"."))
 	case isPart:
 		field := "parts"
 		if part.Index >= 0 {
