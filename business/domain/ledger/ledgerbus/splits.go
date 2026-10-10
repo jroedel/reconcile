@@ -356,14 +356,15 @@ func projectEvents(now time.Time, actor types.ID, e Editor, before, after []Spli
 // ProjectLine is one part of some account's transaction that is in a
 // project.
 type ProjectLine struct {
-	Split        Split
-	PostedOn     types.Date
-	Description  string
-	AccountID    types.ID
-	AccountName  string
-	Currency     string
-	CategoryName string
-	CategoryKind categorybus.Kind
+	Split          Split
+	PostedOn       types.Date
+	Description    string
+	OwnDescription string
+	AccountID      types.ID
+	AccountName    string
+	Currency       string
+	CategoryName   string
+	CategoryKind   categorybus.Kind
 }
 
 // Total is money in one currency, under one heading -- a category's name,

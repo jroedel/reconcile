@@ -23,8 +23,8 @@
 {{if $v.View.Transactions}}
 <ul class="list">
 {{range $v.View.Transactions}}{{$acct := index $v.Accounts .AccountID}}<li>
-{{if index $v.View.Readable .ID}}<a href="/transactions/{{.ID}}">{{.PostedOn}} · {{.Description}}</a> · <span class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $acct.Currency}}</span> · <span class="hint">{{$acct.Name}}</span>
-{{else}}{{.PostedOn}} · {{.Description}} · {{.Amount}}{{end}}
+{{if index $v.View.Readable .ID}}<a href="/transactions/{{.ID}}">{{.PostedOn}} · {{.Shown}}</a> · <span class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $acct.Currency}}</span> · <span class="hint">{{$acct.Name}}</span>
+{{else}}{{.PostedOn}} · {{.Shown}} · {{.Amount}}{{end}}
 {{if $v.View.CanEdit}}<form method="post" action="/receipts/{{$r.ID}}/detach" class="inline"><input type="hidden" name="transaction" value="{{.ID}}"><button type="submit" class="link">{{t "Take it off"}}</button></form>{{end}}
 </li>{{end}}
 </ul>

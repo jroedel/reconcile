@@ -151,7 +151,7 @@ func TestKeepingTheBooksThroughTheAPI(t *testing.T) {
 	}
 
 	month := owner.get(k.e.account + "/transactions?month=2026-07")
-	wantBody(t, month, "2 sorted by a program, to check", "by Claude")
+	wantBody(t, month, "2 changed by a program, to check", "by Claude")
 	wantBody(t, owner.get(k.e.account+"/transactions?month=2026-07&through=1"), "CORNER GROCERY", "ELECTRIC CO", "Show all of the month")
 	wantBody(t, owner.get("/transactions/"+grocery), "sorted by a program", "Saving it, changed or not, says a person has checked it.")
 
@@ -160,7 +160,7 @@ func TestKeepingTheBooksThroughTheAPI(t *testing.T) {
 		"action": {"save"}, "amount-0": {""}, "category-0": {k.categories["Groceries"]}, "project-0": {""}, "memo-0": {""},
 	}), k.e.account+"/transactions?month=2026-07&done=sorted")
 
-	wantBody(t, owner.get(k.e.account+"/transactions?month=2026-07"), "1 sorted by a program, to check")
+	wantBody(t, owner.get(k.e.account+"/transactions?month=2026-07"), "1 changed by a program, to check")
 
 	if p := field(s.get(t, tx+grocery, key), "transaction", "parts").([]any)[0]; field(p, "through") != nil {
 		t.Errorf("saved on the web, the grocery still says a program sorted it: %v", p)
@@ -180,6 +180,33 @@ func TestKeepingTheBooksThroughTheAPI(t *testing.T) {
 	if parts := field(s.change(t, http.MethodPut, tx+electric+"/splits", key, two, http.StatusOK), "transaction", "parts").([]any); len(parts) != 2 || field(parts[1], "memo") != "light bulbs" {
 		t.Errorf("split: %v", parts)
 	}
+
+	// A description of its own: shown in the bank's place, the bank's
+	// kept, and marked as the key's until a person saves the transaction
+	// on the web, which says they have looked.
+	described := s.change(t, http.MethodPut, tx+grocery+"/description", key, map[string]string{"description": "Retreat  groceries "}, http.StatusOK)
+	if field(described, "transaction", "own_description") != "Retreat groceries" || field(described, "transaction", "description") != "CORNER GROCERY" ||
+		field(described, "transaction", "own_description_through") != "Claude" {
+		t.Errorf("describing: %v", described)
+	}
+
+	s.change(t, http.MethodPut, tx+grocery+"/description", key, map[string]string{"description": strings.Repeat("x", 201)}, http.StatusUnprocessableEntity)
+
+	wantBody(t, owner.get(k.e.account+"/transactions?month=2026-07"), "Retreat groceries", "described by Claude", "2 changed by a program, to check")
+	wantBody(t, owner.get("/transactions/"+grocery), "Retreat groceries", "The bank calls it CORNER GROCERY.", "described by a program")
+	wantBody(t, owner.get(k.e.account+"/transactions?month=2026-07&through=1"), "Retreat groceries")
+
+	wantRedirect(t, owner.post("/transactions/"+grocery, url.Values{
+		"action": {"save"}, "amount-0": {""}, "category-0": {k.categories["Groceries"]}, "project-0": {""}, "memo-0": {""},
+		"description": {"Retreat groceries"},
+	}), k.e.account+"/transactions?month=2026-07&done=sorted")
+
+	if got := field(s.get(t, tx+grocery, key), "transaction"); field(got, "own_description") != "Retreat groceries" || field(got, "own_description_through") != nil {
+		t.Errorf("saved on the web, the description: %v", got)
+	}
+
+	wantBody(t, owner.get(k.e.account+"/transactions?month=2026-07"), "1 changed by a program, to check")
+	wantBody(t, owner.get(k.e.account), "as “Retreat groceries”")
 
 	// A rule, tried first, saved, and applied: the three coffee carts of
 	// July and August.
@@ -261,7 +288,7 @@ func TestKeepingTheBooksThroughTheAPI(t *testing.T) {
 		}
 	}
 
-	for _, want := range []string{"rule.made", "rule.changed", "rule.removed"} {
+	for _, want := range []string{"rule.made", "rule.changed", "rule.removed", "transaction.described"} {
 		if !actions[want] {
 			t.Errorf("no %s among the changes: %v", want, actions)
 		}
@@ -305,6 +332,7 @@ func TestTheAPIsWritesAreTheList(t *testing.T) {
 		"POST /api/v1/receipts/{receipt}/detach books:write",
 		"POST /api/v1/transactions/{transaction}/explanation/lines books:write",
 		"PUT /api/v1/rules/{rule} books:write",
+		"PUT /api/v1/transactions/{transaction}/description books:write",
 		"PUT /api/v1/transactions/{transaction}/splits books:write",
 		"PUT /api/v1/translations translate",
 	}
@@ -349,6 +377,7 @@ func TestNobodyKeepsTheBooksTheyWereNotGiven(t *testing.T) {
 	bodies := map[string]any{
 		"sort_transactions":  map[string]any{"choices": []map[string]string{{"transaction": grocery, "category": k.categories["Groceries"]}}},
 		"set_splits":         map[string]any{"parts": []map[string]string{{"amount": "-33.99", "category": k.categories["Groceries"]}}},
+		"set_description":    map[string]string{"description": "Retreat groceries"},
 		"save_rule":          map[string]any{"match": "corner grocery", "category": k.categories["Groceries"]},
 		"change_rule":        map[string]any{"match": "electric co", "category": k.categories["Groceries"]},
 		"attach_receipt":     map[string]string{"transaction": grocery},
@@ -403,8 +432,8 @@ func TestNobodyKeepsTheBooksTheyWereNotGiven(t *testing.T) {
 		}
 	}
 
-	if walked != 11 {
-		t.Errorf("%d keeping endpoints were walked, want 11", walked)
+	if walked != 12 {
+		t.Errorf("%d keeping endpoints were walked, want 12", walked)
 	}
 
 	if after := s.api(http.MethodGet, "/api/v1/accounts/"+k.account+"/transactions?month=2026-07", k.key, "").Body.String(); after != before {
@@ -474,5 +503,5 @@ func TestClaudeKeepsTheBooksThroughMCP(t *testing.T) {
 		t.Fatalf("sort_transactions: %v %s", err, toolText(res))
 	}
 
-	wantBody(t, k.e.owner.get(k.e.account+"/transactions?month=2026-07"), "1 sorted by a program, to check")
+	wantBody(t, k.e.owner.get(k.e.account+"/transactions?month=2026-07"), "1 changed by a program, to check")
 }

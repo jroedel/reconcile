@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
@@ -51,6 +52,10 @@ type transactionView struct {
 // sortForm is the parts form as typed, and what was wrong with it.
 type sortForm struct {
 	Rows []partRow
+
+	// Description is the transaction's own description as typed, saved
+	// with the parts: one Save says a person has looked at both.
+	Description string
 
 	// Guess is the rule's or the suggestion's choice preselected in an
 	// unsorted transaction's one part, shown with why. Only on the page as
@@ -128,6 +133,7 @@ func (a app) transactionPage(w http.ResponseWriter, r *http.Request, status int,
 
 	if f.Rows == nil {
 		f.Rows = rowsOf(e.Transaction)
+		f.Description = e.Transaction.OwnDescription
 
 		if f.Guess, err = a.cfg.Ledger.Guess(r.Context(), a.cfg.Now(), me.ID, e); err != nil {
 			a.failed(w, r, err)
@@ -250,9 +256,10 @@ func (a app) sortTransaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	f := sortForm{
-		Rows:   postedRows(r),
-		Always: r.PostForm.Get("always") == "1",
-		Match:  strings.TrimSpace(r.PostForm.Get("match")),
+		Rows:        postedRows(r),
+		Description: r.PostForm.Get("description"),
+		Always:      r.PostForm.Get("always") == "1",
+		Match:       strings.TrimSpace(r.PostForm.Get("match")),
 	}
 
 	again := func(status int, problem string, part int) {
@@ -285,7 +292,23 @@ func (a app) sortTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Its length is asked before the parts are saved, so that a
+	// description too long saves nothing rather than half the form.
+	if utf8.RuneCountInString(strings.Join(strings.Fields(f.Description), " ")) > ledgerbus.MaxDescription {
+		again(http.StatusUnprocessableEntity, "description", 0)
+
+		return
+	}
+
+	// A form without the field -- a page from before it, still open in a
+	// tab -- leaves the description as it is rather than taking it away.
+	_, describes := r.PostForm["description"]
+
 	t, err := a.cfg.Ledger.SetSplits(r.Context(), a.cfg.Now(), me.ID, id, parts)
+	if err == nil && describes {
+		t, err = a.cfg.Ledger.Describe(r.Context(), a.cfg.Now(), me.ID, id, f.Description)
+	}
+
 	if errors.Is(err, ledgerbus.ErrLocked) {
 		again(http.StatusConflict, "locked", 0)
 

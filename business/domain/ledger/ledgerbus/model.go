@@ -149,6 +149,15 @@ type Transaction struct {
 	// check's image (checks.go), or "".
 	Payee string
 
+	// OwnDescription is what a person, or their program, wrote it was --
+	// "Summer work" for "Check 1322" -- or "" (describe.go). Description
+	// stays the bank's; pages show this one in its place (Shown).
+	OwnDescription string
+
+	// OwnVia is the key a program wrote OwnDescription through, until a
+	// person saves the transaction on the web; "" otherwise.
+	OwnVia string
+
 	// Pending is a charge its file listed as not yet posted (pending.go).
 	// The posted charge, when it arrives, takes its place.
 	Pending bool
@@ -187,6 +196,16 @@ type Doubt struct {
 // CheckUnsaid is its check number when its description does not say it
 // (importbus.CheckUnsaid).
 func (t Transaction) CheckUnsaid() string { return importbus.CheckUnsaid(t.CheckNumber, t.Description) }
+
+// Shown is what a page calls it: the person's own description when there
+// is one, and otherwise the bank's.
+func (t Transaction) Shown() string {
+	if t.OwnDescription != "" {
+		return t.OwnDescription
+	}
+
+	return t.Description
+}
 
 // Words is what sorting rules and suggestions read of it: its payee, when
 // a person has said, before its description. "Check 1176" says nothing of
@@ -262,6 +281,17 @@ func (t Transaction) Through() string {
 	return ""
 }
 
+// ByProgram is the name of the key any of it was changed through that no
+// person has saved on the web since -- its parts or its own description --
+// or "": what the month list's filter of changes to check shows.
+func (t Transaction) ByProgram() string {
+	if via := t.Through(); via != "" {
+		return via
+	}
+
+	return t.OwnVia
+}
+
 // Month is one month of an account's transactions, summed.
 type Month struct {
 	Month    string // "2026-07"
@@ -277,8 +307,9 @@ type Month struct {
 	// saved since: the ones to check.
 	ByRule int
 
-	// ThroughKey is how many were sorted through a key, by a person's
-	// Claude, that nobody has saved on the web since: the others to check.
+	// ThroughKey is how many were sorted or described through a key, by a
+	// person's Claude, that nobody has saved on the web since: the others
+	// to check (Transaction.ByProgram).
 	ThroughKey int
 
 	// Operations is the month's parts by kind, beside the cash.

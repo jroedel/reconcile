@@ -208,6 +208,7 @@ from (`docs/design.md`). Lists take `limit` and a `cursor`.
 | `POST /api/v1/inbox/import` `{files, accounts}` | `import_from_inbox` | `Propose` and `ImportProposals`, for the files named. `accounts` answers a proposal that asked which account. **Only what needs no person is imported**: what checks by the file's own figures and has nothing set aside, the bulk import's rule. The rest stays waiting, and the answer says why each did and gives `/imports` |
 | `POST /api/v1/accounts/{account}/sort` `{choices}` | `sort_transactions` | `SortMany`: for each transaction a category, a project, or both |
 | `PUT /api/v1/transactions/{transaction}/splits` `{parts}` | `set_splits` | `SetSplits`: one charge across categories and projects |
+| `PUT /api/v1/transactions/{transaction}/description` `{description}` | `set_description` | **New** (`Describe`): what a transaction was, in a person's words, shown in place of the bank's description; empty takes it away |
 | `POST /api/v1/accounts/{account}/rules` | `save_rule` | `rulebus.Save` |
 | `PUT /api/v1/rules/{rule}` | `change_rule` | `rulebus.Change` |
 | `DELETE /api/v1/rules/{rule}` | `remove_rule` | `rulebus.Remove`. A rule is removable here because it changes no transaction it already sorted, and a rule Claude wrote wrongly should be undoable by Claude |
@@ -223,6 +224,26 @@ accounts as `account`, the same word `list_explanation_candidates` uses;
 `sort_transactions` answers what it left alone because somebody had sorted
 or split it already, so that Claude does not report it sorted; and
 `apply_rules` marks what it sorts with the rule, not the key (below).
+
+As built, later (issue #70): **a description of one's own.** A
+transaction's `description` stays the bank's: deduplicating, a pending
+charge's posting, sorting rules and `try_rule` read it, and it is what
+next month's statement will say again. What it was -- "Summer work" for
+"Check 1322", off the check's memo line -- is `transactions.own_description`,
+shown in its place on the month list, the sorting page, a project's book,
+search and a receipt's page, with the bank's still on the transaction's
+own page. `set_description` is a tool of its own rather than a field of
+`set_splits` or `sort_transactions`, which change only parts, and the
+second only parts nobody has sorted: a memo belongs on a charge sorted
+long ago as much as on one that is not. It is a bookkeeper's, refused in a
+reconciled period as parts are, and through a key it is marked as above.
+Every transaction in an answer carries `own_description` when it has one,
+and `own_description_through` while a program's is not checked. On the
+web it is a field at the top of the transaction's parts form, saved with
+them. The accountant's package keeps the bank's wording under
+"Description" and gains "Our description" as its last column, so that a
+sheet set up for the earlier columns still reads them, and the line can
+still be found on the statement in the same package.
 
 ### Not in the API, on purpose
 
@@ -256,6 +277,10 @@ too.
   looked. `splits` gains `via` beside `rule_id`; saving the split editor on
   the web clears it. The month list gets "sorted by Claude" beside "sorted
   by rule" and a filter for it, and the split editor says it in words.
+- **A description written through the API says so** the same way
+  (`transactions.own_description_via`): "described by Claude" on the month
+  list, counted with the parts sorted through a key as "changed by a
+  program, to check", until a person saves the transaction on the web.
 - **A rule written through the API says so** on the rules page (`sort_rules.via`),
   until a person changes it there.
 - **A part a rule sorted says which rule**, even when the rules were

@@ -364,7 +364,7 @@ func (a app) transactionsPage(w http.ResponseWriter, r *http.Request, status int
 		view.Shown = slices.DeleteFunc(view.Shown, func(t ledgerbus.Transaction) bool { return !t.ByRule() })
 	case q.Get("through") == "1":
 		view.Through = true
-		view.Shown = slices.DeleteFunc(view.Shown, func(t ledgerbus.Transaction) bool { return t.Through() == "" })
+		view.Shown = slices.DeleteFunc(view.Shown, func(t ledgerbus.Transaction) bool { return t.ByProgram() == "" })
 	}
 
 	if err := a.names(r, me.ID, account, &view); err != nil {

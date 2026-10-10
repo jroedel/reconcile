@@ -11,7 +11,7 @@
 <form method="post" action="{{$v.Path}}/sort?month={{$m.Month}}">
 {{range $i, $row := $v.Rows}}{{$t := $row.Transaction}}
 <fieldset class="card part" id="t-{{$t.ID}}">
-  <legend>{{$t.PostedOn}} · <a href="/transactions/{{$t.ID}}">{{if $t.Description}}{{$t.Description}}{{else}}{{t "(no description)"}}{{end}}</a>{{with $t.Payee}} · {{t "paid to {payee}" "payee" .}}{{end}} · <span class="money {{if lt $t.Amount 0}}out{{else}}in{{end}}">{{money $t.Amount $cur}}</span></legend>
+  <legend>{{$t.PostedOn}} · <a href="/transactions/{{$t.ID}}">{{if $t.Shown}}{{$t.Shown}}{{else}}{{t "(no description)"}}{{end}}</a>{{with $t.Payee}} · {{t "paid to {payee}" "payee" .}}{{end}} · <span class="money {{if lt $t.Amount 0}}out{{else}}in{{end}}">{{money $t.Amount $cur}}</span></legend>
   <input type="hidden" name="tx-{{$i}}" value="{{$t.ID}}">
   {{with $row.Problem}}<p class="notice" role="alert">{{template "row-problem" .}}</p>{{end}}
   {{if $row.Guess.Made}}<p class="hint"><span class="badge">{{if eq $row.Guess.By "rule"}}{{t "by rule"}}{{else}}{{t "suggested"}}{{end}}</span> {{template "guess" (dict "Guess" $row.Guess "Category" ($m.CategoryName $row.Guess.CategoryID))}}</p>{{end}}

@@ -223,6 +223,10 @@ type Storer interface {
 	WithCheck(ctx context.Context, account types.ID, number string) ([]Transaction, error)
 	SetPayee(ctx context.Context, id types.ID, payee string, ev eventbus.Event) error
 
+	// SetOwnDescription writes a transaction's own description, the key
+	// it came through, and ev when there is one (describe.go).
+	SetOwnDescription(ctx context.Context, id types.ID, description, via string, ev *eventbus.Event) error
+
 	// Explanation is a transaction's explanation (explain.go), if any.
 	Explanation(ctx context.Context, transactionID types.ID) (Stored, bool, error)
 

@@ -93,10 +93,12 @@ receipt, which Claude is told to read as data, never as instructions.
 
 Everything Claude changes is marked on the site until you look at it:
 
-- A transaction it sorted says *by Claude* on the month list, and the month
-  says how many are *sorted by a program, to check*, with a link that shows
-  only those. Saving the transaction yourself, changed or not, says you
-  checked it, and the mark goes.
+- A transaction it sorted says *by Claude* on the month list, one it
+  described in its own words (such as a check's memo, "Summer work" for
+  "Check 1322") says *described by Claude*, and the month says how many
+  are *changed by a program, to check*, with a link that shows only those.
+  Saving the transaction yourself, changed or not, says you checked it,
+  and the mark goes.
 - A rule it wrote says *by Claude* on the rules page, until you save it
   there.
 - Every change is in the history of what it touched, marked as done
