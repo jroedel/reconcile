@@ -1,0 +1,113 @@
+{{define "title"}}{{t "Layout draft"}}{{end}}
+{{define "content"}}{{$v := .Data}}
+<p class="crumbs"><a href="/admin#drafts">{{t "Site administration"}}</a></p>
+<h1>{{t "Layout draft"}}</h1>
+<p>{{t "A description of one bank's statement layout, being written. Try it on a statement of your own: it is read by this draft and by what reads it now, side by side. The file is not kept, and a draft never reads anybody's import. When it reads well, copy it into a pull request, where it is reviewed and becomes built in."}}</p>
+
+{{if $v.Saved}}<p class="notice ok" role="status">{{t "Saved."}}</p>{{end}}
+{{if eq $v.Problem "too-long"}}<p class="notice" role="alert">{{t "The draft is too long. A layout's description fits in a page."}}</p>
+{{else if eq $v.Problem "not-yet"}}<p class="notice" role="alert">{{t "Put right what is wrong with the draft before trying it."}}</p>
+{{else if eq $v.Problem "no-file"}}<p class="notice" role="alert">{{t "Choose a PDF statement to try the draft on."}}</p>
+{{else if eq $v.Problem "too-big"}}<p class="notice" role="alert">{{t "That file is too big to be a statement."}}</p>
+{{else if eq $v.Problem "pdf-unavailable"}}<p class="notice" role="alert">{{t "PDFs cannot be read on this server yet."}}</p>
+{{else if eq $v.Problem "pdf-scan"}}<p class="notice" role="alert">{{t "That PDF is a picture of a statement, with no text to read. Download the statement from the bank instead of scanning it."}}</p>
+{{else if eq $v.Problem "pdf-password"}}<p class="notice" role="alert">{{t "That PDF is locked with a password. Save a copy without one and try that."}}</p>
+{{else if eq $v.Problem "pdf-unreadable"}}<p class="notice" role="alert">{{t "That PDF could not be opened. Download it again and try the new copy."}}</p>{{end}}
+
+{{with $v.Trial}}
+<section class="card" id="trial">
+<h2>{{t "Tried on {file}" "file" $v.TrialFile}}</h2>
+{{if .Same}}<p class="notice ok">{{t "The draft found the same rows as the site finds now."}}</p>
+{{else}}<p class="notice">{{t "The draft found different rows from those the site finds now."}}</p>{{end}}
+<p class="hint">{{t "Layout signature:"}} <code>{{or .Signature "–"}}</code>{{with .Producer}} · {{t "Made by:"}} <code>{{.}}</code>{{end}}</p>
+
+<div class="scroll"><table class="ledger">
+<thead><tr><th></th><th>{{t "This draft"}}</th><th>{{t "Read now"}}</th></tr></thead>
+<tbody>
+<tr><th>{{t "Read as"}}</th><td>{{.Trial.Draft.Layout}}</td><td>{{with .Trial.Now.Layout}}{{.}}{{else}}{{t "the general reader"}}{{end}}</td></tr>
+<tr><th>{{t "Recognizes the file"}}</th>
+  <td>{{if .Trial.Draft.Matched}}{{t "yes"}}{{else}}<span class="badge warn">{{t "no"}}</span>{{end}}</td>
+  <td>{{if .Trial.Now.Layout}}{{t "yes"}}{{else}}{{t "no built-in description does"}}{{end}}</td></tr>
+</tbody>
+</table></div>
+{{if not .Trial.Draft.Matched}}<p class="hint">{{t "The draft does not recognize this file, by its phrases or its producer, so it would never read it. It has been read by the draft anyway, so that its patterns can be tried while its phrases are put right."}}</p>{{end}}
+
+<h3>{{t "This draft"}}</h3>
+{{template "admin-reading" (dict "Reading" .Trial.Draft "Parts" .Draft)}}
+<h3>{{t "Read now"}}</h3>
+{{template "admin-reading" (dict "Reading" .Trial.Now "Parts" .Now)}}
+</section>
+{{end}}
+
+{{if $v.New}}
+<form method="post" action="/admin/drafts">
+{{else}}
+<form method="post" action="/admin/drafts/{{$v.Draft.ID}}">
+{{end}}
+<section class="card">
+<h2>{{t "The description"}}</h2>
+<div class="field">
+  <label for="text">{{t "JSON"}}</label>
+  <textarea id="text" name="text" class="code" rows="24" spellcheck="false" autocomplete="off">{{$v.Draft.Text}}</textarea>
+  <p class="hint">{{t "Its fields are explained in docs/shapes.md. Phrases to recognize a layout by are its own headings and labels, never a bank's name; patterns are Go regular expressions, and a pattern left out is the general reader's."}}</p>
+</div>
+{{if $v.Problems}}
+<div class="notice" role="alert">
+  <p>{{t "This is not yet a layout description. It is kept as it is, and can be tried once nothing is wrong with it."}}</p>
+  <details open><summary>{{t "What is wrong, in technical detail"}}</summary><pre>{{range $v.Problems}}{{.}}
+{{end}}</pre></details>
+</div>
+{{end}}
+<button type="submit">{{if $v.New}}{{t "Keep the draft"}}{{else}}{{t "Save"}}{{end}}</button>
+</section>
+</form>
+
+{{if not $v.New}}
+{{if not $v.Problems}}
+<section class="card">
+<h2>{{t "Try it"}}</h2>
+<form method="post" action="/admin/drafts/{{$v.Draft.ID}}/try" enctype="multipart/form-data" class="upload">
+  <div class="field">
+    <label for="file">{{t "A PDF statement of yours in this layout"}}</label>
+    <input id="file" name="file" type="file" accept="application/pdf,.pdf" required>
+    <p class="hint">{{t "It is read and forgotten: nothing of it is kept, and nobody else sees it."}}</p>
+  </div>
+  <button type="submit">{{t "Try the draft"}}</button>
+</form>
+</section>
+
+<section class="card">
+<h2>{{t "Copy it out"}}</h2>
+<p>{{t "Save this as {file} in business/domain/importing/shapes/declarations, and draw an invented statement in the same layout in pdfsourcetest for it to be tested on. Never put a real statement, name or number in the pull request." "file" $v.File}}</p>
+<textarea class="code" rows="16" readonly aria-label="{{t "The description, as its file"}}">{{$v.Copy}}</textarea>
+</section>
+{{end}}
+
+<form method="post" action="/admin/drafts/{{$v.Draft.ID}}/remove">
+  <button type="submit" class="quiet">{{t "Throw the draft away"}}</button>
+</form>
+{{end}}
+{{end}}
+
+{{define "admin-reading"}}
+{{if .Reading.NoRows}}<p class="notice">{{t "No transactions were found."}}</p>{{end}}
+{{range .Parts}}
+<div class="card">
+{{with .Last4}}<p><strong>{{t "Account ending {last4}" "last4" .}}</strong></p>{{end}}
+<p>
+  {{if .Check.OK}}<span class="badge ok">{{if eq (printf "%s" .Check.Method) "balances"}}{{t "balanced row by row"}}{{else if eq (printf "%s" .Check.Method) "totals"}}{{t "balanced by its totals"}}{{else}}{{t "balanced by the sum of its rows"}}{{end}}</span>
+  {{else if eq (printf "%s" .Check.Method) "none"}}<span class="badge warn">{{t "states nothing to check it by"}}</span>
+  {{else}}<span class="badge warn">{{t "does not balance: {expected} expected, {stated} stated" "expected" .Check.Expected.String "stated" .Check.Stated.String}}</span>{{end}}
+  {{if .Accepted}}<span class="badge ok">{{t "would be imported"}}</span>{{else}}<span class="badge warn">{{t "would not be imported"}}</span>{{end}}
+</p>
+<div class="scroll"><table class="ledger">
+<thead><tr><th>{{t "Date"}}</th><th>{{t "Description"}}</th><th>{{t "Check number"}}</th><th class="money">{{t "Amount"}}</th></tr></thead>
+<tbody>
+{{range .Shown}}<tr><td>{{.Date.Format "2006-01-02"}}</td><td>{{.Description}}{{if .Pending}} <span class="badge">{{t "pending"}}</span>{{end}}</td><td>{{.CheckNumber}}</td><td class="money">{{.Amount.String}}</td></tr>
+{{end}}
+</tbody>
+</table></div>
+{{if .More}}<p class="hint">{{t "And {count} more rows." "count" .More}}</p>{{end}}
+</div>
+{{end}}
+{{end}}

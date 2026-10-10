@@ -1,7 +1,8 @@
 // Package adminapp is the site administrator's page: the list of users, with
 // the power to stop one signing in, the translators, the names of the
-// organizations and accounts that exist, and the layouts of statements
-// nobody has taught the site yet (shapebus). Nothing about anybody's money --
+// organizations and accounts that exist, the layouts of statements nobody
+// has taught the site yet (shapebus), and the drafts of declarations that
+// would teach it them (drafts.go). Nothing about anybody's money --
 // that takes a grant, like anybody else's (tenancybus).
 //
 // Translators are named here because naming one is the site's decision, not
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/jroedel/reconcile/app/sdk/mid"
+	"github.com/jroedel/reconcile/business/domain/importing/shapes"
 	"github.com/jroedel/reconcile/business/domain/shape/shapebus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/translation/translationbus"
@@ -55,6 +57,12 @@ type Translators interface {
 // Shapes is the part of shapebus this app uses.
 type Shapes interface {
 	Sightings(ctx context.Context) ([]shapebus.Sighting, error)
+
+	CreateDraft(ctx context.Context, now time.Time, actor types.ID, text string) (shapebus.Draft, error)
+	SaveDraft(ctx context.Context, now time.Time, id types.ID, text string) (shapebus.Draft, error)
+	Draft(ctx context.Context, id types.ID) (shapebus.Draft, error)
+	Drafts(ctx context.Context) ([]shapebus.Draft, error)
+	RemoveDraft(ctx context.Context, id types.ID) error
 }
 
 // Names is the part of tenancybus this app uses.
@@ -105,6 +113,13 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	mux.Handle("POST /admin/users/{id}/enabled", admin(a.setEnabled))
 	mux.Handle("POST /admin/translators", admin(a.addTranslator))
 	mux.Handle("POST /admin/translators/{id}/{lang}/remove", admin(a.removeTranslator))
+
+	mux.Handle("GET /admin/drafts/new", admin(a.newDraft))
+	mux.Handle("POST /admin/drafts", admin(a.createDraft))
+	mux.Handle("GET /admin/drafts/{id}", admin(a.draft))
+	mux.Handle("POST /admin/drafts/{id}", admin(a.saveDraft))
+	mux.Handle("POST /admin/drafts/{id}/remove", admin(a.removeDraft))
+	mux.Handle(UploadPatterns[0], admin(a.tryDraft))
 }
 
 type view struct {
@@ -113,6 +128,8 @@ type view struct {
 	Accounts    []tenancybus.Account
 	Translators []translatorRow
 	Sightings   []shapebus.Sighting
+	Drafts      []draftRow
+	Builtin     []shapes.Declaration
 	Langs       []types.Lang
 	Me          types.ID
 	Problem     string
@@ -162,6 +179,15 @@ func (a app) render(w http.ResponseWriter, r *http.Request, status int, v view) 
 
 		return
 	}
+
+	drafts, err := a.cfg.Shapes.Drafts(r.Context())
+	if err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
+	draftRows(&v, drafts)
 
 	named := map[types.ID]string{}
 	for _, u := range users {

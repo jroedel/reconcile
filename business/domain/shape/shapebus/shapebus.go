@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/jroedel/reconcile/business/domain/importing/importbus"
+	"github.com/jroedel/reconcile/business/types"
 )
 
 // Sighting is one layout no declaration describes, as seen so far.
@@ -50,6 +51,14 @@ type Storer interface {
 
 	// Sightings is every layout seen, the most files first.
 	Sightings(ctx context.Context) ([]Sighting, error)
+
+	// The drafts (drafts.go). DraftByID, UpdateDraft and RemoveDraft
+	// answer ErrNotFound for a draft that is not there.
+	CreateDraft(ctx context.Context, d Draft) error
+	UpdateDraft(ctx context.Context, d Draft) error
+	DraftByID(ctx context.Context, id types.ID) (Draft, error)
+	Drafts(ctx context.Context) ([]Draft, error)
+	RemoveDraft(ctx context.Context, id types.ID) error
 }
 
 // Business is the set of operations on sightings.

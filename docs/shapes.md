@@ -162,11 +162,10 @@ What a declaration says, from what the readers already distinguish:
 **Built-in declarations** live in `business/domain/importing/shapes/`,
 embedded, and change by pull request with their fixture. **Drafts** are
 the administrator's: pasted or edited on the administrator's page, stored
-on the site, and used only when the administrator imports a file of their
-own with that draft chosen, side by side with what the built-in
-declaration or the general reader makes of it. A draft that reads its
-files correctly is copied out as the text of a pull request. A draft is
-never used for anybody else's import.
+on the site, and tried on a file of the administrator's own, side by side
+with what the built-in declaration or the general reader makes of it. A
+draft that reads its files correctly is copied out as the text of a pull
+request. A draft never imports anything, the administrator's included.
 
 ## 3. Checks and their images
 
@@ -236,6 +235,32 @@ source; matching by number is the same.
 - **The package**: each side in `checks/` as
   `number_date_amount[_payee]_n.ext`, and a "Paid to" column after "Check
   number".
+
+### As built (the fifth pull request)
+
+- **Where**: "Layout drafts" on `/admin`, and `/admin/drafts/…`; like the
+  rest of that page, a 404 for anybody but the site administrator.
+- **Started** blank, from a layout seen ("Start a draft description of
+  this layout", with that layout's plain words as the phrases to match and
+  its signature in the notes), or from a built-in declaration with its
+  version counted on, to revise it (`shapebus.Skeleton`, `Format`).
+- **Kept as typed**, whatever is wrong with it (`shape_drafts`): it is
+  being written. What `shapes.Parse` says of it is shown as technical
+  detail, in the parser's English, since the reader is writing JSON for
+  the code; a draft is tried only once nothing is wrong.
+- **Tried, not used.** A PDF of the administrator's is read in memory and
+  forgotten -- never stored, never imported (`shapebus.Try`). It is read
+  by the draft, whether or not the draft's phrases recognize it, so that
+  its patterns can be tried while the phrases are put right; and as it is
+  read now, by the built-in declaration that recognizes it or by the
+  general reader. Each account's part says how it balanced
+  (`ledgerbus.Verify`, the import's own check) and whether it would be
+  imported -- by the draft, only if it balanced a way its `checked_by`
+  allows -- with its first rows, and the page says whether the two
+  readings found the same rows.
+- **Copied out** as the file a pull request adds, under its id, in the
+  built-in files' order and with only the patterns it changes. The pull
+  request still needs its drawn fixture.
 
 ## 4. Files to accounts, in bulk
 

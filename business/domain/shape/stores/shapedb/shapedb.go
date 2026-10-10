@@ -4,12 +4,14 @@ package shapedb
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/jroedel/reconcile/business/domain/shape/shapebus"
+	"github.com/jroedel/reconcile/business/types"
 	"github.com/jroedel/reconcile/foundation/sqldb"
 )
 
@@ -27,10 +29,13 @@ var _ shapebus.Storer = (*Store)(nil)
 var Expected = sqldb.Expected{
 	"shape_sightings": {"signature", "format", "producer", "frame", "sections", "first_at", "last_at"},
 	"shape_files":     {"signature", "file_sha256", "balanced"},
+	"shape_drafts":    {"id", "text", "created_by", "created_at", "updated_at"},
 }
 
 // Init creates the tables. They reference nothing: a sighting belongs to
-// no account, organization or person, which is the point of it.
+// no account, organization or person, which is the point of it. A draft
+// says who started it, but not as a reference to users: it is the site's,
+// not that person's, and outlives their leaving.
 //
 // The words are kept one to a line. importbus.Word has already collapsed
 // every run of spaces, so a word never holds a newline; JSON would say the
@@ -56,6 +61,14 @@ CREATE TABLE IF NOT EXISTS shape_files (
     file_sha256 TEXT    NOT NULL,
     balanced    INTEGER NOT NULL,
     PRIMARY KEY (signature, file_sha256)
+) STRICT;
+
+CREATE TABLE IF NOT EXISTS shape_drafts (
+    id         TEXT    PRIMARY KEY,
+    text       TEXT    NOT NULL,
+    created_by TEXT    NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
 ) STRICT;
 `
 
@@ -159,4 +172,116 @@ ORDER BY COUNT(f.file_sha256) DESC, s.last_at DESC`)
 	}
 
 	return out, rows.Err()
+}
+
+// CreateDraft keeps a new draft.
+func (s *Store) CreateDraft(ctx context.Context, d shapebus.Draft) error {
+	if _, err := s.db.ExecContext(ctx, `
+INSERT INTO shape_drafts (id, text, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		d.ID.String(), d.Text, d.CreatedBy.String(), d.CreatedAt.UnixMilli(), d.UpdatedAt.UnixMilli()); err != nil {
+		return fmt.Errorf("keeping a draft: %w", err)
+	}
+
+	return nil
+}
+
+// UpdateDraft replaces a draft's text.
+func (s *Store) UpdateDraft(ctx context.Context, d shapebus.Draft) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE shape_drafts SET text = ?, updated_at = ? WHERE id = ?`,
+		d.Text, d.UpdatedAt.UnixMilli(), d.ID.String())
+	if err != nil {
+		return fmt.Errorf("saving a draft: %w", err)
+	}
+
+	return changedOne(res)
+}
+
+// RemoveDraft deletes one.
+func (s *Store) RemoveDraft(ctx context.Context, id types.ID) error {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM shape_drafts WHERE id = ?`, id.String())
+	if err != nil {
+		return fmt.Errorf("removing a draft: %w", err)
+	}
+
+	return changedOne(res)
+}
+
+func changedOne(res sql.Result) error {
+	n, err := res.RowsAffected()
+
+	switch {
+	case err != nil:
+		return err
+	case n == 0:
+		return shapebus.ErrNotFound
+	}
+
+	return nil
+}
+
+const draftColumns = `id, text, created_by, created_at, updated_at`
+
+// DraftByID is one draft.
+func (s *Store) DraftByID(ctx context.Context, id types.ID) (shapebus.Draft, error) {
+	d, err := scanDraft(s.db.QueryRowContext(ctx, `SELECT `+draftColumns+` FROM shape_drafts WHERE id = ?`, id.String()))
+	if errors.Is(err, sql.ErrNoRows) {
+		return shapebus.Draft{}, shapebus.ErrNotFound
+	}
+
+	return d, err
+}
+
+// Drafts is every draft, the most recently changed first.
+func (s *Store) Drafts(ctx context.Context) ([]shapebus.Draft, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+draftColumns+` FROM shape_drafts ORDER BY updated_at DESC, id`)
+	if err != nil {
+		return nil, fmt.Errorf("listing drafts: %w", err)
+	}
+
+	defer rows.Close()
+
+	var out []shapebus.Draft
+
+	for rows.Next() {
+		d, err := scanDraft(rows)
+		if err != nil {
+			return nil, err
+		}
+
+		out = append(out, d)
+	}
+
+	return out, rows.Err()
+}
+
+type scanner interface {
+	Scan(dest ...any) error
+}
+
+func scanDraft(row scanner) (shapebus.Draft, error) {
+	var (
+		d                shapebus.Draft
+		id, by           string
+		created, updated int64
+	)
+
+	if err := row.Scan(&id, &d.Text, &by, &created, &updated); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return d, err
+		}
+
+		return d, fmt.Errorf("reading a draft: %w", err)
+	}
+
+	var e [2]error
+	d.ID, e[0] = types.ParseID(id)
+	d.CreatedBy, e[1] = types.ParseID(by)
+
+	if err := errors.Join(e[:]...); err != nil {
+		return d, fmt.Errorf("reading a draft: %w", err)
+	}
+
+	d.CreatedAt, d.UpdatedAt = time.UnixMilli(created).UTC(), time.UnixMilli(updated).UTC()
+
+	return d, nil
 }

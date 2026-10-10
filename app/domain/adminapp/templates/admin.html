@@ -76,8 +76,28 @@
   <p class="hint">{{t "Files: {files}. Balanced by their own figures: {balanced}. First seen {first}, last seen {last}." "files" .Files "balanced" .Balanced "first" (.First.Format "2006-01-02") "last" (.Last.Format "2006-01-02")}}</p>
   {{if .Frame}}<p>{{t "In every file:"}} {{range $i, $w := .Frame}}{{if $i}} · {{end}}<code>{{$w}}</code>{{end}}</p>{{end}}
   {{if .Sections}}<p>{{t "Sections:"}} {{range $i, $w := .Sections}}{{if $i}} · {{end}}<code>{{$w}}</code>{{end}}</p>{{end}}
+  {{if eq .Format "pdf"}}<p><a href="/admin/drafts/new?from={{.Signature}}">{{t "Start a draft description of this layout"}}</a></p>{{end}}
 </li>
 {{end}}</ul>
 {{else}}<p class="hint">{{t "None yet."}}</p>{{end}}
+</section>
+
+<section class="card" id="drafts">
+<h2>{{t "Layout drafts"}}</h2>
+<p>{{t "Descriptions of layouts being written, to be tried on a statement of yours and copied into a pull request. A draft never reads anybody's import."}}</p>
+{{if .Drafts}}<ul class="list">
+{{range .Drafts}}<li>
+  <a href="/admin/drafts/{{.Draft.ID}}">{{if .Name}}{{.Name}}{{else}}{{t "Untitled draft"}}{{end}}</a>
+  {{if not .OK}}<span class="badge warn">{{t "not finished"}}</span>{{end}}
+  <span class="hint">{{t "Changed {date}" "date" (.Draft.UpdatedAt.Format "2006-01-02")}}</span>
+</li>
+{{end}}</ul>
+{{else}}<p class="hint">{{t "None yet."}}</p>{{end}}
+<p><a href="/admin/drafts/new">{{t "Start a blank draft"}}</a></p>
+<h3>{{t "Built in"}}</h3>
+<ul class="list">
+{{range .Builtin}}<li>{{.Name}} <span class="hint"><code>{{.ID}}</code> · {{t "version {version}" "version" .Version}}</span>
+  <a href="/admin/drafts/new?revise={{.ID}}">{{t "Revise it in a draft"}}</a></li>
+{{end}}</ul>
 </section>
 {{end}}{{end}}

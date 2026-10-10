@@ -2,10 +2,14 @@ package muxer
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 
+	"github.com/jroedel/reconcile/business/domain/importing/shapes"
+	"github.com/jroedel/reconcile/business/domain/importing/sources/pdfsource/pdfsourcetest"
+	"github.com/jroedel/reconcile/business/domain/shape/shapebus"
 	"github.com/jroedel/reconcile/foundation/pdftext"
 	"github.com/jroedel/reconcile/foundation/pdftext/pdftexttest"
 	"github.com/jroedel/reconcile/foundation/sqldb"
@@ -59,5 +63,85 @@ func TestANewLayoutThatProvesNothing(t *testing.T) {
 		if strings.Contains(strings.SplitN(listed.Body.String(), "Statement layouts seen", 2)[1], never) {
 			t.Errorf("the layouts seen show %q", never)
 		}
+	}
+}
+
+// The site's administrator writes a draft of a layout's description,
+// keeps it while it is not yet one, and tries it, once it is, on a
+// statement of theirs beside the reading the site makes now. Nobody else
+// finds the drafts at all.
+func TestALayoutDraft(t *testing.T) {
+	if !pdftext.Available() {
+		t.Skip("pdftotext is not installed here; CI installs it")
+	}
+
+	const secret = "a-setup-secret-that-is-long-enough-to-be-accepted"
+
+	h, sent := newSite(t, sqldb.Infrastructure, func(c *Config) { c.Bootstrap = secret })
+	e := newEstate(t, h, sent)
+
+	admin := newBrowser(t, h)
+	admin.post("/sign-in/first", url.Values{"email": {"admin@example.org"}, "secret": {secret}})
+
+	wantBody(t, admin.get("/admin/drafts/new?revise=us-consolidated-checking-a"), `&#34;version&#34;: 2`, "Keep the draft")
+
+	rec := admin.post("/admin/drafts", url.Values{"text": {`{"id": "Not Yet"}`}})
+	draft := rec.Header().Get("Location")
+	if rec.Code != http.StatusSeeOther || !strings.HasPrefix(draft, "/admin/drafts/") {
+		t.Fatalf("a draft: %d to %q", rec.Code, draft)
+	}
+
+	unfinished := admin.get(draft)
+	wantBody(t, unfinished, "This is not yet a layout description", "lower-case words joined by hyphens")
+
+	if strings.Contains(unfinished.Body.String(), "Try the draft") {
+		t.Error("a draft that is not a description can be tried")
+	}
+
+	var d shapes.Declaration
+	for _, b := range shapes.Builtin() {
+		if b.ID == "us-consolidated-checking-a" {
+			d = b
+		}
+	}
+
+	d.ID, d.Name = "a-draft", "A draft of a consolidated statement"
+
+	rec = admin.post(draft, url.Values{"text": {shapebus.Format(d)}})
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("saving: %d", rec.Code)
+	}
+
+	wantBody(t, admin.get(rec.Header().Get("Location")), "Saved.", "Try the draft", "Copy it out", "a-draft.json")
+	wantBody(t, admin.get("/admin"), "A draft of a consolidated statement")
+
+	tried := admin.upload(draft+"/try", "september.pdf", string(pdfsourcetest.Consolidated()))
+	wantBody(t, tried, "Tried on september.pdf", "The draft found the same rows as the site finds now.",
+		"Consolidated checking statement, layout A", "Account ending "+pdfsourcetest.First, "would be imported", "Remote Online Deposit")
+
+	if rec := admin.upload(draft+"/try", "", ""); rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("trying on no file: %d", rec.Code)
+	}
+
+	for name, b := range map[string]*browser{"an owner": e.owner} {
+		for _, rec := range []*httptest.ResponseRecorder{
+			b.get(draft),
+			b.get("/admin/drafts/new"),
+			b.post(draft, url.Values{"text": {"{}"}}),
+			b.post(draft+"/remove", nil),
+			b.upload(draft+"/try", "september.pdf", string(pdfsourcetest.Consolidated())),
+		} {
+			if rec.Code != http.StatusNotFound {
+				t.Errorf("%s: %d", name, rec.Code)
+			}
+		}
+	}
+
+	if rec := admin.post(draft+"/remove", nil); rec.Code != http.StatusSeeOther {
+		t.Fatalf("removing: %d", rec.Code)
+	}
+
+	if rec := admin.get(draft); rec.Code != http.StatusNotFound {
+		t.Errorf("a removed draft: %d", rec.Code)
 	}
 }

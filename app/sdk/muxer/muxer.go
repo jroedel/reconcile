@@ -293,6 +293,13 @@ func New(cfg Config) (http.Handler, error) {
 			web.Deadline(receiptapp.UploadTime), web.MaxBody(receiptapp.MaxUpload), web.MultipartOnly()))
 	}
 
+	// The site administrator's trial of a layout draft on a statement of
+	// theirs (adminapp): as big as a statement may be.
+	for _, pattern := range adminapp.UploadPatterns {
+		shape.Handle(pattern, web.Wrap(inner,
+			web.Deadline(receiptapp.UploadTime), web.MaxBody(adminapp.MaxUpload), web.MultipartOnly()))
+	}
+
 	// A download is the other way round: a small request, and an answer
 	// that may take many minutes to send.
 	for _, pattern := range exportapp.DownloadPatterns {
