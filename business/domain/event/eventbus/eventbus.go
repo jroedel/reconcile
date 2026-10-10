@@ -51,7 +51,34 @@ type Event struct {
 	// less than it is written, and a page reads the keys it knows.
 	Detail map[string]string
 
+	// Via is the name of the API key the change came through ("claude.ai",
+	// or what a person called a key), "" for a change made on a page.
+	// The actor is still the person: a key acts as them. This says how
+	// they reached the change, so that the history can say "through
+	// Claude" (docs/books-api.md, "Telling afterwards what the API did").
+	Via string
+
 	At time.Time
+}
+
+type viaKey struct{}
+
+// WithVia marks a request's context as reaching the business through an
+// API key with this name, for every event written while serving it.
+//
+// A context value rather than an argument to every business method that
+// writes history: how the actor arrived is no rule's business, and
+// threading it through every signature in every domain to reach one column
+// is the wrong trade. The store that writes the event reads it (ViaFrom).
+func WithVia(ctx context.Context, name string) context.Context {
+	return context.WithValue(ctx, viaKey{}, name)
+}
+
+// ViaFrom is the key a request came through, or "".
+func ViaFrom(ctx context.Context) string {
+	name, _ := ctx.Value(viaKey{}).(string)
+
+	return name
 }
 
 // New is an event with an identifier and a time.

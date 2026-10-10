@@ -20,6 +20,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jroedel/reconcile/business/domain/user/userbus"
@@ -45,7 +46,7 @@ var Expected = sqldb.Expected{
 	"backup_codes":  {"id", "user_id", "hash", "created_at", "used_at"},
 	"sessions":      {"id", "user_id", "hash", "created_at", "expires_at"},
 	"bootstrap":     {"id", "claimed_at"},
-	"api_keys":      {"id", "user_id", "name", "hash", "created_at", "expires_at", "last_used_at", "client"},
+	"api_keys":      {"id", "user_id", "name", "hash", "created_at", "expires_at", "last_used_at", "client", "scopes"},
 	"oauth_grants":  {"id", "user_id", "hash", "client_id", "client_name", "redirect_uri", "challenge", "created_at", "expires_at", "used_at"},
 }
 
@@ -180,6 +181,13 @@ CREATE INDEX IF NOT EXISTS oauth_grants_user ON oauth_grants (user_id, expires_a
 
 	if _, err := db.ExecContext(ctx, schema); err != nil {
 		return fmt.Errorf("creating the user tables: %w", err)
+	}
+
+	// What a key may be used for (userbus.Scope), space-separated as OAuth
+	// writes scopes; a later column beside the CREATE. Every key from
+	// before it was a translator's, which is what the default says.
+	if err := sqldb.AddColumn(ctx, db, "api_keys", "scopes", "TEXT NOT NULL DEFAULT 'translate'"); err != nil {
+		return err
 	}
 
 	return nil
@@ -615,12 +623,12 @@ func (s *Store) PruneExpired(ctx context.Context, before time.Time) error {
 // the count and the insert in one statement, as for links.
 func (s *Store) CreateAPIKey(ctx context.Context, k userbus.APIKey, limit int) (bool, error) {
 	const q = `
-INSERT INTO api_keys (id, user_id, name, hash, created_at, expires_at)
-SELECT ?, ?, ?, ?, ?, ?
+INSERT INTO api_keys (id, user_id, name, hash, created_at, expires_at, scopes)
+SELECT ?, ?, ?, ?, ?, ?, ?
 WHERE (SELECT count(*) FROM api_keys WHERE user_id = ? AND expires_at > ?) < ?`
 
 	res, err := s.db.ExecContext(ctx, q,
-		k.ID.String(), k.UserID.String(), k.Name, k.Hash, msOf(k.CreatedAt), msOf(k.ExpiresAt),
+		k.ID.String(), k.UserID.String(), k.Name, k.Hash, msOf(k.CreatedAt), msOf(k.ExpiresAt), scopesOf(k.Scopes),
 		k.UserID.String(), msOf(k.CreatedAt), limit)
 	if err != nil {
 		return false, fmt.Errorf("inserting the API key: %w", err)
@@ -646,12 +654,12 @@ func (s *Store) ReplaceAPIKey(ctx context.Context, k userbus.APIKey, limit int) 
 	}
 
 	const q = `
-INSERT INTO api_keys (id, user_id, name, hash, created_at, expires_at, client)
-SELECT ?, ?, ?, ?, ?, ?, ?
+INSERT INTO api_keys (id, user_id, name, hash, created_at, expires_at, client, scopes)
+SELECT ?, ?, ?, ?, ?, ?, ?, ?
 WHERE (SELECT count(*) FROM api_keys WHERE user_id = ? AND expires_at > ?) < ?`
 
 	res, err := tx.ExecContext(ctx, q,
-		k.ID.String(), k.UserID.String(), k.Name, k.Hash, msOf(k.CreatedAt), msOf(k.ExpiresAt), k.Client,
+		k.ID.String(), k.UserID.String(), k.Name, k.Hash, msOf(k.CreatedAt), msOf(k.ExpiresAt), k.Client, scopesOf(k.Scopes),
 		k.UserID.String(), msOf(k.CreatedAt), limit)
 	if err != nil {
 		return false, fmt.Errorf("inserting the API key: %w", err)
@@ -669,7 +677,7 @@ WHERE (SELECT count(*) FROM api_keys WHERE user_id = ? AND expires_at > ?) < ?`
 	return true, nil
 }
 
-const apiKeyColumns = `id, user_id, name, hash, created_at, expires_at, last_used_at, client`
+const apiKeyColumns = `id, user_id, name, hash, created_at, expires_at, last_used_at, client, scopes`
 
 // APIKeyByID finds a key by identifier.
 func (s *Store) APIKeyByID(ctx context.Context, id types.ID) (userbus.APIKey, error) {
@@ -740,13 +748,13 @@ func (s *Store) TouchAPIKey(ctx context.Context, id types.ID, at, notAfter time.
 
 func scanAPIKey(row rowScanner) (userbus.APIKey, error) {
 	var (
-		k                userbus.APIKey
-		rawID, rawUser   string
-		created, expires int64
-		used             sql.NullInt64
+		k                      userbus.APIKey
+		rawID, rawUser, scopes string
+		created, expires       int64
+		used                   sql.NullInt64
 	)
 
-	if err := row.Scan(&rawID, &rawUser, &k.Name, &k.Hash, &created, &expires, &used, &k.Client); err != nil {
+	if err := row.Scan(&rawID, &rawUser, &k.Name, &k.Hash, &created, &expires, &used, &k.Client, &scopes); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return userbus.APIKey{}, err
 		}
@@ -765,7 +773,21 @@ func scanAPIKey(row rowScanner) (userbus.APIKey, error) {
 
 	k.CreatedAt, k.ExpiresAt, k.LastUsedAt = timeOf(created), timeOf(expires), timeOfNull(used)
 
+	for s := range strings.FieldsSeq(scopes) {
+		k.Scopes = append(k.Scopes, userbus.Scope(s))
+	}
+
 	return k, nil
+}
+
+// scopesOf is a key's scopes as the column keeps them.
+func scopesOf(scopes []userbus.Scope) string {
+	words := make([]string, len(scopes))
+	for i, s := range scopes {
+		words[i] = string(s)
+	}
+
+	return strings.Join(words, " ")
 }
 
 // ------------------------------------------------------------------ OAuth grants

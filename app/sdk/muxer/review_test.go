@@ -56,7 +56,8 @@ func TestATranslatorIsNamedForOneLanguage(t *testing.T) {
 		t.Errorf("her key, Spanish: %d", rec.Code)
 	}
 
-	// Removed: the screen, the keys screen and the key are gone with it.
+	// Removed: the screen, the keys screen's translating, and what the key
+	// translates are gone with it.
 	page := s.admin.get("/admin").Body.String()
 
 	i := strings.Index(page, `action="/admin/translators/`)
@@ -69,10 +70,12 @@ func TestATranslatorIsNamedForOneLanguage(t *testing.T) {
 
 	wantRedirect(t, s.admin.post(remove, nil), "/admin#translators")
 
-	for _, path := range []string{"/translations", "/account/keys"} {
-		if rec := ana.get(path); rec.Code != http.StatusNotFound {
-			t.Errorf("after, %s: %d", path, rec.Code)
-		}
+	if rec := ana.get("/translations"); rec.Code != http.StatusNotFound {
+		t.Errorf("after, /translations: %d", rec.Code)
+	}
+
+	if strings.Contains(ana.get("/account/keys").Body.String(), `value="translate"`) {
+		t.Error("after, the keys screen still offers translating")
 	}
 
 	if rec := s.api(http.MethodGet, "/api/v1/translations/pending?lang=pt", key, ""); rec.Code != http.StatusForbidden {

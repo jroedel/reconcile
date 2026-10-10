@@ -555,8 +555,8 @@ type accountView struct {
 	// refused.
 	NewEmail string
 
-	// Translates is whether the user may hold an API key, which is whether
-	// the page links to the keys screen.
+	// Translates is whether the user may translate, which is whether the
+	// page links to the review screen. Everybody may hold an API key.
 	Translates bool
 }
 

@@ -45,6 +45,8 @@ var Expected = sqldb.Expected{
 		"created_by", "created_at", "updated_by", "updated_at"},
 	"explanation_lines": {"transaction_id", "explains", "added_by", "added_at"},
 	"holder_accounts":   {"account_id", "set_by", "set_at"},
+	"statement_inbox": {"id", "user_id", "file_id", "sha256", "name", "source", "received_at",
+		"closed_at", "dismissed_at"},
 	"reconciliations": {"statement_id", "account_id", "period_start", "period_end", "note",
 		"reconciled_by", "reconciled_at"},
 }
@@ -166,7 +168,11 @@ CREATE TABLE IF NOT EXISTS csv_mappings (
 		return err
 	}
 
-	return initHolders(ctx, db)
+	if err := initHolders(ctx, db); err != nil {
+		return err
+	}
+
+	return initInbox(ctx, db)
 }
 
 // initReconciliations creates the table of statements a person has checked

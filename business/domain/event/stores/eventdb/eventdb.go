@@ -15,7 +15,7 @@ import (
 
 // Expected is what CheckSchema verifies at startup and on every /healthz.
 var Expected = sqldb.Expected{
-	"events": {"id", "actor_id", "scope_kind", "scope_id", "action", "detail", "at"},
+	"events": {"id", "actor_id", "scope_kind", "scope_id", "action", "detail", "at", "via"},
 }
 
 // Init creates the table. Idempotent, run at every startup.
@@ -42,6 +42,13 @@ CREATE INDEX IF NOT EXISTS events_scope ON events (scope_kind, scope_id, at DESC
 		return fmt.Errorf("creating the history table: %w", err)
 	}
 
+	// The API key a change came through (eventbus.Event.Via), a later
+	// column beside the CREATE; empty for every change from before it, all
+	// of which were made on a page.
+	if err := sqldb.AddColumn(ctx, db, "events", "via", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -52,7 +59,8 @@ type Execer interface {
 }
 
 // Insert appends one event, through whatever transaction the change it
-// records is in.
+// records is in. Its Via, when it has none, is the key the request came
+// through (eventbus.WithVia).
 func Insert(ctx context.Context, db Execer, e eventbus.Event) error {
 	detail, err := json.Marshal(e.Detail)
 	if err != nil {
@@ -68,11 +76,16 @@ func Insert(ctx context.Context, db Execer, e eventbus.Event) error {
 		actor = e.ActorID.String()
 	}
 
+	via := e.Via
+	if via == "" {
+		via = eventbus.ViaFrom(ctx)
+	}
+
 	if _, err := db.ExecContext(ctx, `
-INSERT INTO events (id, actor_id, scope_kind, scope_id, action, detail, at)
-VALUES (?, ?, ?, ?, ?, ?, ?)`,
+INSERT INTO events (id, actor_id, scope_kind, scope_id, action, detail, at, via)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		e.ID.String(), actor, string(e.Scope.Kind), e.Scope.ID.String(), string(e.Action), string(detail),
-		e.At.UnixMilli()); err != nil {
+		e.At.UnixMilli(), via); err != nil {
 		return fmt.Errorf("writing the history: %w", err)
 	}
 
@@ -96,7 +109,7 @@ var _ eventbus.Storer = (*Store)(nil)
 // two changes in one millisecond, read back in the order they happened.
 func (s *Store) ForScope(ctx context.Context, scope types.Scope, limit int) ([]eventbus.Event, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT id, actor_id, scope_kind, scope_id, action, detail, at
+SELECT id, actor_id, scope_kind, scope_id, action, detail, at, via
 FROM events WHERE scope_kind = ? AND scope_id = ?
 ORDER BY at DESC, rowid DESC LIMIT ?`, string(scope.Kind), scope.ID.String(), limit)
 	if err != nil {
@@ -115,7 +128,7 @@ ORDER BY at DESC, rowid DESC LIMIT ?`, string(scope.Kind), scope.ID.String(), li
 			at                 int64
 		)
 
-		if err := rows.Scan(&id, &actor, &kind, &sid, &act, &detail, &at); err != nil {
+		if err := rows.Scan(&id, &actor, &kind, &sid, &act, &detail, &at, &e.Via); err != nil {
 			return nil, fmt.Errorf("reading an event: %w", err)
 		}
 

@@ -19,6 +19,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -102,10 +103,32 @@ type Accounts interface {
 type Files interface {
 	ByID(ctx context.Context, id types.ID) (filebus.File, error)
 	ReadAll(f filebus.File) ([]byte, error)
+
+	// Save keeps a file the statement inbox received (inbox.go).
+	Save(ctx context.Context, now time.Time, actor types.ID, name string, r io.Reader, limit int64, accept []string) (filebus.File, error)
 }
 
 // Storer keeps statements, transactions and the CSV mappings.
 type Storer interface {
+	// AddToInbox records a file in a person's statement inbox, unless the
+	// same content is in it already, and says whether it did: one
+	// statement, INSERT … ON CONFLICT DO NOTHING.
+	AddToInbox(ctx context.Context, f InboxFile) (bool, error)
+
+	// InboxFileBySHA is the line for that content in a person's inbox,
+	// waiting, closed or dismissed, or ErrNotFound.
+	InboxFileBySHA(ctx context.Context, userID types.ID, sha string) (InboxFile, error)
+
+	// Inbox is a person's waiting files, oldest first.
+	Inbox(ctx context.Context, userID types.ID) ([]InboxFile, error)
+
+	// CloseInboxFiles closes the person's waiting lines for those files.
+	CloseInboxFiles(ctx context.Context, userID types.ID, fileIDs []types.ID, at time.Time) error
+
+	// DismissInboxFile takes one of the person's waiting lines off the
+	// list, or answers ErrNotFound.
+	DismissInboxFile(ctx context.Context, userID, id types.ID, at time.Time) error
+
 	// Import stores a statement and those of its transactions not already
 	// in the account, and returns the statement with Added, Already and
 	// Locked counted. With commit false it does all of it and rolls back, so a

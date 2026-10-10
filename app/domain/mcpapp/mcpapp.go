@@ -68,9 +68,10 @@ const indexPath = "/api/v1"
 //go:embed guide.md
 var guide string
 
-// Keys is the slice of userbus this app uses: whether a key is somebody's.
+// Keys is the slice of userbus this app uses: whether a key is somebody's,
+// and what it may be used for.
 type Keys interface {
-	AuthenticateAPIKey(ctx context.Context, now time.Time, presented string) (userbus.User, error)
+	AuthenticateAPIKey(ctx context.Context, now time.Time, presented string) (userbus.User, userbus.APIKey, error)
 }
 
 // Config is what this app needs.
@@ -93,10 +94,22 @@ type app struct {
 	cfg      Config
 	resource string // the URL of /mcp, which is what a token is for
 
-	once   sync.Once
-	server *mcp.Server
-	err    error
+	// The API's index, read once, on the first request.
+	once sync.Once
+	ix   index
+	err  error
+
+	// servers is one server per set of scopes, made from the index on the
+	// first request with that set, so that a connection lists the tools its
+	// key may call and no others: a translator's, the translations; a
+	// bookkeeper's, the books. Every tool listed and half of them refused
+	// would be a list Claude cannot trust.
+	mu      sync.Mutex
+	servers map[string]*mcp.Server
 }
+
+// scopesKey carries a request's key's scopes from requireKey to serverFor.
+type scopesKey struct{}
 
 // App is the MCP server and the document that says where to sign in to it.
 type App struct{ a *app }
@@ -167,7 +180,7 @@ func (a *app) requireKey(next http.Handler) http.Handler {
 			return
 		}
 
-		_, err := a.cfg.Keys.AuthenticateAPIKey(r.Context(), time.Now(), strings.TrimSpace(key))
+		_, k, err := a.cfg.Keys.AuthenticateAPIKey(r.Context(), time.Now(), strings.TrimSpace(key))
 
 		switch {
 		case errors.Is(err, userbus.ErrDenied):
@@ -185,17 +198,18 @@ func (a *app) requireKey(next http.Handler) http.Handler {
 			return
 		}
 
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), scopesKey{}, k.Scopes)))
 	})
 }
 
 // ------------------------------------------------------------------ the server
 
-// serverFor is the server, made once from the API's index on the first
-// request: not at startup, because the index is read through the site, and
-// the site is finished only after this app is mounted in it.
+// serverFor is the server for the request's key's scopes, made from the
+// API's index, which is read once on the first request: not at startup,
+// because the index is read through the site, and the site is finished
+// only after this app is mounted in it.
 func (a *app) serverFor(r *http.Request) *mcp.Server {
-	a.once.Do(func() { a.server, a.err = a.build(r.Context()) })
+	a.once.Do(func() { a.ix, a.err = a.readIndex(r.Context()) })
 
 	if a.err != nil {
 		// nil makes the SDK answer 400, and the log says why. Not
@@ -206,7 +220,36 @@ func (a *app) serverFor(r *http.Request) *mcp.Server {
 		return nil
 	}
 
-	return a.server
+	scopes, _ := r.Context().Value(scopesKey{}).([]userbus.Scope)
+
+	words := make([]string, len(scopes))
+	for i, s := range scopes {
+		words[i] = string(s)
+	}
+
+	set := strings.Join(words, " ")
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if s, ok := a.servers[set]; ok {
+		return s
+	}
+
+	s, err := a.build(a.ix, scopes)
+	if err != nil {
+		a.cfg.Log.Error("the MCP server could not be made from the API's index", "scopes", set, "error", err)
+
+		return nil
+	}
+
+	if a.servers == nil {
+		a.servers = map[string]*mcp.Server{}
+	}
+
+	a.servers[set] = s
+
+	return s
 }
 
 // index is as much of the API's index as tools are made from. Its own
@@ -223,6 +266,7 @@ type endpoint struct {
 	Summary string  `json:"summary"`
 	Returns string  `json:"returns"`
 	Tool    string  `json:"tool"`
+	Scope   string  `json:"scope"`
 	Query   []field `json:"query"`
 	Body    *struct {
 		Encoding string  `json:"encoding"`
@@ -238,19 +282,26 @@ type field struct {
 	Description string   `json:"description"`
 }
 
-func (a *app) build(ctx context.Context) (*mcp.Server, error) {
+// readIndex is the API's index, read as any program reads it.
+func (a *app) readIndex(ctx context.Context) (index, error) {
 	w := httptest.NewRecorder()
 	a.cfg.Site().ServeHTTP(w, httptest.NewRequestWithContext(ctx, http.MethodGet, indexPath, nil))
 
 	if w.Code != http.StatusOK {
-		return nil, fmt.Errorf("the index answered %d", w.Code)
+		return index{}, fmt.Errorf("the index answered %d", w.Code)
 	}
 
 	var ix index
 	if err := json.Unmarshal(w.Body.Bytes(), &ix); err != nil {
-		return nil, fmt.Errorf("reading the index: %w", err)
+		return index{}, fmt.Errorf("reading the index: %w", err)
 	}
 
+	return ix, nil
+}
+
+// build is a server whose tools are the index's endpoints that a key with
+// these scopes may call.
+func (a *app) build(ix index, scopes []userbus.Scope) (*mcp.Server, error) {
 	instructions := guide + "\n## The API's own rules\n\n"
 	for _, rule := range ix.Rules {
 		instructions += "- " + rule + "\n"
@@ -262,7 +313,7 @@ func (a *app) build(ctx context.Context) (*mcp.Server, error) {
 	})
 
 	for _, e := range ix.Endpoints {
-		if e.Tool == "" {
+		if e.Tool == "" || !userbus.Allows(scopes, userbus.Scope(e.Scope)) {
 			continue
 		}
 

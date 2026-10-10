@@ -188,6 +188,11 @@ func (b *Business) RedeemGrant(ctx context.Context, now time.Time, presented, cl
 	k := APIKey{
 		ID: cred.id, UserID: u.ID, Name: g.ClientName, Hash: cred.hash,
 		CreatedAt: now, ExpiresAt: now.Add(APIKeyLife), Client: g.ClientID,
+
+		// Translations, which is all a program connected through OAuth
+		// may do until the consent asks for the books
+		// (docs/books-api.md, build order 2).
+		Scopes: []Scope{Translate},
 	}
 
 	made, err := b.store.ReplaceAPIKey(ctx, k, MaxAPIKeys)
