@@ -99,6 +99,8 @@ func newWorld(t *testing.T) *world {
 		history:  eventbus.NewBusiness(eventdb.NewStore(db)),
 	}
 
+	ledger.OnImport(w.receipts.MatchChecks)
+
 	w.owner = w.user("treasurer@example.org")
 	w.pilgrim = w.user("pilgrim@example.org")
 	w.stranger = w.user("stranger@example.org")

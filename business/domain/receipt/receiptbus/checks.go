@@ -260,6 +260,51 @@ func (b *Business) NumberCheck(ctx context.Context, now time.Time, actor, id typ
 	return b.saveCheck(ctx, now, actor, r)
 }
 
+// MatchChecks attaches the account's waiting check images whose number
+// now has exactly one transaction. It is what follows an import
+// (ledgerbus.AfterImport), so that a check photographed before it cleared
+// finds its transaction when the statement that lists it arrives, as
+// though it had been numbered then. Somebody who may not attach receipts
+// to the account matches nothing.
+func (b *Business) MatchChecks(ctx context.Context, now time.Time, actor, accountID types.ID) error {
+	home := types.AccountScope(accountID)
+
+	if ok, err := b.can(ctx, actor, home, tenancybus.Receipts); err != nil || !ok {
+		return err
+	}
+
+	waiting, err := b.store.InHomes(ctx, []types.Scope{home}, true)
+	if err != nil {
+		return err
+	}
+
+	n := 0
+
+	for _, r := range waiting {
+		if !r.CheckImage || r.Check == "" {
+			continue
+		}
+
+		if _, ok, err := b.paidBy(ctx, accountID, r.Check); err != nil {
+			return err
+		} else if !ok {
+			continue
+		}
+
+		if _, err := b.saveCheck(ctx, now, actor, r); err != nil {
+			return err
+		}
+
+		n++
+	}
+
+	if n > 0 {
+		b.log.Info("waiting check images were matched", "account_id", accountID.String(), "matched", n)
+	}
+
+	return nil
+}
+
 // saveCheck writes a waiting check image's number, attaching it to the
 // transaction that paid it when the account has exactly one.
 func (b *Business) saveCheck(ctx context.Context, now time.Time, actor types.ID, r Receipt) (Receipt, error) {

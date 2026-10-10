@@ -105,6 +105,7 @@ func newSite(t *testing.T, want sqldb.Expected, configure func(*Config)) (http.H
 	shapes := shapebus.NewBusiness(log, shapedb.NewStore(db))
 	ledger := ledgerbus.NewBusiness(log, ledgerdb.NewStore(db), tenancy, files, categories, rules, shapes)
 	receipts := receiptbus.NewBusiness(log, receiptdb.NewStore(db), tenancy, ledger, files)
+	ledger.OnImport(receipts.MatchChecks)
 
 	cfg := Config{
 		Log: log, DB: db, Expected: want, Render: render,

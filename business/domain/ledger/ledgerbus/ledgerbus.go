@@ -261,7 +261,22 @@ type Business struct {
 	categories Categories
 	rules      Rules
 	shapes     Shapes
+	imported   AfterImport
 }
+
+// AfterImport is what is done after a statement is imported, by a domain the
+// ledger knows nothing of: receipts attach the images of checks that were
+// waiting for the transactions it brought (receiptbus.MatchChecks,
+// docs/phone.md, 2). It is a function rather than an interface beside
+// Rules and Shapes because receipts are made from the ledger, so the
+// ledger cannot be made from them. An error is logged and never undoes
+// the import, which has already happened; what it would have done can be
+// done by hand.
+type AfterImport func(ctx context.Context, now time.Time, actor, accountID types.ID) error
+
+// OnImport sets what is done after each import. main sets it once, before
+// anything is served.
+func (b *Business) OnImport(fn AfterImport) { b.imported = fn }
 
 // NewBusiness constructs one. shapes may be nil, and then no layout is
 // recorded as seen (shapes.go).
@@ -752,6 +767,12 @@ func (b *Business) Import(ctx context.Context, now time.Time, actor, accountID, 
 
 	b.log.Info("a statement was imported", "account_id", accountID.String(), "statement_id", st.ID.String(),
 		"added", st.Added, "already", st.Already, "by_rule", st.ByRule, "checked", string(st.Checked))
+
+	if b.imported != nil {
+		if err := b.imported(ctx, now, actor, d.Account.ID); err != nil {
+			b.log.Error("what follows an import failed", "account_id", accountID.String(), "statement_id", st.ID.String(), "error", err)
+		}
+	}
 
 	return st, nil
 }
