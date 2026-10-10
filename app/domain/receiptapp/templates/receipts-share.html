@@ -5,7 +5,7 @@
 <div id="shared">
 {{- if eq $v.Shared "again"}}<p class="notice" role="alert">{{t "What you shared did not reach this page. Share it again from your photos app: it will arrive from now on."}}</p>
 {{- else if eq $v.Shared "lost"}}<p class="notice" role="alert">{{t "Your phone could not keep what you shared. Share it again, or choose the files below."}}</p>
-{{- else if gt $v.Count $v.Max}}<p class="notice" role="alert">{{t "You shared {count} files, and one upload takes at most {max}. Share them again a few at a time." "count" $v.Count "max" $v.Max}}</p>
+{{- else if gt $v.Count $v.Max}}<p class="notice" role="alert">{{t "You shared {count} files, and at most {max} are added at once. Share them again in two batches." "count" $v.Count "max" $v.Max}}</p>
 {{- else if gt $v.Count 0}}
 <p class="notice ok" role="status" id="shared-ready" hidden>{{t "{count} files from your phone, ready to add. Choose where they go." "count" $v.Count}}</p>
 <p class="notice" role="alert" id="shared-gone" hidden>{{t "What you shared is not on this page any more: it was added already, or your phone let it go. Share it again, or choose the files below."}}</p>
@@ -14,7 +14,7 @@
 </div>
 
 {{if $v.Choices}}
-<form method="post" action="/receipts/share" enctype="multipart/form-data" class="upload card" data-share data-max="{{$v.Max}}">
+<form method="post" action="/receipts/share" enctype="multipart/form-data" class="upload card" data-share data-max="{{$v.Max}}" data-send="/receipts/share/one">
   <fieldset class="field">
     <legend>{{t "Where do they go?"}}</legend>
     {{range $i, $c := $v.Choices}}<label class="choice"><input type="radio" name="to" value="{{$c.Value}}" required{{if eq (len $v.Choices) 1}} checked{{end}}>
@@ -27,7 +27,33 @@
     <input id="share-files" name="files" type="file" multiple required accept="image/*,application/pdf">
   </div>
   <button type="submit">{{t "Add"}}</button>
+  <div id="sending" role="status" aria-live="polite" hidden>
+    <p id="sending-words"></p>
+    <progress id="sending-bar" max="1" value="0"></progress>
+  </div>
 </form>
+<div id="sent" hidden></div>
+{{/* The sentences send.mjs says as it sends, in the page's language, with
+     their {placeholders} left for it to fill: a sentence is translated
+     whole, and the script's numbers change every few seconds. */}}
+<div id="send-words" hidden
+  data-sending="{{t "Sending {n} of {count}…" "n" "{n}" "count" "{count}"}}"
+  data-sending-on="{{t "Sending…"}}"
+  data-opening="{{t "All sent. Opening the inbox…"}}"
+  data-dropped="{{t "The connection dropped while sending {n} of {count}. Trying again…" "n" "{n}" "count" "{count}"}}"
+  data-dropping="{{t "Still trying to send {n} of {count}. Keep this page open: it goes on when the signal comes back." "n" "{n}" "count" "{count}"}}"
+  data-gone="{{t "The connection has been gone for five minutes. What was sent is kept: press Add again when there is a signal, and only the rest is sent."}}"
+  data-signed-out="{{t "You were signed out while sending. Sign in again and come back to this page: what was sent is kept, and only the rest is sent."}}"
+  data-refused="{{t "The site would not take more ({status}). What was sent is kept." "status" "{status}"}}"
+  data-to="{{t "You may not add to the place chosen. Choose another, and press Add again."}}"
+  data-kind="{{t "not a photo or a PDF"}}"
+  data-big="{{t "larger than {max} MB" "max" $v.MaxMB}}"
+  data-none="{{t "it arrived empty"}}"
+  data-count-not="{{t "{count} were not added:" "count" "{count}"}}"
+  data-count-kept="{{t "{count} added." "count" "{count}"}}"
+  data-count-already="{{t "{count} were there already." "count" "{count}"}}"
+  data-too-many="{{t "You chose {count} files, and at most {max} are added at once." "count" "{count}" "max" "{max}"}}"></div>
+<script type="module" src="/receipts/static/send.mjs"></script>
 {{else}}
 <p>{{t "There is nowhere you may add receipts yet. Somebody who keeps an organization's books can give you a role on an account or a project."}}</p>
 {{end}}

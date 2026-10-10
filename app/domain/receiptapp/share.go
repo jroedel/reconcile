@@ -7,12 +7,15 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"path"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/jroedel/reconcile/business/domain/file/filebus"
+	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/types"
 	"github.com/jroedel/reconcile/foundation/web"
@@ -37,7 +40,7 @@ import (
 // somewhere until somebody did. So the server's handler for that address
 // only ever sees a share the worker missed, and asks for it again.
 
-//go:embed static/share.mjs static/share-worker.mjs
+//go:embed static/share.mjs static/share-worker.mjs static/send.mjs static/shrink.mjs static/jpeg.mjs
 var static embed.FS
 
 // The app's addresses. The manifest and the scripts are files in the
@@ -70,7 +73,17 @@ const (
 	// SharePath is the share page, where the worker sends the person with
 	// the files, and the address its form posts to.
 	SharePath = "/receipts/share"
+
+	// SendPath is where the share page's script sends the files, one a
+	// request (sendOne).
+	SendPath = SharePath + "/one"
 )
+
+// MaxShare is the most files one share is added from, a file a request: a
+// month of a parish's checks, with room. Without its script the share
+// page's form is one upload, and MaxFiles holds; but a share only ever
+// reaches the page through the worker, which is script too.
+const MaxShare = 60
 
 // manifestJSON is Reconcile as Chrome installs it.
 //
@@ -183,6 +196,9 @@ type shareView struct {
 	Count  int
 	Max    int
 
+	// MaxMB is the most one file may be, for the script to say.
+	MaxMB int
+
 	Choices []shareChoice
 }
 
@@ -194,7 +210,7 @@ func (a app) sharePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	view := shareView{Shared: r.URL.Query().Get("shared"), Max: MaxFiles}
+	view := shareView{Shared: r.URL.Query().Get("shared"), Max: MaxShare, MaxMB: MaxFile >> 20}
 	view.Count, _ = strconv.Atoi(view.Shared)
 
 	var err error
@@ -279,29 +295,20 @@ func (a app) share(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	part, err := mr.NextPart()
-	if err != nil || part.FormName() != "to" {
+	to, said := readWhere(mr)
+	if !said {
 		http.Redirect(w, r, SharePath, http.StatusSeeOther)
 
 		return
 	}
 
-	to, _ := io.ReadAll(io.LimitReader(part, 128))
-	part.Close()
-
-	kind, rawID, _ := strings.Cut(strings.TrimSpace(string(to)), ":")
-
-	id, err := types.ParseID(rawID)
-	if err != nil || kind != "checks" && kind != "account" && kind != "project" {
+	if !to.ok {
 		a.missing(w, r)
 
 		return
 	}
 
-	home := types.AccountScope(id)
-	if kind == "project" {
-		home = types.ProjectScope(id)
-	}
+	kind, id, home := to.kind, to.id, to.home
 
 	if !a.mayAdd(w, r, me.ID, home) {
 		return
@@ -321,6 +328,166 @@ func (a app) share(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.addReceipts(w, r, me.ID, home, got)
+}
+
+// where is a share's destination, as its form's first part says it:
+// "checks:<account>", "account:<account>" or "project:<project>".
+type where struct {
+	kind string
+	id   types.ID
+	home types.Scope
+	ok   bool
+}
+
+// readWhere reads a share's first part, which must say where its files
+// go, and reports whether it did; ok is whether it named a place there is.
+func readWhere(mr *multipart.Reader) (where, bool) {
+	part, err := mr.NextPart()
+	if err != nil || part.FormName() != "to" {
+		return where{}, false
+	}
+
+	to, _ := io.ReadAll(io.LimitReader(part, 128))
+	part.Close()
+
+	kind, rawID, _ := strings.Cut(strings.TrimSpace(string(to)), ":")
+
+	id, err := types.ParseID(rawID)
+	if err != nil || kind != "checks" && kind != "account" && kind != "project" {
+		return where{}, true
+	}
+
+	home := types.AccountScope(id)
+	if kind == "project" {
+		home = types.ProjectScope(id)
+	}
+
+	return where{kind: kind, id: id, home: home, ok: true}, true
+}
+
+// sent is sendOne's answer about one file: kept, or there already, and
+// for a check's image whether it was attached.
+type sent struct {
+	Outcome  string `json:"outcome"`
+	Attached bool   `json:"attached"`
+}
+
+// sendOne is one file of a share, as the share page's script sends them
+// (static/send.mjs, docs/phone.md, 4): where first, then the file. A
+// share of fifty is fifty of these, each of which can fail and be sent
+// again alone, rather than one upload that fails whole. Sending one again
+// is always safe: a file whose bytes the inbox has already is "already",
+// and nothing is added (receiptbus.Holds).
+//
+// It answers in JSON, for the script. A refusal is a code the script says
+// in the page's language -- "kind", "big", "none" for the file; "to" for
+// where -- never a sentence: the page has them.
+func (a app) sendOne(w http.ResponseWriter, r *http.Request) {
+	me, ok := actor(w, r)
+	if !ok {
+		return
+	}
+
+	refuse := func(status int, field, code string) { web.WriteJSON(w, status, web.Problem(field, code)) }
+
+	mr, err := r.MultipartReader()
+	if err != nil {
+		refuse(http.StatusBadRequest, "to", "to")
+
+		return
+	}
+
+	to, said := readWhere(mr)
+	if !said || !to.ok {
+		refuse(http.StatusNotFound, "to", "to")
+
+		return
+	}
+
+	access, err := a.cfg.Tenancy.AccessTo(r.Context(), me.ID, to.home)
+
+	switch {
+	case err != nil:
+		a.failedJSON(w, r, err)
+
+		return
+	case !access.Can(tenancybus.Read):
+		refuse(http.StatusNotFound, "to", "to")
+
+		return
+	case !access.Can(tenancybus.Receipts):
+		refuse(http.StatusForbidden, "to", "to")
+
+		return
+	}
+
+	got, err := a.receiveFrom(r, mr, me.ID)
+
+	switch {
+	case err != nil:
+		a.failedJSON(w, r, err)
+
+		return
+	case len(got.wrongKind) > 0:
+		refuse(http.StatusUnprocessableEntity, "files", "kind")
+
+		return
+	case len(got.tooBig) > 0 || got.cut:
+		refuse(http.StatusRequestEntityTooLarge, "files", "big")
+
+		return
+	case len(got.files) != 1:
+		refuse(http.StatusBadRequest, "files", "none")
+
+		return
+	}
+
+	answer := sent{Outcome: "kept"}
+
+	held, err := a.cfg.Receipts.Holds(r.Context(), me.ID, to.home, got.files[0])
+	if err != nil {
+		a.failedJSON(w, r, err)
+
+		return
+	}
+
+	if held {
+		answer.Outcome = "already"
+		web.WriteJSON(w, http.StatusOK, answer)
+
+		return
+	}
+
+	if to.kind == "checks" {
+		receipts, err := a.cfg.Receipts.AddChecks(r.Context(), a.cfg.Now(), me.ID, to.id, got.files, "", "")
+		if err != nil {
+			a.failedJSON(w, r, err)
+
+			return
+		}
+
+		answer.Attached = len(receipts) == 1 && !receipts[0].Waiting()
+	} else if _, err := a.cfg.Receipts.Add(r.Context(), a.cfg.Now(), me.ID, to.home, got.files, false, receiptbus.Details{}); err != nil {
+		a.failedJSON(w, r, err)
+
+		return
+	}
+
+	web.WriteJSON(w, http.StatusOK, answer)
+}
+
+// failedJSON is failed for the script: a refusal it can tell apart, and
+// anything else a 500 it tries again after.
+func (a app) failedJSON(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, receiptbus.ErrNotFound), errors.Is(err, filebus.ErrNotFound):
+		web.WriteJSON(w, http.StatusNotFound, web.Problem("to", "to"))
+	case errors.Is(err, receiptbus.ErrForbidden):
+		web.WriteJSON(w, http.StatusForbidden, web.Problem("to", "to"))
+	default:
+		a.cfg.Log.Error("a file of a share could not be added", "request_id", web.RequestIDFrom(r.Context()), "error", err)
+		web.WriteJSON(w, http.StatusInternalServerError, web.Problem("", "server"))
+	}
 }
 
 // shared is a share the phone's worker did not catch: the app was

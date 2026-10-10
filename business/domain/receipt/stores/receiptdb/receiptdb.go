@@ -306,6 +306,30 @@ func (s *Store) OnTransactions(ctx context.Context, ids []types.ID) ([]receiptbu
 	return s.load(ctx, `r.id IN (SELECT receipt_id FROM receipt_links WHERE transaction_id IN (`+marks(len(ids))+`))`, args...)
 }
 
+// HoldsContent reports whether a receipt in the inbox, not removed, has a
+// file with these bytes.
+func (s *Store) HoldsContent(ctx context.Context, inbox types.Scope, sha256 string) (bool, error) {
+	account, project := home(inbox)
+
+	var one int
+
+	err := s.db.QueryRowContext(ctx, `
+SELECT 1 FROM receipts r
+JOIN receipt_files rf ON rf.receipt_id = r.id
+JOIN files f ON f.id = rf.file_id
+WHERE (r.account_id = ? OR r.project_id = ?) AND r.removed_at IS NULL AND f.sha256 = ?
+LIMIT 1`, account, project, sha256).Scan(&one)
+
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return false, nil
+	case err != nil:
+		return false, fmt.Errorf("looking for a receipt's bytes: %w", err)
+	}
+
+	return true, nil
+}
+
 // marks is n placeholders; none is a list that matches nothing.
 func marks(n int) string {
 	if n == 0 {

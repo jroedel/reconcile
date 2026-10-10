@@ -179,10 +179,106 @@ func TestAShareTheWorkerMissedIsAskedForAgain(t *testing.T) {
 	wantRedirect(t, rec, "/receipts/share?shared=again")
 	wantBody(t, e.owner.get("/receipts/share?shared=again"), "did not reach this page")
 
-	wantBody(t, e.owner.get("/receipts/share?shared=50"), "You shared 50 files, and one upload takes at most 20")
+	wantBody(t, e.owner.get("/receipts/share?shared=70"), "You shared 70 files, and at most 60 are added at once")
 	wantBody(t, e.owner.get("/receipts/share?shared=lost"), "could not keep what you shared")
 
 	if body := e.owner.get(e.account + "/receipts").Body.String(); strings.Contains(body, "PXL_1.jpg") {
 		t.Error("a missed share was kept")
+	}
+}
+
+// The share page's script sends a file a request, where first. Each answer
+// says whether it was kept, and a check's image whether it was attached;
+// the same bytes again are there already, and nothing is added. A file
+// that is no receipt, a place the person may not add to, and one that is
+// not said, are refused with a code the page says in its own words.
+func TestASharedFileGoesOneARequest(t *testing.T) {
+	h, sent := newSite(t, sqldb.Infrastructure, nil)
+	e := newEstate(t, h, sent)
+
+	account := strings.TrimPrefix(e.account, "/accounts/")
+	project := strings.TrimPrefix(e.project, "/projects/")
+
+	preview := uploaded(t, e.owner, e.account, "july.csv", "Date,Description,Amount,Balance,Check Number\n"+
+		"2026-07-01,OPENING DEPOSIT,1000.00,1000.00,\n"+
+		"2026-07-02,CHECK,-120.00,880.00,1176\n")
+	form := columns("import")
+	form.Set("check", "Check Number")
+
+	if rec := e.owner.post(preview, form); rec.Code != http.StatusSeeOther {
+		t.Fatalf("import: %d", rec.Code)
+	}
+
+	one := func(b *browser, to string, file [2]string) (int, map[string]any) {
+		t.Helper()
+
+		fields := url.Values{}
+		if to != "" {
+			fields.Set("to", to)
+		}
+
+		rec := b.receipts("/receipts/share/one", fields, file)
+
+		var out map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatalf("not JSON: %d %s", rec.Code, rec.Body)
+		}
+
+		return rec.Code, out
+	}
+
+	for name, c := range map[string]struct {
+		to       string
+		file     [2]string
+		status   int
+		outcome  string
+		attached bool
+	}{
+		"a screenshot":       {"checks:" + account, [2]string{"Screenshot_1.png", photoOf("one")}, http.StatusOK, "kept", false},
+		"a named check":      {"checks:" + account, [2]string{"1176.jpg", photoOf("1176")}, http.StatusOK, "kept", true},
+		"a project receipt":  {"project:" + project, [2]string{"hostel.jpg", photoOf("hostel")}, http.StatusOK, "kept", false},
+		"an account receipt": {"account:" + account, [2]string{"bank.jpg", photoOf("bank")}, http.StatusOK, "kept", false},
+	} {
+		code, out := one(e.owner, c.to, c.file)
+		if code != c.status || out["outcome"] != c.outcome || out["attached"] != c.attached {
+			t.Errorf("%s: %d %v", name, code, out)
+		}
+	}
+
+	// Sent again: there already, whatever it is called now.
+	if code, out := one(e.owner, "checks:"+account, [2]string{"Screenshot_1 (1).png", photoOf("one")}); code != http.StatusOK || out["outcome"] != "already" {
+		t.Errorf("sent again: %d %v", code, out)
+	}
+
+	wantBody(t, e.owner.get(e.account+"/receipts"), "Check 1176", "A check", "bank.jpg")
+
+	if body := e.owner.get(e.account + "/receipts").Body.String(); strings.Count(body, "its number not yet said") != 1 {
+		t.Error("the screenshot sent twice is in the inbox twice")
+	}
+
+	wantBody(t, e.owner.get(e.account+"/receipts?done=checks&n=0&waiting=1&already=1"), "1 were in this inbox already")
+
+	stranger := signUp(t, h, sent, "stranger@example.org")
+	wantRedirect(t, e.owner.post(e.account+"/people", url.Values{"email": {"viewer@example.org"}, "role": {"viewer"}}), e.account+"?done=granted")
+	viewer := signUp(t, h, sent, "viewer@example.org")
+
+	for name, c := range map[string]struct {
+		b      *browser
+		to     string
+		file   [2]string
+		status int
+		field  string
+		code   string
+	}{
+		"not a receipt":       {e.owner, "checks:" + account, [2]string{"notes.txt", "plain words"}, http.StatusUnprocessableEntity, "files", "kind"},
+		"nowhere said":        {e.owner, "", [2]string{"a.jpg", photoOf("a")}, http.StatusNotFound, "to", "to"},
+		"somewhere not a one": {e.owner, "ledger:" + account, [2]string{"a.jpg", photoOf("a")}, http.StatusNotFound, "to", "to"},
+		"a stranger":          {stranger, "checks:" + account, [2]string{"a.jpg", photoOf("a")}, http.StatusNotFound, "to", "to"},
+		"a viewer":            {viewer, "account:" + account, [2]string{"a.jpg", photoOf("a")}, http.StatusForbidden, "to", "to"},
+	} {
+		code, out := one(c.b, c.to, c.file)
+		if code != c.status || field(out, "error", "field") != c.field || field(out, "error", "problem") != c.code {
+			t.Errorf("%s: %d %v", name, code, out)
+		}
 	}
 }

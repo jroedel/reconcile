@@ -17,6 +17,21 @@ import { launch, skip, stage } from "../../../../scripts/browser.mjs";
 import { sessionCookie, startServer } from "../../../../scripts/testserver.mjs";
 
 let server, base, browser, page, account;
+let stand = () => "through";
+
+// between runs fn with each file the page sends passed to answer, by the
+// order it was sent in, counting from 1 and counting every try.
+async function between(answer, fn) {
+  let n = 0;
+  stand = () => answer(++n);
+  await page.send("Fetch.enable", { patterns: [{ urlPattern: "*/receipts/share/one", requestStage: "Request" }] });
+  try {
+    return await fn();
+  } finally {
+    await page.send("Fetch.disable");
+    stand = () => "through";
+  }
+}
 
 before(async () => {
   if (skip()) return;
@@ -32,6 +47,23 @@ before(async () => {
   browser = await launch();
   page = await browser.page();
   await page.setCookie(sessionCookie(base, server.cookie));
+
+  // Standing between the page and the server, for the tests of a signal
+  // that drops: each file the script sends is given to stand(), which
+  // answers what happens to it. Nothing stands there unless a test says so.
+  page.on("Fetch.requestPaused", (ev) => {
+    const r = stand(ev);
+    if (r === "drop") {
+      page.send("Fetch.failRequest", { requestId: ev.requestId, errorReason: "ConnectionReset" });
+    } else if (r === "signed out") {
+      page.send("Fetch.fulfillRequest", {
+        requestId: ev.requestId, responseCode: 303,
+        responseHeaders: [{ name: "Location", value: "/sign-in" }],
+      });
+    } else {
+      page.send("Fetch.continueRequest", { requestId: ev.requestId });
+    }
+  });
   stage("ready");
 }, { timeout: 300_000 });
 
@@ -108,7 +140,8 @@ test("files shared to the app wait in the share page, and go where it says", opt
   await page.evaluate(`document.querySelector("form[data-share] button[type=submit]").click(), true`);
 
   await page.waitFor(`location.pathname === "${account}/receipts"`, 60_000);
-  assert.match(await page.evaluate(`location.search`), /done=checks/);
+  assert.equal(await page.evaluate(`location.search`), "?done=checks&n=0&waiting=2&already=0");
+  assert.equal(posts("/receipts/share/one"), 2, "a file a request");
   assert.match(await page.evaluate(`document.body.innerText`), /2 check images are waiting below/);
 
   // Added, and the inbox has opened: the phone keeps no copy.
@@ -123,6 +156,65 @@ test("files shared to the app wait in the share page, and go where it says", opt
   await share([["Screenshot_20260712-101600.png", "#3050c0"]]);
   await page.waitFor(`location.search === "?shared=1" && document.querySelector("#share-files").files.length === 1`);
   assert.equal(await page.evaluate(`document.querySelector('input[name="to"]:checked')?.value`), checks);
+});
+
+// colours is n files' names and colours, each its own, so none is taken for
+// another; from makes them a batch of their own.
+const colours = (n, from) =>
+  Array.from({ length: n }, (_, i) => [`Screenshot_20260801-${String(from + i).padStart(6, "0")}.png`, `hsl(${(from + i) * 37 % 360}, 60%, 45%)`]);
+
+// add shares files, and presses Add on the share page with the place it
+// remembers, and gives back the inbox's query once the page has gone there.
+async function add(files) {
+  await share(files);
+  await page.waitFor(`location.pathname === "/receipts/share" && document.querySelector("#share-files").files.length === ${files.length}`);
+  await page.evaluate(`document.querySelector("form[data-share] button[type=submit]").click(), true`);
+  return page.waitFor(`location.pathname === "${account}/receipts" && location.search`, 120_000);
+}
+
+test("a month of checks, more than one upload takes, goes a file at a time", opts, async () => {
+  const before = posts("/receipts/share/one");
+
+  assert.equal(await add(colours(25, 100)), "?done=checks&n=0&waiting=25&already=0");
+  assert.equal(posts("/receipts/share/one") - before, 25);
+  assert.match(await page.evaluate(`document.body.innerText`), /25 check images are waiting below/);
+
+  // The same share again, as after a phone that lost its signal before it
+  // heard: every file is known by its bytes, and nothing is added twice.
+  assert.equal(await add(colours(25, 100)), "?done=checks&n=0&waiting=0&already=25");
+  assert.match(await page.evaluate(`document.body.innerText`), /25 were in this inbox already/);
+});
+
+test("a file whose upload breaks off is tried again, and the share finishes", opts, async () => {
+  const before = posts("/receipts/share/one");
+  let tries = 0;
+
+  const where = await between((n) => {
+    tries = n;
+    return n === 2 || n === 3 ? "drop" : "through";
+  }, () => add(colours(2, 200)));
+
+  assert.equal(where, "?done=checks&n=0&waiting=2&already=0");
+  assert.equal(tries, 4, "two files, one of them tried three times");
+  assert.equal(posts("/receipts/share/one") - before, 2, "and each arrived once");
+});
+
+test("pressing Add again sends only the files that did not arrive", opts, async () => {
+  // The second file meets a session that has run out, which stops the
+  // share at once with the first kept.
+  await share(colours(2, 300));
+  await page.waitFor(`location.pathname === "/receipts/share" && document.querySelector("#share-files").files.length === 2`);
+
+  await between((n) => (n === 2 ? "signed out" : "through"), async () => {
+    await page.evaluate(`document.querySelector("form[data-share] button[type=submit]").click(), true`);
+    await page.waitFor(`/signed out while sending/.test(document.querySelector("#sent").innerText)`, 60_000);
+  });
+  assert.match(await page.evaluate(`document.querySelector("#sent").innerText`), /1 added/);
+
+  const before = posts("/receipts/share/one");
+  await page.evaluate(`document.querySelector("form[data-share] button[type=submit]").click(), true`);
+  assert.equal(await page.waitFor(`location.pathname === "${account}/receipts" && location.search`, 60_000), "?done=checks&n=0&waiting=1&already=1");
+  assert.equal(posts("/receipts/share/one") - before, 1, "only the second file was sent again");
 });
 
 test("a share the worker missed is asked for again, and the next one is caught", opts, async () => {
@@ -142,6 +234,7 @@ test("a share the worker missed is asked for again, and the next one is caught",
 });
 
 test("the pages ran with nothing blocked and nothing thrown", opts, () => {
-  assert.deepEqual(page.errors, []);
+  // Less the connections the tests themselves reset.
+  assert.deepEqual(page.errors.filter((e) => !/ERR_CONNECTION_RESET/.test(e)), []);
   assert.doesNotMatch(server.log(), /level=ERROR/);
 });

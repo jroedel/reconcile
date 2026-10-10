@@ -173,6 +173,10 @@ type Storer interface {
 	// OnTransactions is the receipts attached to any of the transactions.
 	OnTransactions(ctx context.Context, ids []types.ID) ([]Receipt, error)
 
+	// HoldsContent reports whether a receipt in the inbox, not removed,
+	// has a file with these bytes.
+	HoldsContent(ctx context.Context, home types.Scope, sha256 string) (bool, error)
+
 	// Link attaches; attaching twice is attaching once.
 	Link(ctx context.Context, receiptID types.ID, l Link) error
 	Unlink(ctx context.Context, receiptID, transactionID types.ID) error
@@ -387,6 +391,31 @@ func (b *Business) Add(ctx context.Context, now time.Time, actor types.ID, home 
 	ev := eventbus.New(now, actor, home, Added, map[string]string{"count": strconv.Itoa(len(receipts))})
 
 	return receipts, b.store.Create(ctx, receipts, ev)
+}
+
+// Holds reports whether an inbox already has a receipt, not removed, with
+// the same bytes as an uploaded file: a photo sent again, because the
+// phone sending it lost its signal before it heard that it had arrived
+// (receiptapp's share page). Asked before adding it, so that sending again
+// is always safe. A receipt that was removed does not count, so that a
+// photo removed by mistake can be added again as well as brought back.
+func (b *Business) Holds(ctx context.Context, actor types.ID, home types.Scope, fileID types.ID) (bool, error) {
+	if ok, err := b.can(ctx, actor, home, tenancybus.Read); err != nil {
+		return false, err
+	} else if !ok {
+		return false, ErrNotFound
+	}
+
+	f, err := b.files.ByID(ctx, fileID)
+	if errors.Is(err, filebus.ErrNotFound) || err == nil && f.UploadedBy != actor {
+		return false, ErrNotFound
+	}
+
+	if err != nil {
+		return false, err
+	}
+
+	return b.store.HoldsContent(ctx, home, f.SHA256)
 }
 
 // AddToTransaction puts uploaded files onto a transaction as receipts,
