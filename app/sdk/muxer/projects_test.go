@@ -11,6 +11,8 @@ import (
 // changes it; the site marks it as a program's until an owner saves its
 // settings (issue #77).
 func TestClaudeMakesAProject(t *testing.T) {
+	t.Parallel()
+
 	k := newKept(t)
 	s := k.s
 	org := strings.TrimPrefix(k.e.org, "/orgs/")
