@@ -59,8 +59,9 @@ transaction that did not come from a statement.
 ## 2. Explain this amount
 
 Any transaction can be **explained**: a list of other transactions, from
-any accounts of the same organization (or the same person's personal
-ones), that together make it up.
+any accounts of the same organization (or, for an account on its own,
+the other accounts on their own the person may read), that together
+make it up.
 
 **The page**, `/transactions/{id}/explain`, opened from a question mark on
 the transaction:

@@ -34,13 +34,13 @@ Apache-2.0. The build order below says what comes next.
 
 | Topic | Decision |
 |---|---|
-| Org ↔ account | **Organization is optional.** An account belongs to an org or stands alone (personal) |
+| Org ↔ account | **Organization is optional.** An account belongs to an org or stands on its own. On its own is not "personal" (decided 2026-10-10): a community or an affiliate may keep an account here without being given the organization that owns it in law, and the app cannot tell that from a household's, so it assumes neither |
 | Who creates | **Anyone signed in** can create orgs and accounts |
 | Sign-up | **Open.** Any email can request a code; a user is created on first sign-in |
 | Statement reading | **Deterministic parsers only, no AI.** **Generic CSV**, OFX/QFX, and **PDF** by one generic reader (`docs/pdf-statements.md`) |
 | Accountant | **Both** a read-only role and a downloadable export package |
 | Projects | **Splits.** A transaction has one or more parts, each with an amount, a category and an optional project |
-| Categories | **One list per organization**. A personal account keeps its own list |
+| Categories | **One list per organization**. An account on its own keeps its own list |
 | Receipts at close | **Never required.** Welcome, but they never block a month |
 | Uploads | **Many files per upload, and many files per receipt** (photos and PDFs) |
 | Languages | **English, Spanish, Portuguese.** Translations live in a DB table, the templates call `t`, and Claude fills pending translations through an API later |
@@ -115,7 +115,7 @@ money was, and it is a property of each part (split), through its category:
 
 **Tenancy and access**
 - `orgs(id, name, created_by, created_at, archived_at)`
-- `accounts(id, org_id NULL, name, kind[checking|savings|card|cash|other], last4, currency DEFAULT 'USD', opened_on, archived_at)`. With `org_id` NULL it is a personal account.
+- `accounts(id, org_id NULL, name, kind[checking|savings|card|cash|other], last4, currency DEFAULT 'USD', opened_on, archived_at)`. With `org_id` NULL it is an account on its own.
 - `projects(id, org_id NULL, name, starts_on, ends_on, note, archived_at)`
 - `grants(id, scope_kind[org|account|project], scope_id, user_id NULL, email NULL, role, granted_by, created_at)`. Exactly one of `user_id` or `email` is set. A grant to an email with no user waits. When that address signs up, or a user verifies a change to it, the grant is claimed in one statement: `UPDATE grants SET user_id=?, email=NULL WHERE email=?`.
 - **Roles** (cumulative: holding two is holding everything either allows. Not a ladder -- an accountant exports and a contributor uploads receipts, and neither does the other's job, so each role is a set of permissions in `tenancybus/role.go`):
@@ -136,7 +136,7 @@ money was, and it is a property of each part (split), through its category:
 - `statements(id, account_id, file_id, format[csv|ofx], period_start, period_end, opening NULL, closing NULL, checked[balances|totals|none], added, already, imported_by, imported_at)`. There is no "failed": a statement that does not balance is never stored. `added` and `already` are what the import found, kept because the second is not recoverable afterwards.
 - `transactions(id, account_id, statement_id, posted_on, description, amount, balance_after NULL, external_id, hash, occurrence)`. Unique on `(account_id, external_id)` where external_id is set; non-unique on `hash`. `description` is the bank's and never changes; a person's own words for what it was (`own_description`, issue #70, `docs/books-api.md`) are shown in its place, and are a bookkeeper's to write outside a reconciled period.
 - `splits(id, transaction_id, position, amount, category_id NULL, project_id NULL, memo, rule_id NULL)`. `rule_id` is the sorting rule that sorted the part, cleared when a person saves the transaction (`docs/sorting.md`); not a foreign key, so that removing a rule leaves its mark on what it sorted. The business layer enforces that the parts sum to the transaction, each the same way round as it and none zero. A new transaction gets one split for the full amount, and `ledgerdb.Init` gives one to any transaction without. A split goes with its transaction when a statement is removed. Putting money into a project takes Bookkeep on the account *and* on the project; a split already in a project stays there for a bookkeeper of the account who cannot see the project. Money into or out of a project is a line in the project's history (`split.added`, `split.removed`); re-sorting categories is not written into the account's, which it would flood.
-- `categories(id, org_id NULL, account_id NULL, name, kind, created_by, created_at, archived_at)`. `kind` is income, expense, transfer or passthrough, or '' for one made before kinds (above). Exactly one owner, either an org or a personal account; an account in an org has no list of its own. Names are unique within a list, whatever their case. Archived, never deleted.
+- `categories(id, org_id NULL, account_id NULL, name, kind, created_by, created_at, archived_at)`. `kind` is income, expense, transfer or passthrough, or '' for one made before kinds (above). Exactly one owner, either an org or an account on its own; an account in an org has no list of its own. Names are unique within a list, whatever their case. Archived, never deleted.
 - `csv_mappings(account_id, fingerprint, mapping, updated_by, updated_at)`. Once mapped, the same header is read with the same columns; the preview is still shown, because it is where the balance check is seen.
 
 **Receipts and files**
@@ -219,13 +219,13 @@ Owners, bookkeepers and accountants can download it (the Export permission). It 
    - Add the i18n table, the `t` function, and template-key extraction.
 3. **Identity.** Code sign-in, sessions, sign-out, bootstrap, profile (name, language, email change with verification), backup codes. In dev, codes go to the log through `mail.Recorder` when no relay is set and `base_url` is loopback.
 4. **Tenancy.**
-   - Orgs, personal and org accounts, projects (shell only), and grants with email invitations.
+   - Orgs, accounts on their own and in orgs, projects (shell only), and grants with email invitations.
    - A single `tenancybus.AccessTo(ctx, user, scope)` answers every check (organizations, accounts, projects and grants share one domain, so that making an organization and its owner is one transaction); business methods take the actor and filter by it.
    - Site admin user list.
    - The events table.
    - **Cross-tenant isolation tests**: user A can never read B's org, account, project, file or export, through any route.
 5. **Import.** Statements, the CSV mapping screen and saved mappings, OFX/QFX, verification, dedupe, the transaction list by month, and the statement file stored and downloadable. Removing a statement takes its transactions with it. The list's filters by category, project and receipt arrive with those things, in steps 6 and 7.
-6. **Categories, splits, projects.** Per-org and personal category lists, the split editor, project assignment, the project dashboard (totals, by category, by month, every part, per currency), and the month list's "not sorted yet" filter.
+6. **Categories, splits, projects.** Per-org and per-account category lists, the split editor, project assignment, the project dashboard (totals, by category, by month, every part, per currency), and the month list's "not sorted yet" filter.
 7. **Receipts.** Multi-file upload (direct and inbox), receipt viewer, attach and detach, match suggestions (same amount within ±5 days, from the accounts the person may attach receipts on) on the waiting list and the transaction page. Uploads stream part by part, 20 MB a file, 20 files and 120 MB a request, ten minutes. Pages show a photo's smaller pictures (step 9, below).
 8. **Reconcile and export.** In two pull requests: first the month-by-month page, the statement reconcile screen, and locking and reopening (audited); then the export zip (`exportbus`, `exportapp`).
 9. **Later, separately planned:**

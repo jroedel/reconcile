@@ -96,7 +96,7 @@ func (b *Business) grantOn(ctx context.Context, scope types.Scope, id types.ID) 
 }
 
 // needsOwner reports whether a scope must always keep an owner of its own:
-// an organization, or a personal account or project. One inside an
+// an organization, or an account or project on its own. One inside an
 // organization has the organization's owners, and its own may all go.
 func (b *Business) needsOwner(ctx context.Context, scope types.Scope) (bool, error) {
 	parent, err := b.parent(ctx, scope)

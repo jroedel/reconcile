@@ -256,8 +256,8 @@ func (b *Business) remembered(ctx context.Context, x *Explanation) error {
 }
 
 // sources is the accounts lines may come from: those of the explained
-// account's organization -- or, for a personal account, the personal
-// accounts -- that the actor may read.
+// account's organization -- or, for an account on its own, the accounts
+// on their own -- that the actor may read.
 func (b *Business) sources(ctx context.Context, actor types.ID, of tenancybus.Account) ([]tenancybus.Account, error) {
 	o, err := b.accounts.Overview(ctx, actor)
 	if err != nil {
