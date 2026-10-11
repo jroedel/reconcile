@@ -25,7 +25,7 @@ anything is built.
 | The tax part | **One mark on a payee**: "Report this payee's payments to the accountant". The app does not know which payments a law reports; the person who does marks the payee |
 | Tax papers | **"Their tax details are on file", yes or no.** Never the tax number itself -- SSN, EIN, CPF, CNPJ: those stay with the accountant, and a site anybody may sign up to has no business holding them |
 | The year | **The calendar year**, which is the tax year in the United States and in Brazil alike |
-| Spellings | **Joined by a person**, with suggestions. "Hilltop Plumbing" and "HILLTOP PLUMBING LLC" are one payee only when somebody says so |
+| Spellings | **Joined by a person or their Claude**, with suggestions. "Hilltop Plumbing" and "HILLTOP PLUMBING LLC" are one payee only when somebody says so. Claude joins through the API as anything it changes: proposed first, done on the person's yes, marked until a person looks, and undone by splitting off (decided 2026-10-10: a long list of spellings is exactly the work Claude saves) |
 | Which payments | **Any money out**, not only checks: a transfer or a card payment to the same person counts. A check's payee comes from its image, as now; any other transaction's is chosen on its page |
 | Accounts with no organization | **Have payees too** (decided 2026-10-10). An account with no organization is not necessarily somebody's household: a community or an affiliate may keep its own account here without being given the organization that owns it in law, and the app cannot tell the two apart. So it assumes nothing, and every account's books have payees |
 
@@ -67,6 +67,12 @@ once case, spaces and punctuation are set aside, or once a firm's ending is
 the code. A person joins each, or dismisses it. Nothing is joined on its
 own: two people with one name are two payees until somebody who knows says
 otherwise.
+
+**A join made through a key** -- the person's Claude, on their yes -- is
+marked "joined by Claude" on the payee, with the spellings it brought in,
+until a person saves the payee on the site; and it is a line in the
+history naming the key, as every change through a key is. Split off undoes
+it there, or through the API.
 
 ## 3. Reported payees
 
@@ -110,13 +116,31 @@ organization, by year:
 
 ## 5. Through the API
 
-`list_payees` and `get_payee_payments` (`books:read`), and a `payee` on the
-tool that sets a transaction's description, or a tool of its own, for
-`books:write`, marked by Claude until a person saves the transaction, as
-everything a key changes is. Claude may suggest joining two payees and
-reporting one; joining and the two marks stay a person's, on the site,
-because they are statements about real people that the accountant will
-rely on.
+Claude's part is the tidying a long list of spellings needs, done with the
+person, as the rest of the books are (`docs/claude.md`: it proposes, the
+person decides):
+
+| Tool | Scope | What it does |
+|---|---|---|
+| `list_payees` | `books:read` | A list's payees: name, spellings, number of payments and their total for a year, the two marks, and its `url` |
+| `suggest_payee_joins` | `books:read` | The suggestions of 2, each with both payees' spellings and a few of their payments, so Claude can say why |
+| `get_payee_payments` | `books:read` | A payee's payments in a year, as 4 counts them, with each check's image a `get_receipt_image` away |
+| `join_payees` | `books:write` | One or more payees into another, as Join does on the site. Refused across two lists |
+| `split_payee` | `books:write` | A spelling and its payments back out, into a payee of its own or another |
+| `set_payee` | `books:write` | A transaction's payee: one of the list, or a new name |
+
+- **The routine** (Claude's guide): list the payees and the suggestions;
+  say which it would join and why, from the spellings and the payments,
+  and which look alike but are not ("two people named Silva"); join on
+  the person's yes; end with what it joined, each with its `url`.
+- **Marked** until a person looks, as a sorting rule Claude wrote is: a
+  join and a payee set through a key say "by Claude" on the site until a
+  person saves the payee or the transaction there.
+- **The two marks stay a person's**, on the site: whether a payee's
+  payments are reported, and whether their tax details are on file. They
+  are the organization's word about real people, which the accountant
+  relies on, and Claude can read them and say which payee looks like it
+  should be reported, but not set them.
 
 ## What this is not
 
@@ -134,9 +158,10 @@ Three pull requests after this plan, each useful when merged:
 
 1. **Payees** (1, 2): the list, spellings, a transaction's payee on any
    payment and from every check read, joining and its suggestions.
-2. **Reported payees and the year** (3, 4): the marks, the page by year,
-   the download, the package's column.
-3. **Through the API** (5).
+2. **Through the API** (5), early, because joining a long list of
+   spellings is the first thing the person wants help with.
+3. **Reported payees and the year** (3, 4): the marks, the page by year,
+   the download, the package's column, and `get_payee_payments`.
 
 ## Open questions
 
