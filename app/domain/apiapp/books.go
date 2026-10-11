@@ -890,7 +890,9 @@ func needsOf(p ledgerbus.Proposal) string {
 		return "Some of it falls in a reconciled period."
 	case !d.Check.OK:
 		return "Nothing in it could be checked; its own page asks a person for its balances."
-	case d.Statement.SetAside() > 0:
+	case d.LooksByHolder:
+		return fmt.Sprintf("Every row is %s's, and the account already has charges of %s on the same days: it looks like each holder's month arrives as a file of its own. An owner should turn on \"Statements arrive one file per holder\" for the account before this is imported, or two holders' charges may be taken for one; its own page offers it.", d.FileHolder, d.OtherNames())
+	case len(d.Statement.Doubts) > 0:
 		return "Some rows look like ones already here; its own page says which."
 	case d.Unnamed > 0:
 		return "Some rows name no holder; its own page asks whose they are."

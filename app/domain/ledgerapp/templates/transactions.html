@@ -20,7 +20,7 @@
 </section>
 
 {{if $v.CanManage}}
-<details class="card"{{if $v.ByHolder}} open{{end}}><summary>{{t "Holders"}}</summary>
+<details class="card" id="holders"{{if or $v.ByHolder $v.OpenHolders}} open{{end}}><summary>{{t "Holders"}}</summary>
 <form method="post" action="{{$v.Path}}/holders">
   <label class="choice"><input type="checkbox" name="on" value="1"{{if $v.ByHolder}} checked{{end}}> {{t "Statements arrive one file per holder"}}</label>
   <p class="hint">{{t "A holder is a person or card on the account, such as each person on a shared card. Turn this on when each holder's month comes as a file of its own. Two holders' identical charges on one day are then kept as two, and each month says whose file is missing."}}</p>
@@ -46,6 +46,16 @@
 <ul class="list">
 {{range .}}<li>{{.PostedOn}} · <a href="/transactions/{{.ID}}">{{if .Shown}}{{.Shown}}{{else}}{{t "(no description)"}}{{end}}</a> · <span class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $cur}}</span>
 {{if $v.CanBookkeep}}<form method="post" action="/transactions/{{.ID}}/release" class="inline"><button type="submit" class="link">{{t "Remove: the hold was released"}}</button></form>{{end}}</li>
+{{end}}</ul>
+</section>
+{{end}}
+
+{{with $v.Disagreeing}}
+<section class="card">
+<h2>{{t "Whose charge?"}}</h2>
+<p class="hint">{{t "Each of these is named for one holder, and its memo names another. Before the holders of an account were kept apart in every case, one holder's posted charge could take the place of another's pending one: if so, the charge of the holder in the memo is missing from their month. Compare each with that holder's statement."}}</p>
+<ul class="list">
+{{range .}}<li>{{.Transaction.PostedOn}} · <a href="/transactions/{{.Transaction.ID}}">{{if .Transaction.Shown}}{{.Transaction.Shown}}{{else}}{{t "(no description)"}}{{end}}</a> · <span class="money {{if lt .Transaction.Amount 0}}out{{else}}in{{end}}">{{money .Transaction.Amount $cur}}</span> · {{t "{holder}'s, with {other} in its memo" "holder" .Transaction.Holder "other" .Named}}</li>
 {{end}}</ul>
 </section>
 {{end}}

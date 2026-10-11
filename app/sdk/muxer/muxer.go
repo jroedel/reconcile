@@ -151,6 +151,7 @@ func New(cfg Config) (http.Handler, error) {
 			BaseURL: cfg.BaseURL,
 
 			Categories: cfg.Categories,
+			Holders:    cfg.Ledger,
 		}, guard)
 
 		ledgerapp.Routes(mux, ledgerapp.Config{

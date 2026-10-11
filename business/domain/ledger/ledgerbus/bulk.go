@@ -89,11 +89,17 @@ func (p Proposal) Key() string {
 
 // Unattended reports whether the proposal can be imported with the
 // others, nobody having looked at its preview.
+//
+// Any doubt keeps it for a person, not only one set aside: another
+// holder's charge is imported by default (Doubt.OtherHolder), and whether
+// it really is another charge is a person's to say. So is a file that
+// looks like one holder's on an account that does not keep them apart
+// (Draft.LooksByHolder), since importing it first is what loses charges.
 func (p Proposal) Unattended() bool {
 	d := p.Draft
 
-	return p.Problem == nil && !p.Account.Zero() && !d.Choose && d.Ready() && d.Check.OK &&
-		d.Statement.SetAside() == 0 && d.Result.Skipped == 0 && !d.Result.Unplaced && d.Unnamed == 0
+	return p.Problem == nil && !p.Account.Zero() && !d.Choose && d.Ready() && d.Check.OK && !d.LooksByHolder &&
+		len(d.Statement.Doubts) == 0 && d.Result.Skipped == 0 && !d.Result.Unplaced && d.Unnamed == 0
 }
 
 // Imported reports whether the proposal's file is in its account already.

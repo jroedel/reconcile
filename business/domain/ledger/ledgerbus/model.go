@@ -3,6 +3,7 @@ package ledgerbus
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -106,6 +107,11 @@ type Statement struct {
 	Posted int
 }
 
+// OtherHolders reports a doubt that names two holders (Doubt.OtherHolder).
+func (s Statement) OtherHolders() bool {
+	return slices.ContainsFunc(s.Doubts, func(d Doubt) bool { return d.OtherHolder })
+}
+
 // SetAside is how many of its rows the count rule left out.
 func (s Statement) SetAside() int {
 	n := 0
@@ -180,6 +186,11 @@ type Transaction struct {
 	// to import it although the count rule set it aside (Doubt). Never
 	// stored.
 	Insist bool
+
+	// Leave is set, on a row of a file being imported, when a person chose
+	// to leave out a row the count rule would import (Doubt.OtherHolder).
+	// Never stored.
+	Leave bool
 }
 
 // Doubt is a row of a file being imported that the count rule took for one
@@ -195,8 +206,21 @@ type Doubt struct {
 	// for.
 	Row, Twin Transaction
 
-	// Imported is whether it was imported all the same (Transaction.Insist).
+	// Imported is whether it was imported all the same (Transaction.Insist),
+	// or because it is another holder's and nobody chose to leave it out
+	// (OtherHolder).
 	Imported bool
+
+	// OtherHolder is a doubt whose row names one holder and whose twin
+	// another, on an account whose statements are not kept apart by
+	// holder: two people's charges, by what the files say, that the count
+	// rule can only call one by ignoring whose they are (issue #81). In a
+	// file whose rows all name one holder it is imported unless a person
+	// leaves it out, since that file cannot hold the other person's
+	// charges; in any other it is set aside, as other doubts are. Either
+	// way the preview names both holders, and a bulk import waits for a
+	// person.
+	OtherHolder bool
 }
 
 // CheckUnsaid is its check number when its description does not say it

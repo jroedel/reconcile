@@ -40,6 +40,8 @@
   {{template "accountfields" .}}
   <button type="submit" class="quiet">{{t "Save"}}</button>
 </form>
+{{if .Holders}}<p>{{if .ByHolder}}{{t "Statements arrive one file per holder: on."}}{{else}}{{t "Statements arrive one file per holder: off."}}{{end}} <a href="{{.Path}}/transactions?holders=1#holders">{{t "Change it with the account's holders"}}</a></p>
+<p class="hint">{{t "Turn it on when each person on a shared card sends their month as a file of its own."}}</p>{{end}}
 <form method="post" action="{{.Path}}/archive" class="inline">
   {{if .Account.Archived}}<input type="hidden" name="archived" value="0"><button type="submit" class="quiet">{{t "Bring it back"}}</button>
   {{else}}<input type="hidden" name="archived" value="1"><button type="submit" class="quiet">{{t "Archive the account"}}</button>{{end}}

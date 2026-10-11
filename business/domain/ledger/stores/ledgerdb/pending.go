@@ -25,12 +25,19 @@ import (
 //
 // A pending charge is taken by the first new row, in the file's order,
 // that is not pending, is dated on its day or up to PostWithin after, is
-// the same holder's (on an account split by holder), and whose
-// description is its own or contains it, or one is the other cut short
-// (alike, from eumaeus' containment). Of several, the likest wording,
-// then the nearest day. Each pending charge is taken once, and none in a
-// reconciled period, which nothing changes.
-func post(ctx context.Context, tx *sql.Tx, st *ledgerbus.Statement, txs []ledgerbus.Transaction, fresh []int, byHolder bool) ([]int, error) {
+// the same holder's, whose description is its own or contains it, or one
+// is the other cut short (alike, from eumaeus' containment), and whose
+// amount it may have become (ledgerbus.PostsAs: any, the same way round,
+// for the same wording; within a third, or PostSlack, for wording only
+// alike). Of several, the likest wording, then the nearest day. Each
+// pending charge is taken once, and none in a reconciled period, which
+// nothing changes.
+//
+// The same holder whatever the account's option (issue #81): with it off,
+// another holder's posted charge at the same shop took a pending charge's
+// place, and the first holder's charge was gone from their month. Two
+// rows that both name a holder, and not the same one, are two people's.
+func post(ctx context.Context, tx *sql.Tx, st *ledgerbus.Statement, txs []ledgerbus.Transaction, fresh []int) ([]int, error) {
 	taken := map[types.ID]bool{}
 	left := fresh[:0:0]
 
@@ -48,8 +55,11 @@ func post(ctx context.Context, tx *sql.Tx, st *ledgerbus.Statement, txs []ledger
 		}
 
 		candidates = slices.DeleteFunc(candidates, func(p ledgerbus.Transaction) bool {
-			return taken[p.ID] || byHolder && !ledgerbus.SameHolder(p.Holder, t.Holder) ||
-				alike(p.Description, t.Description) < 2 && !ledgerbus.Truncated(p.Description, t.Description)
+			like := alike(p.Description, t.Description)
+
+			return taken[p.ID] || !ledgerbus.SameHolder(p.Holder, t.Holder) ||
+				like < 2 && !ledgerbus.Truncated(p.Description, t.Description) ||
+				!ledgerbus.PostsAs(p.Amount, t.Amount, like == 3)
 		})
 
 		if len(candidates) == 0 {
@@ -78,37 +88,75 @@ func post(ctx context.Context, tx *sql.Tx, st *ledgerbus.Statement, txs []ledger
 
 // settle clears the pending mark of the stored charge a posted row of the
 // file is already (ledgerdb.already): by its identity, a remembered
-// wording, or one of the two cut short. Nothing else about it changes, so
-// the history has nothing to say.
-func settle(ctx context.Context, tx *sql.Tx, st *ledgerbus.Statement, t ledgerbus.Transaction, byHolder bool) error {
-	res, err := tx.ExecContext(ctx, `
-UPDATE transactions SET pending = 0
-WHERE rowid = (SELECT rowid FROM transactions WHERE account_id = ? AND pending = 1 AND (hash = ?
+// wording, or one of the two cut short -- the same holder's, or one that
+// names nobody, as already matches. Nothing else about it changes, so the
+// history has nothing to say.
+func settle(ctx context.Context, tx *sql.Tx, st *ledgerbus.Statement, t ledgerbus.Transaction) error {
+	rows, err := tx.QueryContext(ctx, `
+SELECT rowid, holder FROM transactions WHERE account_id = ? AND pending = 1 AND (hash = ?
     OR external_id <> '' AND external_id = ?
     OR id IN (SELECT transaction_id FROM transaction_aliases WHERE account_id = ? AND hash = ?))
-  ORDER BY rowid LIMIT 1)`,
+ORDER BY rowid`,
 		t.AccountID.String(), t.Hash, t.ExternalID, t.AccountID.String(), t.Hash)
 	if err != nil {
 		return fmt.Errorf("posting a pending charge: %w", err)
 	}
 
-	n, err := res.RowsAffected()
-	if err != nil {
+	var match []int64
+
+	for rows.Next() {
+		var (
+			id     int64
+			holder string
+		)
+
+		if err := rows.Scan(&id, &holder); err != nil {
+			rows.Close()
+
+			return fmt.Errorf("posting a pending charge: %w", err)
+		}
+
+		if ledgerbus.SameHolder(holder, t.Holder) {
+			match = append(match, id)
+		}
+	}
+
+	rows.Close()
+
+	if err := rows.Err(); err != nil {
 		return fmt.Errorf("posting a pending charge: %w", err)
 	}
 
+	var n int64
+
+	if len(match) > 0 {
+		res, err := tx.ExecContext(ctx, `UPDATE transactions SET pending = 0 WHERE rowid = ?`, match[0])
+		if err != nil {
+			return fmt.Errorf("posting a pending charge: %w", err)
+		}
+
+		if n, err = res.RowsAffected(); err != nil {
+			return fmt.Errorf("posting a pending charge: %w", err)
+		}
+	}
+
 	if n == 0 {
-		rows, err := cutShort(ctx, tx, t, false, byHolder)
+		short, err := cutShort(ctx, tx, t, false)
 		if err != nil {
 			return err
 		}
 
-		for _, id := range rows {
-			if res, err = tx.ExecContext(ctx, `UPDATE transactions SET pending = 0 WHERE rowid = ? AND pending = 1`, id); err != nil {
+		for _, id := range short {
+			res, err := tx.ExecContext(ctx, `UPDATE transactions SET pending = 0 WHERE rowid = ? AND pending = 1`, id)
+			if err != nil {
 				return fmt.Errorf("posting a pending charge: %w", err)
 			}
 
-			if n, err = res.RowsAffected(); n == 1 || err != nil {
+			if n, err = res.RowsAffected(); err != nil {
+				return fmt.Errorf("posting a pending charge: %w", err)
+			}
+
+			if n == 1 {
 				break
 			}
 		}
@@ -118,7 +166,7 @@ WHERE rowid = (SELECT rowid FROM transactions WHERE account_id = ? AND pending =
 		st.Posted++
 	}
 
-	return err
+	return nil
 }
 
 // pendingBetween is the account's pending charges from other statements

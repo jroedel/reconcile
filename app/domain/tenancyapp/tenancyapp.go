@@ -49,6 +49,16 @@ type Starter interface {
 	Start(ctx context.Context, now time.Time, actor types.ID, owner types.Scope, starters []categorybus.Starter) error
 }
 
+// HolderOption is the part of ledgerbus this app uses: whether an
+// account's statements arrive one file per holder (docs/clearing.md, 3).
+// The option is the ledger's, and is changed on the account's
+// transactions page, where its holders are; the settings link there,
+// because an owner looks for an account's options among its settings
+// (issue #81).
+type HolderOption interface {
+	ByHolder(ctx context.Context, actor, accountID types.ID) (bool, error)
+}
+
 // Users is the part of userbus this app uses: names for the people lists
 // and the history.
 type Users interface {
@@ -66,6 +76,11 @@ type Config struct {
 	// Categories starts the category list of a new organization or
 	// personal account. Nil starts none.
 	Categories Starter
+
+	// Holders says whether an account's statements arrive one file per
+	// holder, for the account's settings to say so beside its other
+	// settings. Nil says nothing.
+	Holders HolderOption
 
 	// Mail may be nil: an invitation is then logged as not sent, and the
 	// grant is made all the same -- the person can still sign in.
@@ -656,6 +671,10 @@ type accountView struct {
 	Org     tenancybus.Org // zero for a personal account, or one the reader cannot see
 	Fields  tenancybus.AccountFields
 	Kinds   []tenancybus.AccountKind
+
+	// ByHolder is whether its statements arrive one file per holder, and
+	// Holders whether that is known (Config.Holders).
+	ByHolder, Holders bool
 }
 
 func (a app) accountPage(w http.ResponseWriter, r *http.Request, id types.ID, status int, edit func(*accountView)) {
@@ -687,6 +706,16 @@ func (a app) accountPage(w http.ResponseWriter, r *http.Request, id types.ID, st
 		if o, _, err := a.cfg.Tenancy.Org(r.Context(), me.ID, acct.OrgID); err == nil {
 			view.Org = o
 		}
+	}
+
+	if a.cfg.Holders != nil && access.Can(tenancybus.Manage) {
+		if view.ByHolder, err = a.cfg.Holders.ByHolder(r.Context(), me.ID, id); err != nil {
+			a.failed(w, r, err)
+
+			return
+		}
+
+		view.Holders = true
 	}
 
 	if edit != nil {

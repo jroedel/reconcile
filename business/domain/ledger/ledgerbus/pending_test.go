@@ -269,3 +269,80 @@ func TestReleasingAHold(t *testing.T) {
 		t.Errorf("in a reconciled period: %v", err)
 	}
 }
+
+// What a pending charge's amount may become (issue #81): any amount for
+// the same wording, within a third or PostSlack for wording only alike,
+// and never turned round.
+func TestPostsAs(t *testing.T) {
+	for _, c := range []struct {
+		pending, posted string
+		same, want      bool
+	}{
+		{"-40.00", "-25.00", false, false}, // the issue's: another charge at the same shop
+		{"-40.00", "-52.00", false, true},  // a tip of 30%
+		{"-40.00", "-54.00", false, false}, // 35% is past a third
+		{"-40.00", "-25.00", true, true},   // the same wording keeps any amount
+		{"-1.00", "-48.20", true, true},    // a fuel hold
+		{"-1.00", "-48.20", false, false},
+		{"-7.25", "-12.00", false, true}, // a small charge's tip, inside the floor
+		{"-40.00", "40.00", true, false}, // a refund is not the posted form
+		{"25.00", "30.00", false, true},  // money in, the same way round
+	} {
+		if got := ledgerbus.PostsAs(money.MustParse(c.pending), money.MustParse(c.posted), c.same); got != c.want {
+			t.Errorf("PostsAs(%s, %s, same wording %v) = %v", c.pending, c.posted, c.same, got)
+		}
+	}
+}
+
+// A pending charge is not taken by a posted one that is only alike in
+// wording and far off in amount: both are kept, the pending one until
+// "still pending" lists it.
+func TestAnotherAmountIsAnotherCharge(t *testing.T) {
+	w := newWorld(t)
+	me := w.user("treasurer@example.org")
+	card := w.account(me, "checking")
+
+	w.add(me, card, "september.csv", withStatus("2026-09-28,SHOP X,-40.00,Pending"))
+
+	st := w.add(me, card, "october.csv", withStatus("2026-10-03,SHOP X 123 MAIN ST,-25.00,Posted"))
+	if st.Posted != 0 || st.Added != 1 {
+		t.Errorf("posted %d, added %d", st.Posted, st.Added)
+	}
+
+	if hold, ok := w.find(me, card, "2026-09", "SHOP X"); !ok || !hold.Pending || hold.Amount != -4000 {
+		t.Errorf("the pending charge: %+v", hold)
+	}
+
+	// With the tip on it, it is the same charge.
+	if st := w.add(me, card, "october-2.csv", withStatus("2026-10-04,SHOP X 123 MAIN ST,-48.00,Posted")); st.Posted != 1 || st.Added != 0 {
+		t.Errorf("with the tip: posted %d, added %d", st.Posted, st.Added)
+	}
+}
+
+// One holder's posted charge never takes another holder's pending one,
+// whether or not the account keeps holders apart (issue #81).
+func TestAnotherHoldersPostedCharge(t *testing.T) {
+	w := newWorld(t)
+	me := w.user("treasurer@example.org")
+	card := w.account(me, "checking")
+
+	held := func(rows ...string) []byte {
+		return []byte("Date,Description,Amount,Status,Card Member\n" + strings.Join(rows, "\n") + "\n")
+	}
+
+	w.add(me, card, "ana.csv", held("2026-09-28,SHOP X,-40.00,Pending,Ana"))
+
+	st := w.add(me, card, "ben.csv", held("2026-10-03,SHOP X,-40.00,Posted,Ben"))
+	if st.Posted != 0 || st.Added != 1 {
+		t.Errorf("Ben's charge: posted %d, added %d", st.Posted, st.Added)
+	}
+
+	if hold, ok := w.find(me, card, "2026-09", "SHOP X"); !ok || !hold.Pending || hold.Holder != "Ana" {
+		t.Errorf("Ana's pending charge: %+v", hold)
+	}
+
+	// Ana's own posted charge takes it.
+	if st := w.add(me, card, "ana-october.csv", held("2026-10-02,SHOP X,-44.00,Posted,Ana")); st.Posted != 1 {
+		t.Errorf("Ana's posted charge: posted %d, added %d", st.Posted, st.Added)
+	}
+}
