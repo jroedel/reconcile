@@ -1,0 +1,5 @@
+{{/* What a year's spreadsheet says in its cells, one to a line: yes, for
+     the two marks; and which date put a payment in the year. */ -}}
+{{t "yes"}}
+{{tc "date of a payment" "day written"}}
+{{tc "date of a payment" "day posted"}}

@@ -63,6 +63,8 @@ type Ledger interface {
 	JoinPayees(ctx context.Context, now time.Time, actor, into types.ID, from []types.ID) (ledgerbus.Payee, error)
 	SplitPayee(ctx context.Context, now time.Time, actor, id types.ID, spelling string, into types.ID) (ledgerbus.Payee, error)
 	SetPayee(ctx context.Context, now time.Time, actor, id types.ID, payee string) (ledgerbus.Transaction, error)
+	PaymentsByPayee(ctx context.Context, actor types.ID, owner types.Scope, year int) (ledgerbus.PaymentsByPayee, error)
+	PayeeInYear(ctx context.Context, actor, id types.ID, year int) (ledgerbus.PayeeYear, error)
 
 	// What keeping the books changes (keeping.go).
 	ImportProposals(ctx context.Context, now time.Time, actor types.ID, props []ledgerbus.Proposal) (int, error)

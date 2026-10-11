@@ -44,6 +44,32 @@
 {{end}}
 </section>
 
+<section class="card" id="marks">
+<h2>{{t "For the accountant"}}</h2>
+{{if $v.CanBookkeep}}
+<form method="post" action="/payees/{{$p.ID}}/marks">
+  <div class="field">
+    <label><input type="checkbox" name="reported" value="1"{{if $p.Reported}} checked{{end}}> {{t "Report this payee's payments to the accountant"}}</label>
+    <p class="hint">{{t "Whether the law asks for them is the accountant's to say. This mark puts them first on the year's payments by payee."}}</p>
+  </div>
+  <div class="field">
+    <label><input type="checkbox" name="details" value="1"{{if $p.DetailsOnFile}} checked{{end}}> {{t "Their tax details are on file"}}</label>
+    <p class="hint">{{t "Such as a W-9 in the United States."}} {{t "Never write the tax number itself here: it stays with the accountant."}}</p>
+  </div>
+  <div class="field">
+    <label for="note">{{t "Note"}}</label>
+    <textarea id="note" name="note" maxlength="500" rows="2">{{$p.Note}}</textarea>
+    <p class="hint">{{t "Such as: registered as a sole trader; form received in March."}}</p>
+  </div>
+  <button type="submit" class="quiet">{{t "Save"}}</button>
+</form>
+{{else}}
+<p>{{if $p.Reported}}{{t "Its payments are reported to the accountant."}}{{else}}{{t "Its payments are not marked to be reported."}}{{end}}
+{{if $p.DetailsOnFile}}{{t "Their tax details are on file."}}{{else}}{{t "No tax details are on file."}}{{end}}</p>
+{{with $p.Note}}<p>{{.}}</p>{{end}}
+{{end}}
+</section>
+
 {{if $v.CanBookkeep}}
 <section class="card">
 <h2>{{t "Name"}}</h2>

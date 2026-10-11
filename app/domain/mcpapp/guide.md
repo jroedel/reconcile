@@ -184,7 +184,12 @@ account will repay together":
 4. For a payment that is not a check, **set_payee** says whom it went
    to: a payee of the list by its id, or a new name. A check gets its
    payee from **read_check**.
-5. End with what you joined and split, each payee with its `url`: they
+5. "What did we pay the roofer this year?": **get_payee_payments** with
+   the year, or **list_payees** with `year` for every payee's total. Say
+   which payees look as though they should be reported to the
+   accountant; whether they are, and whether their tax details are on
+   file, are the person's to mark on the payee's page.
+6. End with what you joined and split, each payee with its `url`: they
    say so on the site until the person saves them there. Adding,
    renaming or archiving a payee, and saying two suggested ones are not
    the same, are the person's, on the list's page. Never ask for a

@@ -1,0 +1,47 @@
+{{define "title"}}{{t "Payments by payee, {year}" "year" .Data.Year}} · {{.Data.OwnerName}}{{end}}
+{{define "content"}}{{$v := .Data}}
+<p class="crumbs"><a href="{{$v.OwnerPath}}">{{$v.OwnerName}}</a> · <a href="{{$v.ListPath}}">{{t "Payees"}}</a></p>
+<h1>{{t "Payments by payee, {year}" "year" $v.Year}}</h1>
+<p class="hint">{{t "What each payee was paid in the calendar year: the parts of each payment sorted as expenses, and apart, those not sorted yet. Transfers and pass-through are not counted. A check counts in the year it was written, where that is known; any other payment in the year it posted."}}</p>
+<p><a href="{{$v.ListPath}}/{{$v.Prev}}">← {{$v.Prev}}</a> · <a href="{{$v.ListPath}}/{{$v.Next}}">{{$v.Next}} →</a> · <a class="button quiet small" href="{{$v.Path}}/download">{{t "Download as a spreadsheet"}}</a></p>
+
+<section class="card">
+<h2>{{t "Reported to the accountant"}}</h2>
+{{if $v.Reported}}{{range $v.Reported}}{{template "payee-year" (dict "Year" . "Checks" $v.Checks)}}{{end}}
+{{else}}<p class="hint">{{t "No payee is marked to be reported. A bookkeeper or an owner marks one on its page."}}</p>{{end}}
+</section>
+
+<section class="card">
+<h2>{{t "Everybody else"}}</h2>
+<p class="hint">{{t "Largest first, so that somebody who should be reported is seen. No amount is built in: what the law asks about differs by country and by year, and the accountant knows it."}}</p>
+{{if $v.Others}}{{range $v.Others}}{{template "payee-year" (dict "Year" . "Checks" $v.Checks)}}{{end}}
+{{else}}<p class="hint">{{t "Nobody else was paid this year."}}</p>{{end}}
+</section>
+{{end}}
+
+{{/* payee-year is one payee's year: its total, opened to its payments. */}}
+{{define "payee-year"}}{{$y := .Year}}{{$checks := .Checks}}{{$p := $y.Payee}}
+<details class="payee-year">
+<summary><a href="/payees/{{$p.ID}}">{{$p.Name}}</a>
+{{range $y.Sums}} · <span class="money out">{{money .Paid .Currency}}</span>{{if .Unsorted}} <span class="badge">{{t "not sorted yet: {amount}" "amount" (money .Unsorted .Currency)}}</span>{{end}}{{end}}
+<span class="hint">· {{if eq (len $y.Payments) 1}}{{t "1 payment"}}{{else}}{{t "{count} payments" "count" (len $y.Payments)}}{{end}}
+{{if $p.Reported}} · {{if $p.DetailsOnFile}}{{t "tax details on file"}}{{else}}<strong>{{t "no tax details on file"}}</strong>{{end}}{{end}}</span>
+</summary>
+{{if $y.Payments}}
+<div class="scroll"><table class="ledger">
+<thead><tr><th>{{t "Date"}}</th><th>{{t "Account"}}</th><th>{{t "Description"}}</th><th class="money">{{t "Counted as an expense"}}</th><th class="money">{{t "Not sorted yet"}}</th></tr></thead>
+<tbody>{{range $y.Payments}}<tr>
+<td>{{.On}}<br><span class="hint">{{if .Written}}{{tc "date of a payment" "day written"}}{{else}}{{tc "date of a payment" "day posted"}}{{end}}</span></td>
+<td>{{.AccountName}}</td>
+<td><a href="/transactions/{{.ID}}">{{if .Shown}}{{.Shown}}{{else}}{{t "(no description)"}}{{end}}</a>
+{{- with .CheckNumber}}<br><span class="hint">{{t "Check number {number}" "number" .}}</span>{{end}}
+{{- with .CheckMemo}}<br><span class="hint">{{t "Memo: {memo}" "memo" .}}</span>{{end}}
+{{- if ne .Payee $p.Name}}<br><span class="hint">{{t "Written as {payee}" "payee" .Payee}}</span>{{end}}
+{{- range index $checks .ID}}<br><a href="/receipts/{{.}}">{{t "The check's image"}}</a>{{end}}</td>
+<td class="money">{{if .Paid}}{{money .Paid .Currency}}{{end}}</td>
+<td class="money">{{if .Unsorted}}{{money .Unsorted .Currency}}{{end}}</td>
+</tr>{{end}}</tbody>
+</table></div>
+{{else}}<p class="hint">{{t "Nothing paid this year."}}</p>{{end}}
+</details>
+{{end}}

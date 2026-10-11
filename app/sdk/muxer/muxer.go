@@ -213,10 +213,11 @@ func New(cfg Config) (http.Handler, error) {
 		}, guard)
 
 		payeeapp.Routes(mux, payeeapp.Config{
-			Log:     cfg.Log,
-			Ledger:  cfg.Ledger,
-			Tenancy: cfg.Tenancy,
-			Render:  cfg.Render,
+			Log:      cfg.Log,
+			Ledger:   cfg.Ledger,
+			Tenancy:  cfg.Tenancy,
+			Receipts: cfg.Receipts,
+			Render:   cfg.Render,
 		}, guard)
 
 		adminapp.Routes(mux, adminapp.Config{

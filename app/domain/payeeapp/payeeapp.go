@@ -25,23 +25,26 @@ import (
 	"github.com/jroedel/reconcile/foundation/web"
 )
 
-//go:embed templates
+//go:embed templates text
 var files embed.FS
 
-// Templates is this app's pages, for page.NewRenderer.
+// Templates is this app's pages and texts, for page.NewRenderer.
 var Templates fs.FS = files
 
-// Renderer is the part of page.Renderer this app uses.
+// Renderer is the part of page.Renderer this app uses: pages, and the
+// texts a spreadsheet's header row is written in.
 type Renderer interface {
 	Render(w http.ResponseWriter, r *http.Request, status int, name string, data any)
+	Text(lang types.Lang, name string, data any) (string, error)
 }
 
 // Config is what this app needs.
 type Config struct {
-	Log     *slog.Logger
-	Ledger  *ledgerbus.Business
-	Tenancy *tenancybus.Business
-	Render  Renderer
+	Log      *slog.Logger
+	Ledger   *ledgerbus.Business
+	Tenancy  *tenancybus.Business
+	Receipts Receipts
+	Render   Renderer
 
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
@@ -75,6 +78,12 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	handle("POST /payees/{id}/join", a.join)
 	handle("POST /payees/{id}/split", a.split)
 	handle("POST /payees/{id}/not-same", a.notSame)
+	handle("POST /payees/{id}/marks", a.marks)
+
+	handle("GET /orgs/{id}/payees/{year}", a.yearPage(types.ScopeOrg))
+	handle("GET /accounts/{id}/payees/{year}", a.yearPage(types.ScopeAccount))
+	handle("GET /orgs/{id}/payees/{year}/download", a.yearDownload(types.ScopeOrg))
+	handle("GET /accounts/{id}/payees/{year}/download", a.yearDownload(types.ScopeAccount))
 }
 
 func actor(w http.ResponseWriter, r *http.Request) (userbus.User, bool) {
@@ -125,6 +134,8 @@ func problem(err error) string {
 		return "archived"
 	case errors.Is(err, ledgerbus.ErrSplitName):
 		return "split-name"
+	case errors.Is(err, ledgerbus.ErrPayeeNote):
+		return "note"
 	}
 
 	return ""
@@ -140,7 +151,8 @@ func pathOf(owner types.Scope) string {
 }
 
 // ownerOf is the scope a list path names and its name. An account in an
-// organization is sent to the organization's list.
+// organization is sent to the organization's list, or the same page of
+// it: its year, or the year's download.
 func (a app) ownerOf(w http.ResponseWriter, r *http.Request, me userbus.User, kind types.ScopeKind) (types.Scope, string, bool) {
 	id, ok := a.pathID(w, r)
 	if !ok {
@@ -166,7 +178,8 @@ func (a app) ownerOf(w http.ResponseWriter, r *http.Request, me userbus.User, ki
 	}
 
 	if !acct.OrgID.Zero() {
-		http.Redirect(w, r, pathOf(types.OrgScope(acct.OrgID)), http.StatusSeeOther)
+		rest := strings.TrimPrefix(r.URL.Path, pathOf(acct.Scope()))
+		http.Redirect(w, r, pathOf(types.OrgScope(acct.OrgID))+rest, http.StatusSeeOther)
 
 		return types.Scope{}, "", false
 	}
@@ -205,6 +218,10 @@ type listView struct {
 	Archived    []ledgerbus.Payee
 	Suggestions []ledgerbus.JoinSuggestion
 
+	// ThisYear is the calendar year now, and LastYear the one before, for
+	// the payments by payee.
+	ThisYear, LastYear int
+
 	// Typed into the add form, kept when it is refused.
 	Name    string
 	Problem string
@@ -240,6 +257,8 @@ func (a app) listPage(w http.ResponseWriter, r *http.Request, me userbus.User, o
 	view.OwnerName = name
 	view.OwnerPath = strings.TrimSuffix(view.Path, "/payees")
 	view.CanBookkeep = access.Can(tenancybus.Bookkeep)
+	view.ThisYear = a.cfg.Now().Year()
+	view.LastYear = view.ThisYear - 1
 
 	for _, p := range list {
 		if p.Archived() {

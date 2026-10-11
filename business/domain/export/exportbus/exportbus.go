@@ -58,8 +58,10 @@ var (
 // (docs/clearing.md, 2), the holder its file said made it (3),
 // whether it was still pending (4), the number of the check it paid
 // and to whom (docs/shapes.md, 3), what a person said it was in their own
-// words (ledgerbus/describe.go), and what the check's memo says and the
-// day it was written (ledgerbus/checks.go), last so that a sheet an
+// words (ledgerbus/describe.go), what the check's memo says and the
+// day it was written (ledgerbus/checks.go), and the payee it was paid to
+// when the organization marked that payee to be reported
+// (ledgerbus/payees_year.go): each added last so that a sheet an
 // accountant set up for the earlier columns still reads them where they
 // were.
 //
@@ -69,7 +71,7 @@ var (
 // than income or expenses. So is a person's own description, rather than
 // put in the description's place: the bank's wording is what the
 // accountant finds the line by on the statement in the same package.
-const Columns = 21
+const Columns = 22
 
 // ExplanationColumns is how many columns explanations.csv has, in this
 // order: the explained transaction's date, account, description and
@@ -93,6 +95,7 @@ type Ledger interface {
 	Reconciliations(ctx context.Context, accountID types.ID) ([]ledgerbus.Reconciliation, error)
 	Clearing(ctx context.Context, actor types.ID, ids []types.ID) (ledgerbus.Clearing, error)
 	Explain(ctx context.Context, actor, id types.ID) (ledgerbus.Explanation, error)
+	PayeesByID(ctx context.Context, ids []types.ID) (map[types.ID]ledgerbus.Payee, error)
 }
 
 // Receipts is what is attached to the transactions (receiptbus).
@@ -179,6 +182,11 @@ type Row struct {
 	// it cleared.
 	CheckMemo string
 	WrittenOn types.Date
+
+	// ReportedPayee is the name of the payee the transaction was paid to
+	// when that payee is marked to be reported to the accountant, or "":
+	// the payee's own name, which joins every way it was written.
+	ReportedPayee string
 }
 
 // Entry is a file in the zip beside the spreadsheet.
@@ -301,6 +309,11 @@ func (b *Business) Account(ctx context.Context, actor, accountID types.ID, from,
 		return Package{}, err
 	}
 
+	reported, err := b.reported(ctx, txs)
+	if err != nil {
+		return Package{}, err
+	}
+
 	for _, t := range txs {
 		for _, s := range t.Splits {
 			p.Rows = append(p.Rows, Row{
@@ -309,7 +322,7 @@ func (b *Business) Account(ctx context.Context, actor, accountID types.ID, from,
 				Category: categories[s.CategoryID].Name, Kind: categories[s.CategoryID].Kind, Project: projects[s.ProjectID], Memo: s.Memo,
 				Receipts: attached[t.ID], Statement: fileNames[t.StatementID], Reconciled: reconciledOn(recs, t.PostedOn),
 				ClearedBy: cleared.By[t.ID].Transaction, Holder: t.Holder, Pending: t.Pending, CheckNumber: t.CheckNumber, Payee: t.Payee,
-				OwnDescription: t.OwnDescription, CheckMemo: t.CheckMemo, WrittenOn: t.WrittenOn,
+				OwnDescription: t.OwnDescription, CheckMemo: t.CheckMemo, WrittenOn: t.WrittenOn, ReportedPayee: reported[t.PayeeID],
 			})
 		}
 	}
@@ -380,6 +393,11 @@ func (b *Business) Project(ctx context.Context, actor, projectID types.ID) (Pack
 		return Package{}, err
 	}
 
+	reported, err := b.reported(ctx, ordered)
+	if err != nil {
+		return Package{}, err
+	}
+
 	for _, l := range book.Lines {
 		p.Rows = append(p.Rows, Row{
 			PostedOn: l.PostedOn, Account: l.AccountName, Description: l.Description,
@@ -390,10 +408,37 @@ func (b *Business) Project(ctx context.Context, actor, projectID types.ID) (Pack
 			Pending: byID[l.Split.TransactionID].Pending, CheckNumber: byID[l.Split.TransactionID].CheckNumber,
 			Payee: byID[l.Split.TransactionID].Payee, OwnDescription: l.OwnDescription,
 			CheckMemo: byID[l.Split.TransactionID].CheckMemo, WrittenOn: byID[l.Split.TransactionID].WrittenOn,
+			ReportedPayee: reported[byID[l.Split.TransactionID].PayeeID],
 		})
 	}
 
 	return p, nil
+}
+
+// reported is the name of each reported payee the transactions were paid
+// to, by its id. A payee not marked to be reported is not in it.
+func (b *Business) reported(ctx context.Context, txs []ledgerbus.Transaction) (map[types.ID]string, error) {
+	ids := make([]types.ID, 0, len(txs))
+	for _, t := range txs {
+		if !t.PayeeID.Zero() {
+			ids = append(ids, t.PayeeID)
+		}
+	}
+
+	payees, err := b.ledger.PayeesByID(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	out := map[types.ID]string{}
+
+	for id, p := range payees {
+		if p.Reported {
+			out[id] = p.Name
+		}
+	}
+
+	return out, nil
 }
 
 // attached names the receipts on the transactions, adds their files to the
@@ -591,7 +636,7 @@ func spreadsheet(rows []Row, words Words) ([]byte, error) {
 			r.Amount.String(), r.Currency, r.Total.String(),
 			cell(r.Category), cell(words.Kinds[r.Kind]), cell(r.Project), cell(r.Memo),
 			strings.Join(r.Receipts, "; "), cell(r.Statement), reconciled, clearer(r.ClearedBy), cell(r.Holder), pending,
-			r.CheckNumber, cell(r.Payee), cell(r.OwnDescription), cell(r.CheckMemo), r.WrittenOn.String(),
+			r.CheckNumber, cell(r.Payee), cell(r.OwnDescription), cell(r.CheckMemo), r.WrittenOn.String(), cell(r.ReportedPayee),
 		}); err != nil {
 			return nil, err
 		}

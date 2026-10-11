@@ -105,6 +105,11 @@
 {{- else if eq .Action "payee.joined"}} {{t "joined the payee {from} into {name}, with the ways it was written: {spellings}" "from" .Detail.from "name" .Detail.name "spellings" .Detail.spellings}}
 {{- else if eq .Action "payee.split"}} {{t "split {spelling} off the payee {from}, into {name}" "spelling" .Detail.spelling "from" .Detail.from "name" .Detail.name}}
 {{- else if eq .Action "payee.not-same"}} {{t "said the payees {name} and {other} are not the same" "name" .Detail.name "other" .Detail.other}}
+{{- else if eq .Action "payee.reported"}} {{t "marked the payee {name} to be reported to the accountant" "name" .Detail.name}}
+{{- else if eq .Action "payee.unreported"}} {{t "marked the payee {name} not to be reported to the accountant" "name" .Detail.name}}
+{{- else if eq .Action "payee.details-on-file"}} {{t "said the tax details of the payee {name} are on file" "name" .Detail.name}}
+{{- else if eq .Action "payee.details-not-on-file"}} {{t "said the tax details of the payee {name} are not on file" "name" .Detail.name}}
+{{- else if eq .Action "payee.noted"}} {{t "wrote a note on the payee {name}: {note}" "name" .Detail.name "note" .Detail.note}}
 {{- else if eq .Action "split.added"}} {{t "put {amount} of {description} ({date}, {account}) into it" "amount" (money (amount .Detail.amount) .Detail.currency) "description" .Detail.description "date" .Detail.date "account" .Detail.account}}
 {{- else if eq .Action "split.removed"}} {{t "took {description} ({date}, {account}) out of it" "description" .Detail.description "date" .Detail.date "account" .Detail.account}}
 {{- else if eq .Action "budget.set"}} {{template "budget-line" .Detail}}{{with .Detail.year}} ({{.}}){{end}}

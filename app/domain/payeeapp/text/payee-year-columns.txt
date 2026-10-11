@@ -1,0 +1,15 @@
+{{/* The header row of a year's payments by payee, one column to a line,
+     in the order payeeapp's yearDownload writes them. */ -}}
+{{t "Payee"}}
+{{t "Reported to the accountant"}}
+{{t "Tax details on file"}}
+{{t "Date"}}
+{{t "Which date"}}
+{{t "Account"}}
+{{t "Description"}}
+{{t "Check number"}}
+{{t "Memo on the check"}}
+{{t "Counted as an expense"}}
+{{t "Not sorted yet"}}
+{{t "Currency"}}
+{{t "Written as"}}

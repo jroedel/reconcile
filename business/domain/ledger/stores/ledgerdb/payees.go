@@ -509,7 +509,7 @@ WHERE coalesce(p.org_id, p.account_id) = ?`, owner.ID.String())
 	return out, rows.Err()
 }
 
-const payeeColumns = `p.id, p.org_id, p.account_id, p.name, p.via, coalesce(p.joined_into, ''), p.created_by, p.created_at, p.archived_at,
+const payeeColumns = `p.id, p.org_id, p.account_id, p.name, p.via, p.reported, p.details_on_file, p.note, coalesce(p.joined_into, ''), p.created_by, p.created_at, p.archived_at,
     (SELECT count(*) FROM transactions t WHERE t.payee_id = p.id)`
 
 // Payees is an owner's list, not joined ones, by name, archived ones last.
@@ -548,6 +548,61 @@ func (s *Store) PayeeTransactions(ctx context.Context, id types.ID, limit int) (
 		return nil, err
 	}
 
+	return s.withAccounts(ctx, txs)
+}
+
+// YearPayments is the transactions of a list's payees, or of one payee
+// when payee is not zero, whose day -- the day written on a check where it
+// is known, the day posted otherwise -- falls between from and to, both
+// included: with their parts, oldest first, each with its account's name
+// and currency.
+func (s *Store) YearPayments(ctx context.Context, owner types.Scope, payee types.ID, from, to types.Date) ([]ledgerbus.PayeePayment, error) {
+	where := `payee_id IN (SELECT id FROM payees WHERE coalesce(org_id, account_id) = ?)`
+	args := []any{owner.ID.String()}
+
+	if !payee.Zero() {
+		where, args = `payee_id = ?`, []any{payee.String()}
+	}
+
+	txs, err := s.withSplits(ctx, where+` AND coalesce(nullif(check_written_on, ''), posted_on) BETWEEN ? AND ?`,
+		`coalesce(nullif(check_written_on, ''), posted_on), rowid`, append(args, from.String(), to.String())...)
+	if err != nil || len(txs) == 0 {
+		return nil, err
+	}
+
+	return s.withAccounts(ctx, txs)
+}
+
+// PayeesByID is the payees with these ids, joined or not, in no order.
+func (s *Store) PayeesByID(ctx context.Context, ids []types.ID) ([]ledgerbus.Payee, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id.String()
+	}
+
+	return s.payees(ctx, `SELECT `+payeeColumns+` FROM payees p WHERE p.id IN (`+strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")+`)`, args...)
+}
+
+// SetPayeeMarks writes the marks a person sets on a payee and its key's
+// mark (markPayees), with the events.
+func (s *Store) SetPayeeMarks(ctx context.Context, p ledgerbus.Payee, events []eventbus.Event) error {
+	return s.inPayeeTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `UPDATE payees SET reported = ?, details_on_file = ?, note = ? WHERE id = ?`,
+			p.Reported, p.DetailsOnFile, p.Note, p.ID.String()); err != nil {
+			return fmt.Errorf("marking a payee: %w", err)
+		}
+
+		return markPayees(ctx, tx, p.Via, p.ID)
+	}, events...)
+}
+
+// withAccounts is payments with the name and currency of the account each
+// was made from.
+func (s *Store) withAccounts(ctx context.Context, txs []ledgerbus.Transaction) ([]ledgerbus.PayeePayment, error) {
 	var ids []any
 
 	for _, t := range txs {
@@ -626,7 +681,7 @@ func (s *Store) payees(ctx context.Context, q string, args ...any) ([]ledgerbus.
 			archived       sql.NullInt64
 		)
 
-		if err := rows.Scan(&id, &org, &account, &p.Name, &p.Via, &joined, &by, &at, &archived, &p.Payments); err != nil {
+		if err := rows.Scan(&id, &org, &account, &p.Name, &p.Via, &p.Reported, &p.DetailsOnFile, &p.Note, &joined, &by, &at, &archived, &p.Payments); err != nil {
 			return nil, fmt.Errorf("reading a payee: %w", err)
 		}
 
