@@ -74,7 +74,7 @@ type Config struct {
 	Render  Renderer
 
 	// Categories starts the category list of a new organization or
-	// personal account. Nil starts none.
+	// account on its own. Nil starts none.
 	Categories Starter
 
 	// Holders says whether an account's statements arrive one file per
@@ -566,7 +566,7 @@ func archivedDone(archived bool) string {
 // --- accounts ---------------------------------------------------------------
 
 type accountFormView struct {
-	Org     tenancybus.Org // zero for a personal account
+	Org     tenancybus.Org // zero for an account on its own
 	Fields  tenancybus.AccountFields
 	Kinds   []tenancybus.AccountKind
 	Problem string
@@ -655,7 +655,7 @@ func (a app) createAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// A personal account keeps its own list; one in an organization uses
+	// An account on its own keeps its own list; one in an organization uses
 	// the organization's, started when the organization was.
 	if acct.OrgID.Zero() {
 		a.startList(r, me.ID, acct.Scope())
@@ -668,7 +668,7 @@ type accountView struct {
 	scopeView
 
 	Account tenancybus.Account
-	Org     tenancybus.Org // zero for a personal account, or one the reader cannot see
+	Org     tenancybus.Org // zero for an account on its own, or one the reader cannot see
 	Fields  tenancybus.AccountFields
 	Kinds   []tenancybus.AccountKind
 

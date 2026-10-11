@@ -35,8 +35,8 @@ zero").
   of the typed total and their sum, and the page says when the lines do
   not add up to it.
 - **One currency per budget**, chosen when its first line is set: the
-  currency most of the organization's accounts use (for a personal
-  project, the owner's personal accounts'). Money in another currency is
+  currency most of the organization's accounts use (for a project on
+  its own, that of the owner's accounts on their own). Money in another currency is
   listed beside the budget, never converted.
 - **Nothing is ever budgeted for transfers or pass-through**, and parts
   in a category whose kind is not said yet, or in no category, are shown
@@ -48,8 +48,8 @@ zero").
   the same parts as its book.
 - **An organization's year:** every part of the organization's accounts
   posted in the budget year (from the first day of the starting month,
-  twelve months), whether or not it is in a project. A personal account is
-  in no organization and in no organization's budget.
+  twelve months), whether or not it is in a project. An account on its own
+  is in no organization and in no organization's budget.
 - Actuals are signed sums within a kind, as everywhere: a refund lowers
   its expense category. A line shows the budget, the actual, and what is
   left (or how far over), in words first and colour second.
@@ -96,8 +96,8 @@ A new domain, `budget` (`business/domain/budget/budgetbus`,
   less budgeted expenses) beside the actual net; "Not in the budget".
   Below it, for owners, the form: one amount per income and expense
   category, and the two totals. The categories are the organization's
-  list and any other category the project's money is in (a personal
-  project's, or a part paid from somebody's personal card). Linked from
+  list and any other category the project's money is in (a project on
+  its own's, or a part paid from somebody's personal card). Linked from
   the project's page and its book. (Planned as a section of the book; a
   page of its own lets the organization's year share its layout, and
   keeps the book's app from depending on budgets.)

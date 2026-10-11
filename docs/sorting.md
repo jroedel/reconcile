@@ -72,7 +72,7 @@ A new domain, `rule` (`business/domain/rule/rulebus`, `stores/ruledb`).
   several, the longest `match` wins. Two of the same length that disagree
   sort nothing, and the account's rules page names them.
 - **What may be applied:** a category from the account's list (the
-  organization's, or the personal account's own) that is not archived; a
+  organization's, or that of an account on its own) that is not archived; a
   project the account's splits may use (`projectChoices`), not archived, and
   not ended before the transaction's date. A rule whose category or project
   can no longer be used applies nothing, and its page says why.

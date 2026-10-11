@@ -3,8 +3,8 @@
 //
 // One list per organization, shared by all its accounts, so that the
 // parish's checking account and its card say "Utilities" the same way and
-// the accountant's package adds them up. A personal account, which belongs
-// to no organization, keeps a list of its own.
+// the accountant's package adds them up. An account on its own, which
+// belongs to no organization, keeps a list of its own.
 //
 // A category is never deleted, only archived: a split that names it keeps
 // naming it, and last year's package still adds up. An archived category is
@@ -93,8 +93,8 @@ const MaxName = 60
 type Category struct {
 	ID types.ID
 
-	// Owner is the organization whose list it is on, or the personal
-	// account.
+	// Owner is the organization whose list it is on, or the account on
+	// its own.
 	Owner types.Scope
 
 	Name       string
@@ -145,7 +145,7 @@ func OwnerOf(a tenancybus.Account) types.Scope {
 
 // require answers ErrNotFound for an owner the actor cannot read, and
 // ErrForbidden for one they cannot keep the books of. Only an organization
-// or a personal account has a list: an account in an organization uses the
+// or an account on its own has a list: an account in an organization uses the
 // organization's, and a list of its own would be one nobody sorts with.
 func (b *Business) require(ctx context.Context, actor types.ID, owner types.Scope, p tenancybus.Permission) (tenancybus.Access, error) {
 	var (

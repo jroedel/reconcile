@@ -149,7 +149,7 @@ func (a app) bookEndpoints() []Endpoint {
 		{
 			Method: http.MethodGet, Path: Prefix + "/overview", Scope: read, Tool: "get_overview",
 			Summary: "Start here: every organization, account and project you may see, with your role on each, and for each account the end of its last statement, how many of its transactions are not sorted yet, and how many months have no statement.",
-			Returns: "{organizations: [{id, name, accounts, projects}], accounts (personal), projects (personal)}; an account is {id, name, kind, currency, last4, roles, last_statement_ends, unsorted, months_missing, url}.",
+			Returns: "{organizations: [{id, name, accounts, projects}], accounts (in no organization), projects (in no organization)}; an account is {id, name, kind, currency, last4, roles, last_statement_ends, unsorted, months_missing, url}.",
 			handler: a.overview,
 		},
 		{

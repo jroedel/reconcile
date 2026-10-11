@@ -339,7 +339,7 @@ func compare(c *Comparison, lines []Line, parts []ledgerbus.ProjectLine, cats ma
 
 // choices is the categories a budget may have lines for, by ID: those of
 // the organization's list, and every category its parts are in -- a
-// personal project's money, or an organization's project paid from
+// project on its own's money, or an organization's project paid from
 // somebody's personal card, is sorted with other lists.
 func (b *Business) choices(ctx context.Context, orgID types.ID, parts []ledgerbus.ProjectLine) (map[types.ID]categorybus.Category, error) {
 	out := map[types.ID]categorybus.Category{}

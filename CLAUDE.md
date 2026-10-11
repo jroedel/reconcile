@@ -140,7 +140,7 @@ the change, in its transaction), `file` (what people upload, bytes kept once
 per content outside anything Apache serves), `importing` (reading a bank's
 CSV, OFX or PDF into records, knowing nothing of accounts, and the
 declarations of statement layouts that say how), `category` (each
-organization's list, or a personal account's, each category one of the four
+organization's list, or an account's with no organization, each one of the four
 kinds of money), `ledger` (statements,
 transactions and their splits: checking, deduplicating, storing, sorting,
 and a project's book; reconciling, which locks a period; applying

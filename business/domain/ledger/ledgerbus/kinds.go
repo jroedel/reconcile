@@ -70,8 +70,8 @@ type MonthBalance struct {
 
 // Settling is what should come back to zero on a category list: each
 // pass-through category's balance, and the transfers across the list's
-// accounts (every account of an organization, or the one personal
-// account). The pass-through balances are listed whatever they are, so
+// accounts (every account of an organization, or the one account on
+// its own). The pass-through balances are listed whatever they are, so
 // that a zero is visible as settled; the transfers, too.
 type Settling struct {
 	PassThrough []Settled

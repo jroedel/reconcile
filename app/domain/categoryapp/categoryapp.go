@@ -1,5 +1,5 @@
 // Package categoryapp is the pages for category lists: an organization's,
-// and a personal account's.
+// and an account's on its own.
 //
 // An account in an organization has no list of its own; its address here
 // sends the reader on to the organization's.

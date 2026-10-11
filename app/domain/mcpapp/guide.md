@@ -143,7 +143,7 @@ account will repay together":
 1. **get_overview** first: the project may be there already, under another
    name, or archived on the site. Propose using it before making another.
 2. Propose a name, the organization it belongs in (the one whose accounts
-   pay into it; none makes it the person's own), and a sentence of what it
+   pay into it; with none it is a project on its own, the person its owner), and a sentence of what it
    is for. With the person's yes, **create_project**, and give its `url`.
    Making one in an organization takes a bookkeeper's role there.
 3. Then sort into it as anything else: **sort_transactions** with its id as

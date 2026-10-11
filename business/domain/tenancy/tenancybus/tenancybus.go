@@ -4,7 +4,7 @@
 // # Nobody sees anything they were not given
 //
 // There is no administrator who sees every account. Whoever makes an
-// organization, a personal account or a project owns it, and everybody else
+// organization, an account on its own or a project owns it, and everybody else
 // reaches it only by a grant: a role, on one scope, given by an owner to an
 // email address. The site administrator manages users and nothing else
 // (userbus); that person sees an organization's money only if somebody there
@@ -19,8 +19,10 @@
 //
 // A role on an organization holds on every account and project in it. A role
 // on an account or a project holds on that one thing. An account or project
-// with no organization is personal: its creator owns it, and grants on it
-// are the only way in.
+// with no organization is on its own: its creator owns it, and grants on
+// it are the only way in. "On its own", not "personal": an affiliate may
+// keep its account here without the organization that owns it in law, and
+// nothing here can tell that from a household's.
 //
 // # One store, one transaction
 //
@@ -59,7 +61,7 @@ var (
 	ErrForbidden = errors.New("your role does not allow that")
 
 	// ErrLastOwner refuses a change that would leave an organization, or a
-	// personal account or project, with nobody who can manage it.
+	// account or project on its own, with nobody who can manage it.
 	ErrLastOwner = errors.New("that would leave nobody who can manage it")
 
 	// ErrAlreadyGranted is a second grant to the same person on the same
@@ -123,7 +125,7 @@ var AccountKinds = []AccountKind{Checking, Savings, Card, Cash, Other}
 // of.
 type Account struct {
 	ID    types.ID
-	OrgID types.ID // zero for a personal account
+	OrgID types.ID // zero for an account on its own
 	Name  string
 	Kind  AccountKind
 
@@ -151,7 +153,7 @@ func (a Account) Archived() bool { return !a.ArchivedAt.IsZero() }
 // something -- a pilgrimage, a building fund -- comes out even.
 type Project struct {
 	ID       types.ID
-	OrgID    types.ID // zero for a personal project
+	OrgID    types.ID // zero for a project on its own
 	Name     string
 	StartsOn types.Date
 	EndsOn   types.Date
@@ -208,8 +210,8 @@ type Storer interface {
 	OrgsByID(ctx context.Context, ids []types.ID) ([]Org, error)
 	AllOrgs(ctx context.Context) ([]Org, error)
 
-	// CreateAccount and CreateProject take an owner grant for a personal
-	// one, and nil for one in an organization, whose owners it inherits.
+	// CreateAccount and CreateProject take an owner grant for one on its
+	// own, and nil for one in an organization, whose owners it inherits.
 	CreateAccount(ctx context.Context, a Account, owner *Grant, ev eventbus.Event) error
 	UpdateAccount(ctx context.Context, a Account, ev eventbus.Event) error
 	AccountByID(ctx context.Context, id types.ID) (Account, error)
@@ -291,7 +293,7 @@ func (b *Business) AccessTo(ctx context.Context, actor types.ID, scope types.Sco
 }
 
 // parent is the organization a scope belongs to, or the zero Scope for an
-// organization or a personal account or project.
+// organization or an account or project on its own.
 func (b *Business) parent(ctx context.Context, scope types.Scope) (types.Scope, error) {
 	var org types.ID
 
@@ -516,8 +518,7 @@ func (f AccountFields) apply(a *Account) error {
 }
 
 // CreateAccount makes an account. In an organization it needs Manage there,
-// and its owners are the organization's; on its own it is personal, and its
-// creator owns it.
+// and its owners are the organization's; on its own, its creator owns it.
 func (b *Business) CreateAccount(ctx context.Context, now time.Time, actor, orgID types.ID, f AccountFields) (Account, error) {
 	if !orgID.Zero() {
 		if _, err := b.require(ctx, actor, types.OrgScope(orgID), Manage); err != nil {
