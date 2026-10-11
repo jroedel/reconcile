@@ -44,6 +44,14 @@ func (s *Store) Blank(ctx context.Context, account types.ID) ([]ledgerbus.Transa
 // transaction, split it, or reconciled its month between the read and this
 // write has decided, and the rule loses. Saving a transaction replaces its
 // parts with new ones, so a part that was replaced is simply not found.
+//
+// The check is tied to the part's own transaction with t.id =
+// splits.transaction_id. It was once "transaction_id IN (SELECT t.id FROM
+// transactions t WHERE blank)", which reads the same and is not: SQLite
+// builds that list from every transaction in the database, once per
+// part, so sorting two thousand freshly imported transactions took 37
+// seconds on the server: past the server's 30-second write timeout, so
+// the answer never reached the caller although the sorting was done.
 func (s *Store) SortByRule(ctx context.Context, sorted []ledgerbus.SortedPart, ev eventbus.Event) (int, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -56,7 +64,7 @@ func (s *Store) SortByRule(ctx context.Context, sorted []ledgerbus.SortedPart, e
 	for _, p := range sorted {
 		res, err := tx.ExecContext(ctx, `
 UPDATE splits SET category_id = ?, project_id = ?, rule_id = ?
-WHERE id = ? AND transaction_id IN (SELECT t.id FROM transactions t WHERE `+blankWhere+`)`,
+WHERE id = ? AND EXISTS (SELECT 1 FROM transactions t WHERE t.id = splits.transaction_id AND `+blankWhere+`)`,
 			nullID(p.Split.CategoryID), nullID(p.Split.ProjectID), nullID(p.Split.RuleID), p.Split.ID.String())
 		if err != nil {
 			return 0, fmt.Errorf("sorting by rule: %w", err)
