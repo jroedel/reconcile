@@ -27,6 +27,7 @@ anything is built.
 | The year | **The calendar year**, which is the tax year in the United States and in Brazil alike |
 | Spellings | **Joined by a person**, with suggestions. "Hilltop Plumbing" and "HILLTOP PLUMBING LLC" are one payee only when somebody says so |
 | Which payments | **Any money out**, not only checks: a transfer or a card payment to the same person counts. A check's payee comes from its image, as now; any other transaction's is chosen on its page |
+| Accounts with no organization | **Have payees too** (decided 2026-10-10). An account with no organization is not necessarily somebody's household: a community or an affiliate may keep its own account here without being given the organization that owns it in law, and the app cannot tell the two apart. So it assumes nothing, and every account's books have payees |
 
 ## 1. A payee
 
@@ -36,7 +37,7 @@ when a check's image is read or numbered (`ledgerbus.SetPayee`), shown as
 the same words were paid to the same person.
 
 - **A payee is a record**, kept in the same list as categories are: one
-  per organization, or one per personal account
+  per organization, or one per account with no organization
   (`payees(id, org_id NULL, account_id NULL, name, reported, details_on_file,
   note, created_by, created_at, archived_at)`). Names are unique in a list,
   whatever their case. Archived, never deleted.
@@ -83,7 +84,8 @@ about its payees, given to the accountant.
 
 ## 4. Payments by payee
 
-A page for an organization's (or a personal account's) payees, by year:
+A page for an organization's payees, or an account's with no
+organization, by year:
 
 - **The reported payees first**, each with the total paid in the year,
   the number of payments, whether their details are on file, and the
@@ -138,8 +140,6 @@ Three pull requests after this plan, each useful when merged:
 
 ## Open questions
 
-- **Personal accounts**: a payee list of their own, as categories have, or
-  none, since nobody reports a household's payments?
 - **Money in**: a payer is the same idea the other way round (who gave),
   and a donor list is something a parish asks for. Left out here, and the
   record is shaped so it could be added.
