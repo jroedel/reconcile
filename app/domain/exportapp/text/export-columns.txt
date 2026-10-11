@@ -21,3 +21,4 @@
 {{t "Our description"}}
 {{t "Memo on the check"}}
 {{t "Written on"}}
+{{t "Reported payee"}}

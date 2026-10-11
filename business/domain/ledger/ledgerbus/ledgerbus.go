@@ -269,6 +269,16 @@ type Storer interface {
 	PayeesNotSame(ctx context.Context, owner types.Scope) (map[[2]types.ID]bool, error)
 	NotSame(ctx context.Context, pair [2]types.ID, by types.ID, at time.Time, ev eventbus.Event) error
 
+	// SetPayeeMarks writes a payee's Reported, DetailsOnFile, Note and
+	// Via, with the events (payees_year.go). YearPayments is the
+	// transactions of an owner's payees, or of one payee when payee is not
+	// zero, whose day (the day written, or else posted) is from to to,
+	// with their parts, oldest first. PayeesByID is the payees with the
+	// ids, joined or not.
+	SetPayeeMarks(ctx context.Context, p Payee, events []eventbus.Event) error
+	YearPayments(ctx context.Context, owner types.Scope, payee types.ID, from, to types.Date) ([]PayeePayment, error)
+	PayeesByID(ctx context.Context, ids []types.ID) ([]Payee, error)
+
 	// SetWritten writes a check's memo and the day it was written, and
 	// ev (checks.go).
 	SetWritten(ctx context.Context, id types.ID, memo string, on types.Date, ev eventbus.Event) error

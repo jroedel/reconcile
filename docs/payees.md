@@ -252,6 +252,39 @@ Three pull requests after this plan, each useful when merged:
   person, as the guide's routine has it, and they do them on the list's
   page.
 
+### The third pull request: reported payees and the year (3, 4)
+
+- **The marks** (`ledgerbus/payees_year.go`, `SetPayeeMarks`): on the
+  payee's page, a card "For the accountant" with the two marks and the
+  note, for a bookkeeper or an owner; an accountant reads them. Refused
+  through a key in the business layer, not only by there being no tool.
+  Each change is its own line of history (reported, not reported, details
+  on file, not on file, noted); saving them unchanged writes none, and
+  saving them takes a program's marks off the payee, as saving its name
+  does. The note is at most 500 characters. No schema change: the columns
+  came in the first pull request's CREATE.
+- **The year** at `/orgs/{id}/payees/{year}` (and an account's with no
+  organization; an account in one goes to its organization's), linked
+  from the list for this year and the last. Reported payees first, every
+  one of them even with nothing paid; then everybody paid, largest first,
+  where largest is the most in any one currency (a list may have accounts
+  in two). Each payee opens to its payments: the day that counted and
+  which day it was, account, description, check number, memo, the
+  spelling when it differs, links to its check images, and the amounts
+  counted as an expense and not sorted yet, apart.
+- **Income parts are not counted**, nor transfers or pass-through; a
+  refund sorted into an expense category lowers the total, as it does in
+  every book. A payment with nothing counted is left out.
+- **The download** at `{year}/download`: a CSV, a row per payment, its
+  header from `text/payee-year-columns.txt` and its words ("yes", "day
+  written", "day posted") from `text/payee-year-words.txt`. Amounts keep
+  their sign, money out negative, as the package's do.
+- **The package's "Reported payee"** is the 22nd column, last: the
+  payee's name, which joins its spellings, when the payee is marked to be
+  reported, and empty otherwise.
+- **`get_payee_payments`**, and `list_payees` gains the marks and, with
+  `year`, each payee's total and number of payments in it.
+
 ## Open questions
 
 - **Money in**: a payer is the same idea the other way round (who gave),

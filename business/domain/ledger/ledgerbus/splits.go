@@ -56,9 +56,10 @@ type Part struct {
 }
 
 // Categories is the lists a transaction's parts are sorted with
-// (categorybus).
+// (categorybus): an account's, and an owner's, asking nobody's permission.
 type Categories interface {
 	ForAccount(ctx context.Context, a tenancybus.Account) ([]categorybus.Category, error)
+	Of(ctx context.Context, owner types.Scope) ([]categorybus.Category, error)
 }
 
 // Editor is a transaction and everything its page needs to show it and

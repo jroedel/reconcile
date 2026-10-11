@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -53,10 +54,18 @@ func (a app) payeeEndpoints() []Endpoint {
 	return []Endpoint{
 		{
 			Method: http.MethodGet, Path: Prefix + "/payees", Scope: read, Tool: "list_payees",
-			Summary: "A list of payees -- whom payments went to -- with every way each has been written (its spellings) and how many payments it has. An organization's accounts share one list; an account with no organization has its own. A check's payee comes from reading its image; any other payment's is chosen with set_payee.",
-			Query:   whose,
-			Returns: "{organization | account, payees: [payee], archived: [payee], url}; a payee is {id, name, spellings, payments, through, spellings_through, url}: through is the key a program last joined or split it through, until a person saves it on the site, and spellings_through those it brought in.",
+			Summary: "A list of payees -- whom payments went to -- with every way each has been written (its spellings), how many payments it has, and the two marks a person sets for the accountant: whether its payments are reported, and whether its tax details are on file. Those marks are the person's, on the payee's page; say which payee looks as though it should be reported, but do not ask for or write any tax number. With a year, each payee's total for it, as get_payee_payments counts. An organization's accounts share one list; an account with no organization has its own.",
+			Query: append(slices.Clone(whose),
+				Field{Name: "year", Type: "integer", Description: "A calendar year, such as 2026: each payee then has its total and number of payments in it."}),
+			Returns: "{organization | account, payees: [payee], archived: [payee], url, year_url}; a payee is {id, name, spellings, payments, reported, details_on_file, note, through, spellings_through, year: {payments, sums: [{currency, paid, unsorted}]}, url}: through is the key a program last joined or split it through, until a person saves it on the site, and spellings_through those it brought in.",
 			handler: a.listPayees,
+		},
+		{
+			Method: http.MethodGet, Path: Prefix + "/payees/{payee}/payments", Scope: read, Tool: "get_payee_payments",
+			Summary: "A payee's payments in a calendar year, as the year's payments by payee count them: a check in the year it was written, where that is known, any other payment in the year it posted (date_is says which); of each payment, its parts sorted as expenses (paid) and apart those not sorted yet (unsorted); transfers and pass-through not at all. Each check's image is a get_receipt_image away, by the ids in check_images.",
+			Query:   []Field{{Name: "year", Type: "integer", Required: true, Description: "The calendar year, such as 2026."}},
+			Returns: "{payee, year, sums: [{currency, paid, unsorted}], payments: [{transaction, date, date_is: written|posted, posted, account_name, description, check, check_memo, written_as, paid, unsorted, currency, check_images, url}], year_url}",
+			handler: a.payeePayments,
 		},
 		{
 			Method: http.MethodGet, Path: Prefix + "/payees/suggestions", Scope: read, Tool: "suggest_payee_joins",
@@ -113,6 +122,14 @@ type payeeOut struct {
 	Through        string   `json:"through,omitempty"`
 	BroughtThrough []string `json:"spellings_through,omitempty"`
 
+	// The marks a person sets for the accountant.
+	Reported      bool   `json:"reported"`
+	DetailsOnFile bool   `json:"details_on_file"`
+	Note          string `json:"note,omitempty"`
+
+	// Year is its year, when list_payees is asked for one.
+	Year *yearOut `json:"year,omitempty"`
+
 	// Latest is its latest payments, in a suggestion.
 	Latest []paymentOut `json:"payments_latest,omitempty"`
 
@@ -135,8 +152,106 @@ type paymentOut struct {
 func (rd *reader) payeeOut(p ledgerbus.Payee) payeeOut {
 	return payeeOut{
 		ID: p.ID.String(), Name: p.Name, Spellings: append([]string{}, p.Spellings...), Payments: p.Payments, Archived: p.Archived(),
+		Reported: p.Reported, DetailsOnFile: p.DetailsOnFile, Note: p.Note,
 		Through: p.Via, BroughtThrough: p.BroughtVia, URL: rd.url("/payees/" + p.ID.String()),
 	}
+}
+
+// yearOut is a payee's year in brief.
+type yearOut struct {
+	Payments int      `json:"payments"`
+	Sums     []sumOut `json:"sums"`
+}
+
+type sumOut struct {
+	Currency string       `json:"currency"`
+	Paid     money.Amount `json:"paid"`
+	Unsorted money.Amount `json:"unsorted"`
+}
+
+func sumsOut(sums []ledgerbus.PayeeSum) []sumOut {
+	out := make([]sumOut, 0, len(sums))
+	for _, s := range sums {
+		out = append(out, sumOut{Currency: s.Currency, Paid: s.Paid, Unsorted: s.Unsorted})
+	}
+
+	return out
+}
+
+// yearParam reads a calendar year, answering 400 itself.
+func (a app) yearParam(w http.ResponseWriter, r *http.Request, required bool) (int, bool) {
+	s := r.URL.Query().Get("year")
+	if s == "" && !required {
+		return 0, true
+	}
+
+	y, err := strconv.Atoi(s)
+	if _, _, spanErr := ledgerbus.YearSpan(y); err != nil || spanErr != nil {
+		web.WriteJSON(w, http.StatusBadRequest, web.Problem("year", "Give the year as four figures, such as 2026."))
+
+		return 0, false
+	}
+
+	return y, true
+}
+
+func (a app) payeePayments(w http.ResponseWriter, r *http.Request) {
+	id, ok := a.pathID(w, r, "payee", "payee")
+	if !ok {
+		return
+	}
+
+	year, ok := a.yearParam(w, r, true)
+	if !ok {
+		return
+	}
+
+	rd := a.reader(r)
+	ctx := r.Context()
+
+	got, err := a.books.Ledger.PayeeInYear(ctx, rd.me, id, year)
+	if a.bookRefused(w, r, err, "payee") {
+		return
+	}
+
+	ids := make([]types.ID, 0, len(got.Payments))
+	for _, p := range got.Payments {
+		ids = append(ids, p.ID)
+	}
+
+	on, err := a.books.Receipts.OnTransactions(ctx, ids)
+	if a.bookRefused(w, r, err, "payee") {
+		return
+	}
+
+	payments := make([]map[string]any, 0, len(got.Payments))
+
+	for _, p := range got.Payments {
+		dateIs := "posted"
+		if p.Written {
+			dateIs = "written"
+		}
+
+		images := []string{}
+
+		for _, rc := range on[p.ID] {
+			if rc.CheckImage {
+				images = append(images, rc.ID.String())
+			}
+		}
+
+		payments = append(payments, map[string]any{
+			"transaction": p.ID.String(), "date": p.On.String(), "date_is": dateIs, "posted": p.PostedOn.String(),
+			"account_name": p.AccountName, "description": p.Shown(), "check": p.CheckNumber, "check_memo": p.CheckMemo,
+			"written_as": p.Payee, "paid": p.Paid, "unsorted": p.Unsorted, "currency": p.Currency,
+			"check_images": images, "url": rd.url("/transactions/" + p.ID.String()),
+		})
+	}
+
+	rd.done(w, r, map[string]any{
+		"payee": rd.payeeOut(got.Payee), "year": year, "sums": sumsOut(got.Sums), "payments": payments,
+		"year_url": rd.listURL(got.Payee.Owner) + "/" + strconv.Itoa(year),
+	})
 }
 
 func (rd *reader) paymentOut(p ledgerbus.PayeePayment) paymentOut {
@@ -207,6 +322,11 @@ func (a app) listPayees(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	year, ok := a.yearParam(w, r, false)
+	if !ok {
+		return
+	}
+
 	rd := a.reader(r)
 
 	list, _, err := a.books.Ledger.Payees(r.Context(), rd.me, owner)
@@ -214,17 +334,46 @@ func (a app) listPayees(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payees, archived := []payeeOut{}, []payeeOut{}
+	years := map[types.ID]*yearOut{}
 
-	for _, p := range list {
-		if p.Archived() {
-			archived = append(archived, rd.payeeOut(p))
-		} else {
-			payees = append(payees, rd.payeeOut(p))
+	if year != 0 {
+		got, err := a.books.Ledger.PaymentsByPayee(r.Context(), rd.me, owner, year)
+		if a.bookRefused(w, r, err, "list of payees") {
+			return
+		}
+
+		for _, ys := range [][]ledgerbus.PayeeYear{got.Reported, got.Others} {
+			for _, y := range ys {
+				years[y.Payee.ID] = &yearOut{Payments: len(y.Payments), Sums: sumsOut(y.Sums)}
+			}
 		}
 	}
 
-	rd.done(w, r, ownerOut(owner, map[string]any{"payees": payees, "archived": archived, "url": rd.listURL(owner)}))
+	payees, archived := []payeeOut{}, []payeeOut{}
+
+	for _, p := range list {
+		out := rd.payeeOut(p)
+
+		if year != 0 {
+			out.Year = years[p.ID]
+			if out.Year == nil {
+				out.Year = &yearOut{Sums: []sumOut{}}
+			}
+		}
+
+		if p.Archived() {
+			archived = append(archived, out)
+		} else {
+			payees = append(payees, out)
+		}
+	}
+
+	answer := map[string]any{"payees": payees, "archived": archived, "url": rd.listURL(owner)}
+	if year != 0 {
+		answer["year_url"] = rd.listURL(owner) + "/" + strconv.Itoa(year)
+	}
+
+	rd.done(w, r, ownerOut(owner, answer))
 }
 
 func (a app) payeeSuggestions(w http.ResponseWriter, r *http.Request) {

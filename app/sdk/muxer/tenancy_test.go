@@ -145,6 +145,8 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		e.account + "/receipts", e.project + "/receipts", e.ownAccount + "/receipts", e.ownProject + "/receipts",
 		check + "/image", check + "/image/small",
 		e.org + "/payees", e.ownAccount + "/payees", e.account + "/payees", payee, ownPayee,
+		e.org + "/payees/2026", e.ownAccount + "/payees/2026", e.account + "/payees/2026",
+		e.org + "/payees/2026/download", e.ownAccount + "/payees/2026/download",
 	}
 
 	type write struct {
@@ -185,6 +187,7 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 			write{p + "/join", url.Values{"from": {other}}},
 			write{p + "/split", url.Values{"spelling": {"Mine now"}}},
 			write{p + "/not-same", url.Values{"other": {other}}},
+			write{p + "/marks", url.Values{"reported": {"1"}, "note": {"Mine now"}}},
 		)
 	}
 

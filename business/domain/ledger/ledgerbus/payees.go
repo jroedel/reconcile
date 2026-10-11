@@ -121,6 +121,13 @@ type Payee struct {
 	// is off the list; its page sends a reader on to the one it is in now.
 	JoinedInto types.ID
 
+	// Reported, DetailsOnFile and Note are the marks a person sets
+	// (payees_year.go): whether its payments are to be reported to the
+	// accountant, whether its tax details are on file, and why.
+	Reported      bool
+	DetailsOnFile bool
+	Note          string
+
 	// Via is the API key a program last made, joined into or split this
 	// payee through, until a person changes or saves it on the site.
 	// BroughtVia is the spellings it brought in from other payees, by

@@ -202,6 +202,7 @@ from (`docs/design.md`). Lists take `limit` and a `cursor`.
 | `GET /api/v1/changes?since=` | `list_changes` | **New** (`eventbus.Through`): what this person changed through the API since a moment (the last day by default), from the history: "what did you do this morning" has an answer that is not Claude's memory |
 | `GET /api/v1/payees?organization=\|account=` | `list_payees` | **New** (`docs/payees.md`, 5; `ledgerbus.Payees`): a list of payees, each with its spellings and how many payments it has. An account in an organization answers with the organization's list |
 | `GET /api/v1/payees/suggestions?organization=\|account=` | `suggest_payee_joins` | **New** (`PayeeSuggestions`): payees that may be one, each pair with both payees' spellings and latest payments, so that Claude can say why |
+| `GET /api/v1/payees/{payee}/payments?year=` | `get_payee_payments` | **New** (`docs/payees.md`, 4; `PayeeInYear`): a payee's payments in a calendar year as the year's page counts them, each with the day that put it there and which day that was, and its check images' receipt ids |
 
 ### Keeping the books (`books:write`)
 
@@ -280,10 +281,10 @@ spellings it brought in, are marked with it (`payees.via`,
 `payee_names.via`) until a person changes the payee on the site or saves
 its name unchanged; a payment's payee is marked (`transactions.payee_via`)
 until a person saves its "Paid to", and counts among the month's changes
-to check. A check read through a key is a payment's payee set through
-one, so it is marked too. A payee made for a payment's new name is not
-marked itself: the payment is, and a mark on every payee of every check
-read would be a mark on nothing. Every transaction in an answer carries
+to check. A check read through a key (`read_check`) is not marked: the
+bank has checked its amount, and its payee is what is printed on it
+(`ledgerbus.SetCheckPayee`). A payee made for a payment's new name is not
+marked itself: the payment is. Every transaction in an answer carries
 `payee_id` beside `payee`, and `payee_through` while a program's is not
 checked. Adding, renaming and archiving a payee, and saying two
 suggested ones are not the same, are a person's on the site.
