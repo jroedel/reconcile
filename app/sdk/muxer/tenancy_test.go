@@ -118,6 +118,17 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 	// A check in the owner's own checks, which are nobody else's.
 	check := checked(t, e.owner)
 
+	// A payee of each list, and a payment to give one.
+	payee := addedPayee(t, e.owner, e.org+"/payees", "Hilltop Plumbing")
+	ownPayee := addedPayee(t, e.owner, e.ownAccount+"/payees", "Summit Roofing")
+
+	importChecks(t, e)
+
+	var payment string
+	for _, tx := range transactionsOf(t, e.owner, e.account) {
+		payment = tx
+	}
+
 	gets := []string{
 		e.org, e.account, e.project, e.ownAccount, e.ownProject,
 		"/accounts/new?org=" + orgID, "/projects/new?org=" + orgID,
@@ -133,6 +144,7 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		e.project + "/export", e.ownProject + "/export",
 		e.account + "/receipts", e.project + "/receipts", e.ownAccount + "/receipts", e.ownProject + "/receipts",
 		check + "/image", check + "/image/small",
+		e.org + "/payees", e.ownAccount + "/payees", e.account + "/payees", payee, ownPayee,
 	}
 
 	type write struct {
@@ -156,6 +168,24 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		{inboxed(t, h, e.owner), nil},
 		{check + "/file", url.Values{"account": {accountID}}},
 		{check + "/remove", url.Values{"removed": {"1"}}},
+		{e.org + "/payees", url.Values{"name": {"Mine now"}}},
+		{e.ownAccount + "/payees", url.Values{"name": {"Mine now"}}},
+		{payment + "/payee", url.Values{"payee": {"Mine now"}}},
+	}
+
+	for _, p := range []string{payee, ownPayee} {
+		other := strings.TrimPrefix(ownPayee, "/payees/")
+		if p == ownPayee {
+			other = strings.TrimPrefix(payee, "/payees/")
+		}
+
+		writes = append(writes,
+			write{p + "/rename", url.Values{"name": {"Mine now"}}},
+			write{p + "/archive", url.Values{"archived": {"1"}}},
+			write{p + "/join", url.Values{"from": {other}}},
+			write{p + "/split", url.Values{"spelling": {"Mine now"}}},
+			write{p + "/not-same", url.Values{"other": {other}}},
+		)
 	}
 
 	for _, account := range []string{e.account, e.ownAccount} {

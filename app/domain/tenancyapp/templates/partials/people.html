@@ -98,6 +98,13 @@
 {{- else if eq .Action "category.renamed"}} {{t "renamed the category {from} to {name}" "from" .Detail.from "name" .Detail.name}}
 {{- else if eq .Action "category.archived"}} {{t "archived the category {name}" "name" .Detail.name}}
 {{- else if eq .Action "category.restored"}} {{t "brought back the category {name}" "name" .Detail.name}}
+{{- else if eq .Action "payee.added"}} {{t "added the payee {name}" "name" .Detail.name}}
+{{- else if eq .Action "payee.renamed"}} {{t "renamed the payee {from} to {name}" "from" .Detail.from "name" .Detail.name}}
+{{- else if eq .Action "payee.archived"}} {{t "archived the payee {name}" "name" .Detail.name}}
+{{- else if eq .Action "payee.restored"}} {{t "brought back the payee {name}" "name" .Detail.name}}
+{{- else if eq .Action "payee.joined"}} {{t "joined the payee {from} into {name}, with the ways it was written: {spellings}" "from" .Detail.from "name" .Detail.name "spellings" .Detail.spellings}}
+{{- else if eq .Action "payee.split"}} {{t "split {spelling} off the payee {from}, into {name}" "spelling" .Detail.spelling "from" .Detail.from "name" .Detail.name}}
+{{- else if eq .Action "payee.not-same"}} {{t "said the payees {name} and {other} are not the same" "name" .Detail.name "other" .Detail.other}}
 {{- else if eq .Action "split.added"}} {{t "put {amount} of {description} ({date}, {account}) into it" "amount" (money (amount .Detail.amount) .Detail.currency) "description" .Detail.description "date" .Detail.date "account" .Detail.account}}
 {{- else if eq .Action "split.removed"}} {{t "took {description} ({date}, {account}) out of it" "description" .Detail.description "date" .Detail.date "account" .Detail.account}}
 {{- else if eq .Action "budget.set"}} {{template "budget-line" .Detail}}{{with .Detail.year}} ({{.}}){{end}}

@@ -38,7 +38,7 @@ var Expected = sqldb.Expected{
 		"checked", "added", "already", "imported_by", "imported_at", "shape"},
 	"transactions": {"id", "account_id", "statement_id", "posted_on", "description", "amount", "balance",
 		"external_id", "hash", "occurrence", "holder", "pending", "check_number", "payee",
-		"own_description", "own_description_via", "check_memo", "check_written_on"},
+		"own_description", "own_description_via", "check_memo", "check_written_on", "payee_id"},
 	"csv_mappings":        {"account_id", "fingerprint", "mapping", "updated_by", "updated_at"},
 	"splits":              {"id", "transaction_id", "position", "amount", "category_id", "project_id", "memo", "rule_id", "via"},
 	"transaction_aliases": {"account_id", "hash", "transaction_id", "created_at"},
@@ -50,6 +50,10 @@ var Expected = sqldb.Expected{
 		"closed_at", "dismissed_at"},
 	"reconciliations": {"statement_id", "account_id", "period_start", "period_end", "note",
 		"reconciled_by", "reconciled_at"},
+	"payees": {"id", "org_id", "account_id", "name", "reported", "details_on_file", "note", "via",
+		"joined_into", "created_by", "created_at", "archived_at"},
+	"payee_names":    {"owner", "name", "payee_id"},
+	"payee_not_same": {"a", "b", "said_by", "said_at"},
 }
 
 // Init creates the tables. After tenancydb and filedb, which they reference.
@@ -193,6 +197,10 @@ CREATE TABLE IF NOT EXISTS csv_mappings (
 	}
 
 	if err := initHolders(ctx, db); err != nil {
+		return err
+	}
+
+	if err := initPayees(ctx, db); err != nil {
 		return err
 	}
 
@@ -1102,7 +1110,7 @@ func inList(ids []types.ID) (string, []any) {
 	return strings.Join(marks, ", "), args
 }
 
-const transactionColumns = `id, account_id, statement_id, posted_on, description, amount, balance, external_id, hash, occurrence, holder, pending, check_number, payee, own_description, own_description_via, check_memo, check_written_on`
+const transactionColumns = `id, account_id, statement_id, posted_on, description, amount, balance, external_id, hash, occurrence, holder, pending, check_number, payee, own_description, own_description_via, check_memo, check_written_on, coalesce(payee_id, '')`
 
 func (s *Store) transactions(ctx context.Context, q string, args ...any) ([]ledgerbus.Transaction, error) {
 	rows, err := s.db.QueryContext(ctx, q, args...)
@@ -1117,21 +1125,25 @@ func (s *Store) transactions(ctx context.Context, q string, args ...any) ([]ledg
 		var (
 			t                      ledgerbus.Transaction
 			id, acct, stmt, posted string
-			written                string
+			written, payee         string
 			amount                 int64
 			balance                sql.NullInt64
 		)
 
-		if err := rows.Scan(&id, &acct, &stmt, &posted, &t.Description, &amount, &balance, &t.ExternalID, &t.Hash, &t.Occurrence, &t.Holder, &t.Pending, &t.CheckNumber, &t.Payee, &t.OwnDescription, &t.OwnVia, &t.CheckMemo, &written); err != nil {
+		if err := rows.Scan(&id, &acct, &stmt, &posted, &t.Description, &amount, &balance, &t.ExternalID, &t.Hash, &t.Occurrence, &t.Holder, &t.Pending, &t.CheckNumber, &t.Payee, &t.OwnDescription, &t.OwnVia, &t.CheckMemo, &written, &payee); err != nil {
 			return nil, fmt.Errorf("reading the transactions: %w", err)
 		}
 
-		var e [5]error
+		var e [6]error
 		t.ID, e[0] = types.ParseID(id)
 		t.AccountID, e[1] = types.ParseID(acct)
 		t.StatementID, e[2] = types.ParseID(stmt)
 		t.PostedOn, e[3] = types.ParseDate(posted)
 		t.WrittenOn, e[4] = types.ParseDate(written)
+
+		if payee != "" {
+			t.PayeeID, e[5] = types.ParseID(payee)
+		}
 
 		if err := errors.Join(e[:]...); err != nil {
 			return nil, fmt.Errorf("a stored transaction is unreadable: %w", err)

@@ -402,6 +402,20 @@ func TestReadingAChecksImage(t *testing.T) {
 		t.Errorf("check 1196 after its import: %+v", got)
 	}
 
+	// Each payee read is a payee of the parish's list (docs/payees.md):
+	// the one read off check 1176, attached as it was read, and the one
+	// matched on import when check 1196 cleared.
+	list, _, err := w.ledger.Payees(w.ctx, w.owner, types.OrgScope(w.org))
+	if err != nil || len(list) != 2 {
+		t.Fatalf("the payees read: %+v, %v", list, err)
+	}
+
+	for _, p := range list {
+		if p.Payments != 1 {
+			t.Errorf("payee %q: %d payments", p.Name, p.Payments)
+		}
+	}
+
 	// Read again once attached; nothing; and a receipt that is no check.
 	if _, err := read(0, "1176", "120.00", "", ""); !errors.Is(err, receiptbus.ErrAttached) {
 		t.Errorf("reading an attached check: %v", err)

@@ -151,9 +151,12 @@ type Transaction struct {
 	// (importbus.CheckNumber), or "".
 	CheckNumber string
 
-	// Payee is to whom a check was written, as a person read it off the
-	// check's image (checks.go), or "".
-	Payee string
+	// Payee is to whom a payment was made as written -- a check's "Pay to
+	// the order of" line, read off its image -- or chosen on its page
+	// (checks.go), or "". PayeeID is the payee of the list that is
+	// (payees.go), or zero with no Payee.
+	Payee   string
+	PayeeID types.ID
 
 	// CheckMemo is what a check's memo line says it was for, and WrittenOn
 	// the day written on it -- not the day it cleared, which is PostedOn --

@@ -144,7 +144,9 @@ organization's list, or an account's with no organization, each one of the four
 kinds of money), `ledger` (statements,
 transactions and their splits: checking, deduplicating, storing, sorting,
 and a project's book; reconciling, which locks a period; applying
-sorting rules; and explaining one amount by the others that make it up), `rule` (an account's sorting rules: text to look for and
+sorting rules; explaining one amount by the others that make it up;
+and payees, whom each payment went to, with every way each was written,
+kept here because joining two moves transactions with their spellings), `rule` (an account's sorting rules: text to look for and
 what a charge that has it is sorted into), `budget` (what owners expect
 a project's, or an organization's year's, income and expenses to be,
 compared with what happened), `receipt`
@@ -154,7 +156,7 @@ statements no declaration describes, as the words their structure uses
 and never their contents, for the site administrator) and `export` (the
 accountant's zip, read across the others and stored nowhere). The pages
 over them are `homeapp`, `authapp`, `tenancyapp`, `ledgerapp`,
-`categoryapp`, `ruleapp`, `budgetapp`, `receiptapp`, `exportapp`, `adminapp` and
+`categoryapp`, `payeeapp`, `ruleapp`, `budgetapp`, `receiptapp`, `exportapp`, `adminapp` and
 `translationapp` (the review screen); a program's ways
 in are `apiapp` (`/api/v1`: the translations, the statement inbox a
 person's Gmail script fills, and reading and keeping the books, each endpoint behind the

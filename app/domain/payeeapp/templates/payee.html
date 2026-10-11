@@ -1,0 +1,71 @@
+{{define "title"}}{{.Data.Payee.Name}}{{end}}
+{{define "content"}}{{$v := .Data}}{{$p := $v.Payee}}
+<p class="crumbs">{{if $v.OwnerName}}<a href="{{$v.ListPath}}">{{t "Payees of {owner}" "owner" $v.OwnerName}}</a>{{else}}<a href="{{$v.ListPath}}">{{t "Payees"}}</a>{{end}}</p>
+<h1>{{$p.Name}}</h1>
+{{if $p.Archived}}<p class="notice">{{t "Archived: off the choices, and still the payee of the payments below."}}</p>{{end}}
+{{template "done" $v.Done}}
+{{template "problem" $v.Problem}}
+
+<section class="card">
+<h2>{{t "Spellings"}}</h2>
+<p class="hint">{{t "Every way it has been written. A check written one of these ways next month is this payee's."}}</p>
+<ul class="list">
+{{range $i, $s := $p.Spellings}}<li>{{$s}}
+{{if and $v.CanBookkeep (ne $s $p.Name)}}
+<details class="inline"><summary>{{t "Split off"}}</summary>
+<form method="post" action="/payees/{{$p.ID}}/split" class="inline">
+  <input type="hidden" name="spelling" value="{{$s}}">
+  <label class="visually-hidden" for="into-{{$i}}">{{t "Into"}}</label>
+  <select id="into-{{$i}}" name="into">
+    <option value="">{{t "A payee of its own"}}</option>
+    {{range $v.Others}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+  </select>
+  <button type="submit" class="quiet">{{t "Split off"}}</button>
+  <p class="hint">{{t "The payments written this way go with it."}}</p>
+</form>
+</details>
+{{end}}
+</li>{{end}}
+</ul>
+
+{{if and $v.CanBookkeep $v.Others (not $p.Archived)}}
+<form method="post" action="/payees/{{$p.ID}}/join">
+  <div class="field">
+    <label for="from">{{t "Join another payee into this one"}}</label>
+    <select id="from" name="from" required>
+      <option value="">{{t "Choose a payee"}}</option>
+      {{range $v.Others}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+    </select>
+    <p class="hint">{{t "Its spellings and payments become this payee's. Only if you know they are the same: two people can share a name."}}</p>
+  </div>
+  <button type="submit" class="quiet">{{t "Join"}}</button>
+</form>
+{{end}}
+</section>
+
+{{if $v.CanBookkeep}}
+<section class="card">
+<h2>{{t "Name"}}</h2>
+<form method="post" action="/payees/{{$p.ID}}/rename" class="inline">
+  <label class="visually-hidden" for="name">{{t "Name"}}</label>
+  <input id="name" name="name" type="text" required maxlength="100" value="{{$p.Name}}">
+  <button type="submit" class="quiet">{{t "Rename"}}</button>
+</form>
+<form method="post" action="/payees/{{$p.ID}}/archive" class="inline">
+  {{if $p.Archived}}<input type="hidden" name="archived" value="0"><button type="submit" class="link">{{t "Bring back"}}</button>
+  {{else}}<input type="hidden" name="archived" value="1"><button type="submit" class="link">{{t "Archive"}}</button>{{end}}
+</form>
+</section>
+{{end}}
+
+<section class="card">
+<h2>{{t "Payments"}}</h2>
+{{if $v.Payments}}
+<div class="scroll"><table class="ledger">
+<thead><tr><th>{{t "Date"}}</th><th>{{t "Description"}}</th><th>{{t "Account"}}</th><th class="money">{{t "Amount"}}</th></tr></thead>
+<tbody>{{range $v.Payments}}<tr><td>{{.PostedOn}}</td><td><a href="/transactions/{{.ID}}">{{if .Shown}}{{.Shown}}{{else}}{{t "(no description)"}}{{end}}</a>{{if ne .Payee $p.Name}}<br><span class="hint">{{t "Written as {payee}" "payee" .Payee}}</span>{{end}}</td><td>{{.AccountName}}</td><td class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount .Currency}}</td></tr>{{end}}</tbody>
+</table></div>
+{{if $v.More}}<p class="hint">{{t "The most recent {count} are shown." "count" (len $v.Payments)}}</p>{{end}}
+{{else}}<p class="hint">{{t "No payments yet."}}</p>{{end}}
+</section>
+{{end}}

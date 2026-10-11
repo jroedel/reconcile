@@ -227,9 +227,44 @@ type Storer interface {
 	Release(ctx context.Context, id types.ID, ev eventbus.Event) error
 
 	// WithCheck is the account's transactions with the check number;
-	// SetPayee writes a transaction's payee and ev (checks.go).
+	// SetPayee writes a transaction's payee text, the payee p it is (zero
+	// for none), and ev, and first makes p with made when made is not nil
+	// -- ErrPayeeTaken if another has its spelling by then (checks.go).
 	WithCheck(ctx context.Context, account types.ID, number string) ([]Transaction, error)
-	SetPayee(ctx context.Context, id types.ID, payee string, ev eventbus.Event) error
+	SetPayee(ctx context.Context, id types.ID, payee string, p Payee, made *eventbus.Event, ev eventbus.Event) error
+
+	// Payees is an owner's list, not joined ones, archived last, with
+	// spellings and how many payments each has; PayeeByID one, joined or
+	// not; PayeeNamed the one named so, joined or not; PayeeSpelled the
+	// one written so. Each misses with ErrNotFound (payees.go).
+	Payees(ctx context.Context, owner types.Scope) ([]Payee, error)
+	PayeeByID(ctx context.Context, id types.ID) (Payee, error)
+	PayeeNamed(ctx context.Context, owner types.Scope, name string) (Payee, error)
+	PayeeSpelled(ctx context.Context, owner types.Scope, spelling string) (Payee, error)
+
+	// PayeeTransactions is a payee's transactions, newest first, at most
+	// limit.
+	PayeeTransactions(ctx context.Context, id types.ID, limit int) ([]PayeePayment, error)
+
+	// CreatePayee stores a payee, its name as its spelling, and ev;
+	// UpdatePayee writes its name and archived time, adds spelling unless
+	// it is "", and ev. Either is ErrPayeeTaken for a name or spelling
+	// another payee of the list has.
+	CreatePayee(ctx context.Context, p Payee, ev eventbus.Event) error
+	UpdatePayee(ctx context.Context, p Payee, spelling string, ev eventbus.Event) error
+
+	// JoinPayees moves from's spellings and transactions to into and marks
+	// them joined, with events, in one SQL transaction. SplitPayee moves a
+	// spelling of from, and from's transactions written so, to into --
+	// stored first if new, or brought back if joined -- with ev, and says
+	// how many transactions moved.
+	JoinPayees(ctx context.Context, now time.Time, into types.ID, from []types.ID, events []eventbus.Event) error
+	SplitPayee(ctx context.Context, from types.ID, spelling string, into Payee, ev eventbus.Event) (int, error)
+
+	// PayeesNotSame is the pairs of an owner's list said to be different
+	// payees (PairOf); NotSame keeps one, with ev, once.
+	PayeesNotSame(ctx context.Context, owner types.Scope) (map[[2]types.ID]bool, error)
+	NotSame(ctx context.Context, pair [2]types.ID, by types.ID, at time.Time, ev eventbus.Event) error
 
 	// SetWritten writes a check's memo and the day it was written, and
 	// ev (checks.go).

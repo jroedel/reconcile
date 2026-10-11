@@ -22,6 +22,7 @@ import (
 	"github.com/jroedel/reconcile/app/domain/ledgerapp"
 	"github.com/jroedel/reconcile/app/domain/mcpapp"
 	"github.com/jroedel/reconcile/app/domain/oauthapp"
+	"github.com/jroedel/reconcile/app/domain/payeeapp"
 	"github.com/jroedel/reconcile/app/domain/receiptapp"
 	"github.com/jroedel/reconcile/app/domain/ruleapp"
 	"github.com/jroedel/reconcile/app/domain/tenancyapp"
@@ -51,7 +52,7 @@ import (
 // renderer rather than this package, because the strings it reads out of
 // these are registered for translation before anything is served.
 func Templates() []fs.FS {
-	return []fs.FS{homeapp.Templates, authapp.Templates, tenancyapp.Templates, ledgerapp.Templates, categoryapp.Templates, receiptapp.Templates, ruleapp.Templates, budgetapp.Templates, exportapp.Templates, adminapp.Templates, oauthapp.Templates, translationapp.Templates}
+	return []fs.FS{homeapp.Templates, authapp.Templates, tenancyapp.Templates, ledgerapp.Templates, categoryapp.Templates, payeeapp.Templates, receiptapp.Templates, ruleapp.Templates, budgetapp.Templates, exportapp.Templates, adminapp.Templates, oauthapp.Templates, translationapp.Templates}
 }
 
 // Config is everything the routes need, gathered by main and passed in.
@@ -209,6 +210,13 @@ func New(cfg Config) (http.Handler, error) {
 			Tenancy:    cfg.Tenancy,
 			Render:     cfg.Render,
 			Ledger:     cfg.Ledger,
+		}, guard)
+
+		payeeapp.Routes(mux, payeeapp.Config{
+			Log:     cfg.Log,
+			Ledger:  cfg.Ledger,
+			Tenancy: cfg.Tenancy,
+			Render:  cfg.Render,
 		}, guard)
 
 		adminapp.Routes(mux, adminapp.Config{

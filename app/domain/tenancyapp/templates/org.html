@@ -34,6 +34,12 @@
 <p><a class="button quiet" href="{{.Path}}/categories">{{t "The category list"}}</a> <a class="button quiet" href="{{.Path}}/budget">{{t "The budget"}}</a></p>
 </section>
 
+<section class="card">
+<h2>{{t "Payees"}}</h2>
+<p class="hint">{{t "Whom the money went to, from every account in the organization, with the ways each has been written."}}</p>
+<p><a class="button quiet" href="{{.Path}}/payees">{{t "The payees"}}</a></p>
+</section>
+
 {{template "people" .}}
 
 {{if .CanManage}}

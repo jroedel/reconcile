@@ -95,6 +95,7 @@ one. Given a dict of By, a *ledgerbus.Clearer, and Currency. */}}
 
 {{define "done"}}{{if .}}<p class="notice ok" role="status">
 {{- if eq . "sorted"}}{{t "Saved."}}
+{{- else if eq . "payee"}}{{t "Saved whom it was paid to."}}
 {{- else if eq . "entered"}}{{t "Entered. Its document is kept with it."}}
 {{- else if eq . "entered-line"}}{{t "Entered, with its document, and added to the explanation."}}
 {{- else if eq . "released"}}{{t "Removed. The history keeps what it was."}}

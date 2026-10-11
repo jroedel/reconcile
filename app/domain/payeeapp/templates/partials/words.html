@@ -1,0 +1,22 @@
+{{define "problem"}}{{if .}}<p class="notice" role="alert">
+{{- if eq . "name"}}{{t "Give the payee a name, of at most {max} characters." "max" 100}}
+{{- else if eq . "taken"}}{{t "Another payee of the list is already named or written that way. Open it and join the two, if they are one."}}
+{{- else if eq . "self"}}{{t "A payee cannot be joined into itself."}}
+{{- else if eq . "lists"}}{{t "Payees of two lists cannot be joined: each organization's payees are its own."}}
+{{- else if eq . "archived"}}{{t "That payee is archived. Bring it back first, then join into it."}}
+{{- else if eq . "split-name"}}{{t "A payee's own name cannot be split off. Rename it first, to another of its spellings."}}
+{{- else}}{{t "Something went wrong at our end. Please try again in a few minutes."}}
+{{- end}}</p>{{end}}{{end}}
+
+{{define "done"}}{{if .}}<p class="notice ok" role="status">
+{{- if eq . "added"}}{{t "Added."}}
+{{- else if eq . "renamed"}}{{t "Renamed. The new name is one of its spellings now, and so is the old one."}}
+{{- else if eq . "archived"}}{{t "Archived. It is off the choices, and stays on the payments that have it."}}
+{{- else if eq . "restored"}}{{t "Brought back."}}
+{{- else if eq . "joined"}}{{t "Joined. Its spellings and payments are this payee's now. Split a spelling off to undo it."}}
+{{- else if eq . "split"}}{{t "Split off. The spelling and its payments are this payee's now."}}
+{{- else if eq . "not-same"}}{{t "Saved. The two will not be suggested as one again."}}
+{{- end}}</p>{{end}}{{end}}
+
+{{/* payee-line is a payee in a list: its name, linked, and how many payments. */}}
+{{define "payee-line"}}<a href="/payees/{{.ID}}">{{.Name}}</a> <span class="hint">{{if eq .Payments 1}}{{t "1 payment"}}{{else}}{{t "{count} payments" "count" .Payments}}{{end}}{{if gt (len .Spellings) 1}} · {{t "{count} spellings" "count" (len .Spellings)}}{{end}}</span>{{end}}
