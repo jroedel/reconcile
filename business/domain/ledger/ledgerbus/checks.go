@@ -91,16 +91,30 @@ func (b *Business) SetPayee(ctx context.Context, now time.Time, actor, id types.
 		return Transaction{}, ErrForbidden
 	}
 
-	if t.Payee == payee {
-		return t, nil
+	// Through a key it is marked until a person saves it on the web, as a
+	// description is (describe.go); no payee carries no mark.
+	via := eventbus.ViaFrom(ctx)
+	if payee == "" {
+		via = ""
 	}
 
-	ev := eventbus.New(now, actor, account.Scope(), TransactionPaidTo, map[string]string{
-		"description": t.Description,
-		"date":        t.PostedOn.String(),
-		"before":      t.Payee,
-		"payee":       payee,
-	})
+	var ev *eventbus.Event
+
+	switch {
+	case t.Payee != payee:
+		e := eventbus.New(now, actor, account.Scope(), TransactionPaidTo, map[string]string{
+			"description": t.Description,
+			"date":        t.PostedOn.String(),
+			"before":      t.Payee,
+			"payee":       payee,
+		})
+		ev = &e
+	case via == "" && t.PayeeVia != "":
+		// A person saved what a program wrote: the mark goes, and the
+		// history has nothing new to say.
+	default:
+		return t, nil
+	}
 
 	// Twice at most: a payee another request made, between the lookup and
 	// the write, under the same spelling is found the second time.
@@ -110,7 +124,7 @@ func (b *Business) SetPayee(ctx context.Context, now time.Time, actor, id types.
 			return Transaction{}, err
 		}
 
-		err = b.store.SetPayee(ctx, id, payee, p, made, ev)
+		err = b.store.SetPayee(ctx, id, payee, via, p, made, ev)
 		if errors.Is(err, ErrPayeeTaken) && made != nil && try == 0 {
 			continue
 		}
@@ -119,7 +133,7 @@ func (b *Business) SetPayee(ctx context.Context, now time.Time, actor, id types.
 			return Transaction{}, err
 		}
 
-		t.Payee, t.PayeeID = payee, p.ID
+		t.Payee, t.PayeeID, t.PayeeVia = payee, p.ID, via
 
 		return t, nil
 	}

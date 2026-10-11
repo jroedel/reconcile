@@ -312,6 +312,10 @@ type payeeView struct {
 	// spelling off into.
 	Others []ledgerbus.Payee
 
+	// Brought is the spellings a program brought into it through a key,
+	// each marked until a person saves the payee (Payee.BroughtVia).
+	Brought map[string]bool
+
 	Problem string
 	Done    string
 }
@@ -363,8 +367,13 @@ func (a app) payee(w http.ResponseWriter, r *http.Request) {
 		CanBookkeep: access.Can(tenancybus.Bookkeep),
 		Payments:    payments[:min(len(payments), paymentsShown)],
 		More:        len(payments) > paymentsShown,
+		Brought:     map[string]bool{},
 		Problem:     q.Get("problem"),
 		Done:        q.Get("done"),
+	}
+
+	for _, s := range p.BroughtVia {
+		view.Brought[s] = true
 	}
 
 	for _, o := range list {
@@ -423,6 +432,12 @@ func (a app) change(w http.ResponseWriter, r *http.Request, do func(userbus.User
 func (a app) rename(w http.ResponseWriter, r *http.Request) {
 	a.change(w, r, func(me userbus.User, id types.ID) (ledgerbus.Payee, string, error) {
 		p, err := a.cfg.Ledger.RenamePayee(r.Context(), a.cfg.Now(), me.ID, id, r.PostForm.Get("name"))
+
+		// The form sends the name it showed: saved as it was, it is a
+		// person saying they have looked, not a new name.
+		if strings.Join(strings.Fields(r.PostForm.Get("name")), " ") == r.PostForm.Get("was") {
+			return p, "saved", err
+		}
 
 		return p, "renamed", err
 	})

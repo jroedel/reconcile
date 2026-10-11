@@ -331,6 +331,8 @@ func TestTheAPIsWritesAreTheList(t *testing.T) {
 		"POST /api/v1/accounts/{account}/sort books:write",
 		"POST /api/v1/inbox upload",
 		"POST /api/v1/inbox/import books:write",
+		"POST /api/v1/payees/{payee}/join books:write",
+		"POST /api/v1/payees/{payee}/split books:write",
 		"POST /api/v1/projects books:write",
 		"POST /api/v1/receipts/{receipt}/attach books:write",
 		"POST /api/v1/receipts/{receipt}/check books:write",
@@ -339,6 +341,7 @@ func TestTheAPIsWritesAreTheList(t *testing.T) {
 		"PUT /api/v1/projects/{project} books:write",
 		"PUT /api/v1/rules/{rule} books:write",
 		"PUT /api/v1/transactions/{transaction}/description books:write",
+		"PUT /api/v1/transactions/{transaction}/payee books:write",
 		"PUT /api/v1/transactions/{transaction}/splits books:write",
 		"PUT /api/v1/translations translate",
 	}
@@ -377,9 +380,13 @@ func TestNobodyKeepsTheBooksTheyWereNotGiven(t *testing.T) {
 	rule := s.change(t, http.MethodPost, "/api/v1/accounts/"+k.account+"/rules", k.key,
 		map[string]any{"match": "electric co", "category": k.categories["Utilities"]}, http.StatusOK)
 
+	payee := strings.TrimPrefix(addedPayee(t, k.e.owner, k.e.org+"/payees", "Hilltop Plumbing"), "/payees/")
+	other := strings.TrimPrefix(addedPayee(t, k.e.owner, k.e.org+"/payees", "HILLTOP PLUMBING LLC"), "/payees/")
+
 	ids := strings.NewReplacer(
 		"{account}", k.account, "{transaction}", grocery, "{receipt}", k.receipt,
 		"{rule}", field(rule, "rule", "id").(string), "{project}", strings.TrimPrefix(k.e.project, "/projects/"),
+		"{payee}", payee,
 	)
 
 	bodies := map[string]any{
@@ -396,6 +403,9 @@ func TestNobodyKeepsTheBooksTheyWereNotGiven(t *testing.T) {
 		"import_from_inbox":  map[string]any{},
 		"create_project":     map[string]string{"organization": strings.TrimPrefix(k.e.org, "/orgs/"), "name": "Mine now"},
 		"change_project":     map[string]string{"name": "Mine now"},
+		"join_payees":        map[string]any{"from": []string{other}},
+		"split_payee":        map[string]string{"spelling": "Hilltop Plumbing"},
+		"set_payee":          map[string]string{"name": "Mine now"},
 	}
 
 	var idx struct {
@@ -444,8 +454,12 @@ func TestNobodyKeepsTheBooksTheyWereNotGiven(t *testing.T) {
 		}
 	}
 
-	if walked != 14 {
-		t.Errorf("%d keeping endpoints were walked, want 14", walked)
+	if walked != 17 {
+		t.Errorf("%d keeping endpoints were walked, want 17", walked)
+	}
+
+	if payees := list(t, s.get(t, "/api/v1/payees?organization="+strings.TrimPrefix(k.e.org, "/orgs/"), k.key), "payees"); len(payees) != 2 {
+		t.Errorf("a stranger changed the treasurer's payees: %v", payees)
 	}
 
 	if after := s.api(http.MethodGet, "/api/v1/accounts/"+k.account+"/transactions?month=2026-07", k.key, "").Body.String(); after != before {

@@ -3,6 +3,7 @@
 <p class="crumbs">{{if $v.OwnerName}}<a href="{{$v.ListPath}}">{{t "Payees of {owner}" "owner" $v.OwnerName}}</a>{{else}}<a href="{{$v.ListPath}}">{{t "Payees"}}</a>{{end}}</p>
 <h1>{{$p.Name}}</h1>
 {{if $p.Archived}}<p class="notice">{{t "Archived: off the choices, and still the payee of the payments below."}}</p>{{end}}
+{{with $p.Via}}<p class="hint"><span class="badge">{{t "by {name}" "name" .}}</span> {{t "A program made, joined or split this payee through the API key “{name}”. The spellings it brought in are marked. Saving its name, changed or not, says a person has checked it." "name" .}}</p>{{end}}
 {{template "done" $v.Done}}
 {{template "problem" $v.Problem}}
 
@@ -10,7 +11,7 @@
 <h2>{{t "Spellings"}}</h2>
 <p class="hint">{{t "Every way it has been written. A check written one of these ways next month is this payee's."}}</p>
 <ul class="list">
-{{range $i, $s := $p.Spellings}}<li>{{$s}}
+{{range $i, $s := $p.Spellings}}<li>{{$s}}{{if index $v.Brought $s}} <span class="badge">{{t "by {name}" "name" $p.Via}}</span>{{end}}
 {{if and $v.CanBookkeep (ne $s $p.Name)}}
 <details class="inline"><summary>{{t "Split off"}}</summary>
 <form method="post" action="/payees/{{$p.ID}}/split" class="inline">
@@ -49,7 +50,8 @@
 <form method="post" action="/payees/{{$p.ID}}/rename" class="inline">
   <label class="visually-hidden" for="name">{{t "Name"}}</label>
   <input id="name" name="name" type="text" required maxlength="100" value="{{$p.Name}}">
-  <button type="submit" class="quiet">{{t "Rename"}}</button>
+  <input type="hidden" name="was" value="{{$p.Name}}">
+  <button type="submit" class="quiet">{{t "Save"}}</button>
 </form>
 <form method="post" action="/payees/{{$p.ID}}/archive" class="inline">
   {{if $p.Archived}}<input type="hidden" name="archived" value="0"><button type="submit" class="link">{{t "Bring back"}}</button>

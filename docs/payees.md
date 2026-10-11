@@ -213,6 +213,43 @@ Three pull requests after this plan, each useful when merged:
   spellings it brought), split off and "not the same", in the history of
   the list's owner.
 
+### The second pull request: through the API (5)
+
+- **Five tools, not six.** `list_payees`, `suggest_payee_joins`,
+  `join_payees`, `split_payee` and `set_payee` (`apiapp/payees.go`,
+  `docs/books-api.md`). `get_payee_payments` counts a year as 4 does, so
+  it arrives with 4, in the third pull request; so do the year's totals
+  and the two marks in `list_payees`, which have nothing to say until a
+  person can set them. Until then a payee in an answer is its name,
+  spellings, number of payments, marks of a key, and `url`.
+- **A list is asked for by organization or by account**, one of the two:
+  Claude often knows only the account, and an account in an organization
+  answers with the organization's list, as its page does.
+- **Marked by Claude**, as a rule or a project Claude wrote is, with
+  three marks: `payees.via` (already in the table) on the payee a key
+  joined into or split, both of them for a split; `payee_names.via`, a
+  later column, on each spelling it brought in, shown beside the spelling
+  on the payee's page; and `transactions.payee_via`, a later column, on a
+  payment whose payee was set through a key, counted with the month's
+  "changed by a program, to check". The payee's marks go when a person
+  changes it on the site in any way, or saves its name unchanged (the
+  button says "Save" now, and a name saved as it was says "Saved");
+  a payment's goes when a person saves its "Paid to", changed or not. The
+  same change sent again through a key marks nothing again, and saving
+  unchanged adds no line of history.
+- **A check read through a key is marked** on its payment, since it is a
+  payee set through a key, and Claude's reading of the name is what a
+  person checks; its amount the bank has already checked. Decided in the
+  code, and easy to reverse if it proves noisy: the mark is set in
+  `ledgerbus.SetPayee` from the request's key, whatever called it.
+- **A payee made for a new name is not marked**, through a key or not:
+  the payment that made it is, and a mark on every payee of every check
+  Claude reads would be a mark on nothing.
+- **Not through the API**: adding, renaming and archiving a payee, and
+  saying two suggested payees are not the same. Claude says those to the
+  person, as the guide's routine has it, and they do them on the list's
+  page.
+
 ## Open questions
 
 - **Money in**: a payer is the same idea the other way round (who gave),

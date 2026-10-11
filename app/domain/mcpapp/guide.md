@@ -41,8 +41,9 @@ what the person's role lets them change; the tools you have say which.
   is the exception: when they ask you to import, do it. So is reading the
   images of checks they ask you to read, since the bank's amount checks
   each reading.
-- **What you change is marked.** A transaction you sort or describe, a
-  rule you write and a project you make or change say so on the site
+- **What you change is marked.** A transaction you sort or describe or
+  give a payee, a rule you write, a project you make or change and a
+  payee you join or split say so on the site
   until the person saves them there, and every
   change is in the history with your key's name. Say so when you finish:
   they are there to be checked.
@@ -52,7 +53,8 @@ what the person's role lets them change; the tools you have say which.
   found and link the page where they do it.
 - **Undo your own mistakes** the way the site would: set_splits again,
   change_rule or remove_rule for a rule you wrote wrongly, detach_receipt
-  for a receipt on the wrong charge, change_project for a project's name. Nothing you can do removes anything.
+  for a receipt on the wrong charge, change_project for a project's name,
+  split_payee for a join that was wrong. Nothing you can do removes anything.
 
 ### The month's work
 
@@ -161,6 +163,33 @@ account will repay together":
    (positive). Never sort a real cost as pass-through to make a project
    come out even: pass-through is for money that was never the
    organization's, and the accountant reads the kinds.
+
+### Payees
+
+"Tidy up the payees", "whom did we pay for the roof?":
+
+1. **list_payees** for the organization, or for an account with no
+   organization, which has a list of its own; and **suggest_payee_joins**.
+   A payee is whom payments went to, and its spellings are every way it
+   was written: on checks, read off their images, and on payments' pages.
+2. Say which you would join and why, from the spellings and the payments
+   the suggestions give: the same firm with and without "LLC", a name
+   typed in capitals, the same amount to the same account every month.
+   Say also which look alike but are not -- two people named Silva, a
+   shop and the person who owns it -- and which you cannot tell; those
+   stay apart. Two people can share a name.
+3. With the person's yes, **join_payees**, into the payee the suggestion
+   names (the one with more payments). A join that turns out wrong is
+   undone with **split_payee**, a spelling at a time.
+4. For a payment that is not a check, **set_payee** says whom it went
+   to: a payee of the list by its id, or a new name. A check gets its
+   payee from **read_check**.
+5. End with what you joined and split, each payee with its `url`: they
+   say so on the site until the person saves them there. Adding,
+   renaming or archiving a payee, and saying two suggested ones are not
+   the same, are the person's, on the list's page. Never ask for a
+   payee's tax number, nor write one anywhere: those stay with the
+   accountant.
 
 ### Explaining an amount
 

@@ -219,7 +219,7 @@ func TestNobodyReadsTheBooksTheyWereNotGiven(t *testing.T) {
 		}
 
 		reads++
-		path := ids.Replace(e.Path) + "?month=2026-07&match=coffee"
+		path := ids.Replace(e.Path) + "?month=2026-07&match=coffee&organization=" + strings.TrimPrefix(b.e.org, "/orgs/")
 
 		for name, key := range map[string]string{"an upload key": upload, "a translating key": translate} {
 			if rec := s.api(e.Method, path, key, ""); rec.Code != http.StatusForbidden {
@@ -229,9 +229,15 @@ func TestNobodyReadsTheBooksTheyWereNotGiven(t *testing.T) {
 
 		rec := s.api(e.Method, path, theirs, "")
 
-		if strings.Contains(e.Path, "{") {
+		// A list of payees is the treasurer's by the organization or the
+		// account asked for, as a path's id is.
+		if strings.Contains(e.Path, "{") || strings.HasPrefix(e.Path, "/api/v1/payees") {
 			if rec.Code != http.StatusNotFound {
 				t.Errorf("a stranger: %s %s = %d, want 404", e.Method, e.Path, rec.Code)
+			}
+
+			if byAccount := s.api(e.Method, ids.Replace(e.Path)+"?account="+b.account, theirs, ""); strings.HasPrefix(e.Path, "/api/v1/payees") && byAccount.Code != http.StatusNotFound {
+				t.Errorf("a stranger: %s %s by the account = %d, want 404", e.Method, e.Path, byAccount.Code)
 			}
 
 			continue

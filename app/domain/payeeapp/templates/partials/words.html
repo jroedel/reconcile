@@ -11,6 +11,7 @@
 {{define "done"}}{{if .}}<p class="notice ok" role="status">
 {{- if eq . "added"}}{{t "Added."}}
 {{- else if eq . "renamed"}}{{t "Renamed. The new name is one of its spellings now, and so is the old one."}}
+{{- else if eq . "saved"}}{{t "Saved."}}
 {{- else if eq . "archived"}}{{t "Archived. It is off the choices, and stays on the payments that have it."}}
 {{- else if eq . "restored"}}{{t "Brought back."}}
 {{- else if eq . "joined"}}{{t "Joined. Its spellings and payments are this payee's now. Split a spelling off to undo it."}}
@@ -19,4 +20,4 @@
 {{- end}}</p>{{end}}{{end}}
 
 {{/* payee-line is a payee in a list: its name, linked, and how many payments. */}}
-{{define "payee-line"}}<a href="/payees/{{.ID}}">{{.Name}}</a> <span class="hint">{{if eq .Payments 1}}{{t "1 payment"}}{{else}}{{t "{count} payments" "count" .Payments}}{{end}}{{if gt (len .Spellings) 1}} · {{t "{count} spellings" "count" (len .Spellings)}}{{end}}</span>{{end}}
+{{define "payee-line"}}<a href="/payees/{{.ID}}">{{.Name}}</a>{{with .Via}} <span class="badge">{{t "by {name}" "name" .}}</span>{{end}} <span class="hint">{{if eq .Payments 1}}{{t "1 payment"}}{{else}}{{t "{count} payments" "count" .Payments}}{{end}}{{if gt (len .Spellings) 1}} · {{t "{count} spellings" "count" (len .Spellings)}}{{end}}</span>{{end}}

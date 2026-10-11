@@ -200,6 +200,8 @@ from (`docs/design.md`). Lists take `limit` and a `cursor`.
 | `GET /api/v1/transactions/{transaction}/explanation` | `get_explanation` | `Explain`: the lines that make the amount up, grouped by account, their sum, the difference, whether it is explained, open or accepted with a note, and the accounts and months last gathered from |
 | `GET /api/v1/transactions/{transaction}/explanation/candidates?account=&from=&to=` | `list_explanation_candidates` | `Candidates`: what may be added, from those accounts and months, not already in another explanation |
 | `GET /api/v1/changes?since=` | `list_changes` | **New** (`eventbus.Through`): what this person changed through the API since a moment (the last day by default), from the history: "what did you do this morning" has an answer that is not Claude's memory |
+| `GET /api/v1/payees?organization=\|account=` | `list_payees` | **New** (`docs/payees.md`, 5; `ledgerbus.Payees`): a list of payees, each with its spellings and how many payments it has. An account in an organization answers with the organization's list |
+| `GET /api/v1/payees/suggestions?organization=\|account=` | `suggest_payee_joins` | **New** (`PayeeSuggestions`): payees that may be one, each pair with both payees' spellings and latest payments, so that Claude can say why |
 
 ### Keeping the books (`books:write`)
 
@@ -219,6 +221,9 @@ from (`docs/design.md`). Lists take `limit` and a `cursor`.
 | `POST /api/v1/receipts/{receipt}/detach` `{transaction}` | `detach_receipt` | `receiptbus.Detach`, which removes nothing: the receipt goes back to waiting |
 | `POST /api/v1/receipts/{receipt}/check` `{number, amount, payee, date, memo}` | `read_check` | `receiptbus.ReadCheck`: a check image read, attached when the bank's amount for the number is the one read, refused with both when not (`docs/phone.md`, 6); the memo and the day written go on the transaction too (7). For one of the person's own checks, `ReadInboxCheck` with `account_number`: filed under the one account whose last four digits it ends in, then read there; no account, or several, is refused and nothing moves (8) |
 | `POST /api/v1/transactions/{transaction}/explanation/lines` `{add, remove, account, from, to}` | `gather_explanation` | `Gather`: lines into an explanation and out of it. Explaining changes nothing about a line (`docs/clearing.md`), so it is bookkeeping, not locking. With no difference left, the transaction is explained |
+| `POST /api/v1/payees/{payee}/join` `{from}` | `join_payees` | **New** (`docs/payees.md`, 5; `JoinPayees`): payees of one list into another, with their spellings and payments |
+| `POST /api/v1/payees/{payee}/split` `{spelling, into}` | `split_payee` | **New** (`SplitPayee`): a spelling and its payments back out, into a payee of its own or another; it undoes a join |
+| `PUT /api/v1/transactions/{transaction}/payee` `{payee \| name}` | `set_payee` | **New** (`SetPayee`): whom a payment went to, a payee of the list or a new name, as "Paid to" on its page |
 
 As built: `import_from_inbox` takes `accounts` as a list of `{file, part,
 account}`, the part as `list_inbox` gives it; `gather_explanation` takes the
@@ -263,6 +268,26 @@ in `get_overview` too, where its `url` is now its page and `book_url` its
 money in and out. Archiving a project stays the person's: it hides what
 was put into it.
 
+As built, later (`docs/payees.md`, 5): **payees.** `list_payees` and
+`suggest_payee_joins` read a list by `organization` or by `account`, one
+of the two, since a list belongs to an organization or to an account with
+no organization and Claude may know only the account. `join_payees`,
+`split_payee` and `set_payee` are the payee pages' and "Paid to"'s own
+methods, with their permissions: joining and splitting a bookkeeper's on
+the list, saying whom a payment went to whoever may attach receipts to
+the account. Through a key, the payee joined into or split, and the
+spellings it brought in, are marked with it (`payees.via`,
+`payee_names.via`) until a person changes the payee on the site or saves
+its name unchanged; a payment's payee is marked (`transactions.payee_via`)
+until a person saves its "Paid to", and counts among the month's changes
+to check. A check read through a key is a payment's payee set through
+one, so it is marked too. A payee made for a payment's new name is not
+marked itself: the payment is, and a mark on every payee of every check
+read would be a mark on nothing. Every transaction in an answer carries
+`payee_id` beside `payee`, and `payee_through` while a program's is not
+checked. Adding, renaming and archiving a payee, and saying two
+suggested ones are not the same, are a person's on the site.
+
 What the tools do not do is make a repayment cancel a cost. Money moving
 between an organization's own accounts is a transfer, which a project's
 book counts on its own line, outside income and expenses (`docs/plan.md`,
@@ -276,7 +301,8 @@ a plan, not for this tool.
 Reconciling a period, reopening one, removing a statement, removing or
 restoring a receipt, **accepting an explanation's difference**, changing who
 has a role, making or archiving an organization, account or category,
-archiving a project, setting a budget, and entries by hand. The first four are the
+archiving a project, setting a budget, adding, renaming or archiving a
+payee or saying two are not the same, and entries by hand. The first four are the
 person's by decision. Accepting a difference is the same kind of word:
 "this payment is 38.20 more than its charges, and that is fine" closes a
 question, and the note that says why is the person's. Claude reports the
@@ -309,6 +335,11 @@ too.
   program, to check", until a person saves the transaction on the web.
 - **A rule written through the API says so** on the rules page (`sort_rules.via`),
   until a person changes it there.
+- **A payee joined or split through the API says so**, with the
+  spellings it brought in, on its page and the list (`payees.via`,
+  `payee_names.via`), until a person changes it there or saves its name;
+  and a payment's payee set through it says so on the month list and its
+  page (`transactions.payee_via`) until a person saves its "Paid to".
 - **A part a rule sorted says which rule**, even when the rules were
   applied through a key (`apply_rules`, or an import that applied them):
   which rule chose a part is the more useful thing to know, and "sorted by

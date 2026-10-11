@@ -22,6 +22,7 @@
 <h2>{{t "Paid to"}}</h2>
 {{if $v.PayeeProblem}}<p class="notice" role="alert">{{t "Whom it was paid to is at most {max} characters." "max" 100}}</p>{{end}}
 {{if $t.Payee}}<p>{{if and $e.PayeesReadable (not $t.PayeeID.Zero)}}<a href="/payees/{{$t.PayeeID}}">{{$t.Payee}}</a>{{else}}{{$t.Payee}}{{end}}</p>{{end}}
+{{with $t.PayeeVia}}<p class="hint"><span class="badge">{{t "by {name}" "name" .}}</span> {{t "A program wrote whom it was paid to through the API key “{name}”. Saving it, changed or not, says a person has checked it." "name" .}}</p>{{end}}
 {{if $v.CanReceipts}}
 <form method="post" action="/transactions/{{$t.ID}}/payee">
   <div class="field">
