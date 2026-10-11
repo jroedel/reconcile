@@ -116,6 +116,14 @@ CREATE TABLE IF NOT EXISTS translators (
 
 // Register is one transaction, so that a startup that fails halfway leaves
 // the strings as they were rather than half of them seen.
+//
+// Its two statements are prepared once and run for every string, rather
+// than handed to ExecContext each time, because there are well over a
+// thousand strings and three rows each: SQLite parsed the same two
+// statements anew for every one of them, which was most of what starting
+// took -- and, since every test that builds the site registers them, most
+// of what the muxer's tests took, close to go test's ten minutes under the
+// race detector.
 func (s *Store) Register(ctx context.Context, uses []translationbus.Use, langs []types.Lang, now time.Time) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -123,21 +131,31 @@ func (s *Store) Register(ctx context.Context, uses []translationbus.Use, langs [
 	}
 	defer tx.Rollback()
 
+	seen, err := tx.PrepareContext(ctx, `
+INSERT INTO ui_strings (context, en, first_seen, last_seen, pages) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (context, en) DO UPDATE SET last_seen = excluded.last_seen, pages = excluded.pages`)
+	if err != nil {
+		return fmt.Errorf("preparing to register strings: %w", err)
+	}
+	defer seen.Close()
+
+	pending, err := tx.PrepareContext(ctx, `
+INSERT INTO ui_translations (context, en, lang, status, updated_at) VALUES (?, ?, ?, 'pending', ?)
+ON CONFLICT (context, en, lang) DO NOTHING`)
+	if err != nil {
+		return fmt.Errorf("preparing to register strings: %w", err)
+	}
+	defer pending.Close()
+
 	at := now.UnixMilli()
 
 	for _, src := range uses {
-		if _, err := tx.ExecContext(ctx, `
-INSERT INTO ui_strings (context, en, first_seen, last_seen, pages) VALUES (?, ?, ?, ?, ?)
-ON CONFLICT (context, en) DO UPDATE SET last_seen = excluded.last_seen, pages = excluded.pages`,
-			src.Context, src.EN, at, at, strings.Join(src.Pages, " ")); err != nil {
+		if _, err := seen.ExecContext(ctx, src.Context, src.EN, at, at, strings.Join(src.Pages, " ")); err != nil {
 			return fmt.Errorf("registering %q: %w", src.EN, err)
 		}
 
 		for _, lang := range langs {
-			if _, err := tx.ExecContext(ctx, `
-INSERT INTO ui_translations (context, en, lang, status, updated_at) VALUES (?, ?, ?, 'pending', ?)
-ON CONFLICT (context, en, lang) DO NOTHING`,
-				src.Context, src.EN, string(lang), at); err != nil {
+			if _, err := pending.ExecContext(ctx, src.Context, src.EN, string(lang), at); err != nil {
 				return fmt.Errorf("opening a %s translation of %q: %w", lang, src.EN, err)
 			}
 		}

@@ -93,6 +93,8 @@ func (k kept) txByDescription(t *testing.T, month string) map[string]map[string]
 // change says on the site that a program made it, until the treasurer
 // saves it there, and the history names the key.
 func TestKeepingTheBooksThroughTheAPI(t *testing.T) {
+	t.Parallel()
+
 	k := newKept(t)
 	s, key, owner := k.s, k.key, k.e.owner
 	tx := "/api/v1/transactions/"
@@ -302,6 +304,8 @@ func TestKeepingTheBooksThroughTheAPI(t *testing.T) {
 // removes a statement or a receipt (docs/books-api.md, "Not in the API, on
 // purpose").
 func TestTheAPIsWritesAreTheList(t *testing.T) {
+	t.Parallel()
+
 	s := newTranslatingSite(t)
 
 	var idx struct {
@@ -356,6 +360,8 @@ func TestTheAPIsWritesAreTheList(t *testing.T) {
 // books, is a 404 for the treasurer's things and changes nothing; a key
 // that only reads, or is for something else, is a 403.
 func TestNobodyKeepsTheBooksTheyWereNotGiven(t *testing.T) {
+	t.Parallel()
+
 	k := newKept(t)
 	s := k.s
 
@@ -449,6 +455,8 @@ func TestNobodyKeepsTheBooksTheyWereNotGiven(t *testing.T) {
 // keeping ones, a write marked as one and a removal as destructive, and a
 // tool's change is the API's, marked with the key.
 func TestClaudeKeepsTheBooksThroughMCP(t *testing.T) {
+	t.Parallel()
+
 	k := newKept(t)
 
 	srv := httptest.NewServer(k.s.h)

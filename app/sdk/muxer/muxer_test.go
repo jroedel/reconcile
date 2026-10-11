@@ -146,6 +146,8 @@ func newHandler(t *testing.T) http.Handler {
 }
 
 func TestHealthz(t *testing.T) {
+	t.Parallel()
+
 	rec := httptest.NewRecorder()
 	newHandler(t).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 
@@ -158,6 +160,8 @@ func TestHealthz(t *testing.T) {
 // asks for "/", which has no route yet. So the policy has to be on a 404 too,
 // and its first directive has to be exactly this.
 func TestEveryAnswerCarriesThePolicyTheDeployLooksFor(t *testing.T) {
+	t.Parallel()
+
 	for _, path := range []string{"/healthz", "/", "/no-such-page"} {
 		rec := httptest.NewRecorder()
 		newHandler(t).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
@@ -175,6 +179,8 @@ func TestEveryAnswerCarriesThePolicyTheDeployLooksFor(t *testing.T) {
 // A binary rolled back onto a database it does not understand must say so,
 // because the deploy decides whether to keep a release on this answer.
 func TestHealthzIsUnhealthyOnASchemaItDoesNotKnow(t *testing.T) {
+	t.Parallel()
+
 	rec := httptest.NewRecorder()
 	h := newHandlerWanting(t, sqldb.Expected{"a_later_release": {"id"}})
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
@@ -203,6 +209,8 @@ func get(t *testing.T, h http.Handler, path string, header ...string) *httptest.
 }
 
 func TestFrontPage(t *testing.T) {
+	t.Parallel()
+
 	h := newHandler(t)
 
 	rec := get(t, h, "/")
@@ -237,12 +245,16 @@ func TestFrontPage(t *testing.T) {
 
 // "/" is the front page and nothing else is.
 func TestUnknownPathIsNotTheFrontPage(t *testing.T) {
+	t.Parallel()
+
 	if rec := get(t, newHandler(t), "/nothing-here"); rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}
 }
 
 func TestNewNeedsALoggerAndADatabase(t *testing.T) {
+	t.Parallel()
+
 	if _, err := New(Config{}); err == nil {
 		t.Fatal("New with nothing succeeded")
 	}

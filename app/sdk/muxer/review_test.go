@@ -12,6 +12,8 @@ import (
 // The administrator names a translator of one language: they get the review
 // screen and a key for that language only, and lose both when removed.
 func TestATranslatorIsNamedForOneLanguage(t *testing.T) {
+	t.Parallel()
+
 	s := newTranslatingSite(t)
 	ana := signUp(t, s.h, s.sent, "ana@example.org")
 
@@ -94,6 +96,8 @@ func review(b *browser, do, en, shown, text, note string) *httptest.ResponseReco
 // Looking over what Claude wrote, on the screen: keep, change, send back,
 // and all at once, each moving the string to its queue.
 func TestLookingOverTranslationsOnTheScreen(t *testing.T) {
+	t.Parallel()
+
 	s := newTranslatingSite(t)
 	key := makeKey(t, s.admin, "laptop")
 

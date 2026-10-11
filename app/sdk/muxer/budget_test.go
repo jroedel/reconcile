@@ -10,6 +10,8 @@ import (
 // An owner sets a project's budget; anyone with the project reads it
 // beside what happened; the history says what was set.
 func TestAProjectsBudget(t *testing.T) {
+	t.Parallel()
+
 	e, txs, _, signUpAs := sorted(t)
 
 	wantRedirect(t, e.owner.post(e.org+"/categories", url.Values{"name": {"Offerings"}, "kind": {"income"}}), e.org+"/categories?done=added")
@@ -79,6 +81,8 @@ func TestAProjectsBudget(t *testing.T) {
 // An organization's year: set for 2026, moved to run July to June, copied
 // into the year after; read by a viewer, set only by an owner.
 func TestAnOrganizationsBudgetYear(t *testing.T) {
+	t.Parallel()
+
 	e, txs, _, signUpAs := sorted(t)
 
 	wantRedirect(t, e.owner.post(e.org+"/categories", url.Values{"name": {"Offerings"}, "kind": {"income"}}), e.org+"/categories?done=added")

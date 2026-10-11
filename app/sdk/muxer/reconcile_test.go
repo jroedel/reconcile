@@ -21,6 +21,8 @@ const julyLate = "Date,Description,Amount,Balance\n" +
 // the period is widened to the paper's and marked, and July holds still
 // until it is reopened with a reason.
 func TestReconcilingAMonth(t *testing.T) {
+	t.Parallel()
+
 	e, txs, _, signUpAs := sorted(t)
 
 	m := statementLink.FindStringSubmatch(e.owner.get(e.account + "/transactions").Body.String())

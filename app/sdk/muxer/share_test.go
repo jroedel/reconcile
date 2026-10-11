@@ -18,6 +18,8 @@ import (
 // that catches a share, allowed the share target's scope; and both linked
 // from the pages of somebody signed in, under a policy that lets them in.
 func TestTheAppIsInstallable(t *testing.T) {
+	t.Parallel()
+
 	h, sent := newSite(t, sqldb.Infrastructure, nil)
 	e := newEstate(t, h, sent)
 	nobody := newBrowser(t, h)
@@ -102,6 +104,8 @@ func TestTheAppIsInstallable(t *testing.T) {
 // matched or waiting, receipts waiting. Where is asked first, so somebody
 // who may not add there is refused before a file is kept.
 func TestSharedFilesGoWhereTheyAreSent(t *testing.T) {
+	t.Parallel()
+
 	h, sent := newSite(t, sqldb.Infrastructure, nil)
 	e := newEstate(t, h, sent)
 
@@ -172,6 +176,8 @@ func TestSharedFilesGoWhereTheyAreSent(t *testing.T) {
 // and is asked for again; one with too many files is told to come in
 // smaller batches; one the phone lost says so.
 func TestAShareTheWorkerMissedIsAskedForAgain(t *testing.T) {
+	t.Parallel()
+
 	h, sent := newSite(t, sqldb.Infrastructure, nil)
 	e := newEstate(t, h, sent)
 
@@ -193,6 +199,8 @@ func TestAShareTheWorkerMissedIsAskedForAgain(t *testing.T) {
 // that is no receipt, a place the person may not add to, and one that is
 // not said, are refused with a code the page says in its own words.
 func TestASharedFileGoesOneARequest(t *testing.T) {
+	t.Parallel()
+
 	h, sent := newSite(t, sqldb.Infrastructure, nil)
 	e := newEstate(t, h, sent)
 

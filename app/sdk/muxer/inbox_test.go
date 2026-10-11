@@ -58,6 +58,8 @@ var (
 // page as a list to check, and can be put aside -- by the treasurer, and by
 // nobody else. The key reads nothing, and no other key or cookie sends.
 func TestAStatementSentToTheInbox(t *testing.T) {
+	t.Parallel()
+
 	s := newTranslatingSite(t)
 	e := newEstate(t, s.h, s.sent)
 	key := keyFor(t, e.owner, "Gmail script", "upload")
@@ -135,6 +137,8 @@ func TestAStatementSentToTheInbox(t *testing.T) {
 // only upload lists none, since sending a file is no tool, and is told
 // nothing it could not do.
 func TestAnUploadKeyListsNoTools(t *testing.T) {
+	t.Parallel()
+
 	s := newTranslatingSite(t)
 	key := keyFor(t, s.admin, "Gmail script", "upload")
 

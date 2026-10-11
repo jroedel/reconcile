@@ -21,6 +21,8 @@ import (
 // finds the layout on their page -- its words, and nothing of what was on
 // it.
 func TestANewLayoutThatProvesNothing(t *testing.T) {
+	t.Parallel()
+
 	if !pdftext.Available() {
 		t.Skip("pdftotext is not installed here; CI installs it")
 	}
@@ -71,6 +73,8 @@ func TestANewLayoutThatProvesNothing(t *testing.T) {
 // statement of theirs beside the reading the site makes now. Nobody else
 // finds the drafts at all.
 func TestALayoutDraft(t *testing.T) {
+	t.Parallel()
+
 	if !pdftext.Available() {
 		t.Skip("pdftotext is not installed here; CI installs it")
 	}

@@ -56,6 +56,8 @@ func sorted(t *testing.T) (estate, map[string]string, http.Handler, func(string)
 }
 
 func TestSortingATransaction(t *testing.T) {
+	t.Parallel()
+
 	e, txs, _, _ := sorted(t)
 
 	grocery := txs["CORNER GROCERY"]
@@ -116,6 +118,8 @@ func TestSortingATransaction(t *testing.T) {
 }
 
 func TestCategoryLists(t *testing.T) {
+	t.Parallel()
+
 	e, _, _, _ := sorted(t)
 
 	// The two the organization started with, under their kinds, and the
@@ -158,6 +162,8 @@ func TestCategoryLists(t *testing.T) {
 // they belong to; a viewer reads and sorts nothing; a project's own viewer
 // reads its book and not the account.
 func TestSortingIsAsPrivateAsTheAccount(t *testing.T) {
+	t.Parallel()
+
 	e, txs, _, signUpAs := sorted(t)
 	grocery := txs["CORNER GROCERY"]
 	category := renameForm.FindStringSubmatch(e.owner.get(e.org + "/categories").Body.String())[1]

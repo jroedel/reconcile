@@ -47,6 +47,8 @@ func (b *browser) uploadMany(path string, files ...[2]string) *httptest.Response
 // since what it holds checks nothing. A stranger with the list's address
 // finds nothing on it, and imports nothing.
 func TestABulkImportOfSeveralFiles(t *testing.T) {
+	t.Parallel()
+
 	if !pdftext.Available() {
 		t.Skip("pdftotext is not installed here; CI installs it")
 	}

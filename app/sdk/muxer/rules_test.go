@@ -20,6 +20,8 @@ var ruleForm = regexp.MustCompile(`action="(/rules/[0-9a-f]{32})"`)
 // what is waiting, makes another, and the next statement arrives sorted
 // and marked; a person's saving takes the mark away.
 func TestSortingRules(t *testing.T) {
+	t.Parallel()
+
 	e, txs, _, signUpAs := sorted(t)
 
 	coffee := txs["COFFEE CART"]
