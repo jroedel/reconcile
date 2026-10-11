@@ -217,3 +217,37 @@ func TestSortingIsAsPrivateAsTheAccount(t *testing.T) {
 		}
 	}
 }
+
+// Costs one account pays and another of the organization repays: the costs
+// stay expenses and the repayment a transfer, and the book says, counting
+// the transfers, how much is still to be repaid (docs/plan.md, "Projects").
+func TestAProjectCountingItsTransfers(t *testing.T) {
+	t.Parallel()
+
+	e, txs, _, _ := sorted(t)
+
+	choices := options(e.owner.get(txs["ELECTRIC CO"]).Body.String())
+	project, transfer := choices["World Youth Day"], choices["Transfers between our accounts"]
+
+	if project == "" || transfer == "" {
+		t.Fatalf("the choices: %v", choices)
+	}
+
+	wantRedirect(t, e.owner.post(txs["ELECTRIC CO"], url.Values{
+		"action": {"save"}, "amount-0": {""}, "category-0": {choices["Utilities"]}, "project-0": {project}, "memo-0": {""},
+	}), e.account+"/transactions?month=2026-07&done=sorted")
+
+	if strings.Contains(e.owner.get(e.project+"/book").Body.String(), "Counting the transfers") {
+		t.Error("a project with no transfers says where it stands counting them")
+	}
+
+	// 100.00 of the deposit is the repayment, and only that part is in
+	// the project.
+	wantRedirect(t, e.owner.post(txs["OPENING DEPOSIT"], url.Values{
+		"action":   {"save"},
+		"amount-0": {"100.00"}, "category-0": {transfer}, "project-0": {project}, "memo-0": {"repaid"},
+		"amount-1": {"900.00"}, "category-1": {transfer}, "project-1": {""}, "memo-1": {""},
+	}), e.account+"/transactions?month=2026-07&done=sorted")
+
+	wantBody(t, e.owner.get(e.project+"/book"), "Short by $120.00", "Transfers between our accounts: $100.00", "Counting the transfers: short by $20.00")
+}

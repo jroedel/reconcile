@@ -149,8 +149,15 @@ account will repay together":
 4. **get_project_book** says how it stands. Money that moves between the
    organization's own accounts -- a repayment from one account to another
    -- is a transfer, which the book shows on its own line, outside income
-   and expenses. If the person expects a repayment to cancel a cost, say
-   so before sorting, and let them choose how it should be sorted.
+   and expenses. For costs one account pays and another of the same
+   organization repays, sort the costs as the expenses they are and the
+   repayments as transfers, putting into the project only the leg of each
+   repayment that arrives in the account that paid: both legs of a
+   transfer in one project cancel. A total's `net_with_transfers` is then
+   what is still to be repaid (negative) or repaid beyond the costs
+   (positive). Never sort a real cost as pass-through to make a project
+   come out even: pass-through is for money that was never the
+   organization's, and the accountant reads the kinds.
 
 ### Explaining an amount
 
