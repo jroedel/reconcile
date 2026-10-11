@@ -13,11 +13,20 @@ import (
 )
 
 // blankWhere is a transaction a sorting rule may still sort: one part,
-// with no category, no project and no memo, outside every reconciled
-// period. Written over the alias t, as lockedWhere is.
+// with no category, no project and no memo of a person's, outside every
+// reconciled period. Written over the alias t, as lockedWhere is.
+//
+// A memo that only repeats the transaction's own holder is the import's,
+// not a person's: a statement that names a holder on each row puts the
+// name in the part's memo (docs/clearing.md, 3), and counting it as a
+// decision left every charge of such an account for ever beyond the rules
+// (issue #81's sequel, #91). The comparison is ledgerbus.HolderKey's,
+// case and the spaces at the ends set aside, as far as SQL can say it;
+// blank in ledgerbus says the same of what this returns.
 const blankWhere = `(SELECT count(*) FROM splits s WHERE s.transaction_id = t.id) = 1
 AND EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id
-            AND s.category_id IS NULL AND s.project_id IS NULL AND s.memo = '')
+            AND s.category_id IS NULL AND s.project_id IS NULL
+            AND (s.memo = '' OR (t.holder <> '' AND lower(trim(s.memo)) = lower(trim(t.holder)))))
 AND NOT ` + lockedWhere
 
 // Blank is the account's transactions a sorting rule may still sort, in
