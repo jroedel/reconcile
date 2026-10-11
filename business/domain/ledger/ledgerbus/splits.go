@@ -384,6 +384,19 @@ type Total struct {
 // Transfers and pass-through are not in it, however much moved.
 func (t Total) Net() money.Amount { return t.Operations.Net() }
 
+// WithTransfers is Net with the transfers between the organization's own
+// accounts counted in: what is still to be made good when one account pays
+// costs that another of the same organization repays. The house's payments
+// are expenses, which is what left the organization; the repayment from
+// the national account is a transfer, which is neither income nor an
+// expense and is rightly kept out of Net. But "how much is still owed to
+// the house?" is the costs less the repayments, and this is that.
+//
+// Only the leg that arrives belongs in the project for this: both legs of
+// one transfer sorted into it cancel each other, as the money moving
+// within the project did.
+func (t Total) WithTransfers() money.Amount { return t.Operations.Net() + t.Transfers }
+
 // Book is a project's money, from every account it draws on.
 //
 // Totals are kept per currency: a pilgrimage paid partly from a dollar

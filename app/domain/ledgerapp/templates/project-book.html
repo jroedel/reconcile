@@ -10,7 +10,9 @@
 {{range $b.Totals}}
 <p>{{t "Income"}} <span class="money in">{{money .Income .Currency}}</span> · {{t "Expenses"}} <span class="money out">{{money .Expenses .Currency}}</span></p>
 <p><strong>{{if lt .Net 0}}{{t "Short by {amount}" "amount" (money .Net.Abs .Currency)}}{{else if gt .Net 0}}{{t "{amount} in hand" "amount" (money .Net .Currency)}}{{else}}{{t "Even"}}{{end}}</strong></p>
-{{if .Transfers}}<p class="hint">{{t "Transfers between our accounts: {amount}. Not income or an expense." "amount" (money .Transfers .Currency)}}</p>{{end}}
+{{if .Transfers}}<p class="hint">{{t "Transfers between our accounts: {amount}. Not income or an expense." "amount" (money .Transfers .Currency)}}</p>
+<p>{{if lt .WithTransfers 0}}{{t "Counting the transfers: short by {amount}" "amount" (money .WithTransfers.Abs .Currency)}}{{else if gt .WithTransfers 0}}{{t "Counting the transfers: {amount} in hand" "amount" (money .WithTransfers .Currency)}}{{else}}{{t "Counting the transfers: even"}}{{end}}</p>
+<p class="hint">{{t "For costs another of our accounts pays back: what is still to be paid back, or what was paid back beyond them."}}</p>{{end}}
 {{if .PassThrough}}<p class="hint">{{t "Pass-through: {amount}, which should come back to zero. Not income or an expense." "amount" (money .PassThrough .Currency)}}</p>{{end}}
 {{if .Unsorted}}<p class="notice">{{t "{amount} is not sorted yet, or is in a category whose kind is not said, and is not in the totals above." "amount" (money .Unsorted .Currency)}}</p>{{end}}
 <p class="hint">{{t "Through the accounts: {in} in, {out} out." "in" (money .In .Currency) "out" (money .Out .Currency)}}</p>
