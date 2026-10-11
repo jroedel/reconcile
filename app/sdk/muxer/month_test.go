@@ -29,6 +29,8 @@ func linksIn(b *browser, path string) map[string][]string {
 // July sorted by hand suggests August's coffee; one Save sorts the rows
 // with a choice, makes the rule asked for, and leaves the rest.
 func TestSortingAMonthOnOnePage(t *testing.T) {
+	t.Parallel()
+
 	e, _, _, signUpAs := sorted(t)
 
 	july := linksIn(e.owner, e.account+"/transactions?month=2026-07")

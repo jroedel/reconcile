@@ -11,6 +11,8 @@ import (
 // two people's printouts, neither saying whose it is, each with the same
 // garage on the same day. Everything invented.
 func TestStatementsSplitByHolder(t *testing.T) {
+	t.Parallel()
+
 	e, _, _, signUpAs := sorted(t)
 
 	wantBody(t, e.owner.get(e.account+"/transactions"), "Statements arrive one file per holder")

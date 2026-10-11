@@ -98,6 +98,8 @@ func imported(t *testing.T, b *browser, account, name, content string) string {
 }
 
 func TestImportingAStatement(t *testing.T) {
+	t.Parallel()
+
 	h, sent := newSite(t, sqldb.Infrastructure, nil)
 	e := newEstate(t, h, sent)
 
@@ -153,6 +155,8 @@ func TestImportingAStatement(t *testing.T) {
 // A bank's page printed to PDF: read, checked against the total it states,
 // shown with the switch for its signs, and imported.
 func TestImportingAPrintedPDF(t *testing.T) {
+	t.Parallel()
+
 	if !pdftext.Available() {
 		t.Skip("pdftotext is not installed here; CI installs it")
 	}
@@ -186,6 +190,8 @@ func TestImportingAPrintedPDF(t *testing.T) {
 // whose number ends as neither does: the preview asks which, and the one
 // chosen is imported, balanced day by day.
 func TestImportingAStatementOfSeveralAccounts(t *testing.T) {
+	t.Parallel()
+
 	if !pdftext.Available() {
 		t.Skip("pdftotext is not installed here; CI installs it")
 	}
@@ -217,6 +223,8 @@ func TestImportingAStatementOfSeveralAccounts(t *testing.T) {
 // One charge worded two ways in two files is left out of the second as
 // probably here already, and can be imported anyway (docs/duplicates.md).
 func TestTheSameChargeWordedTwoWays(t *testing.T) {
+	t.Parallel()
+
 	h, sent := newSite(t, sqldb.Infrastructure, nil)
 	e := newEstate(t, h, sent)
 
@@ -252,6 +260,8 @@ func TestTheSameChargeWordedTwoWays(t *testing.T) {
 // A statement with a row missing says which line broke, and imports
 // nothing.
 func TestAStatementThatDoesNotBalance(t *testing.T) {
+	t.Parallel()
+
 	h, sent := newSite(t, sqldb.Infrastructure, nil)
 	e := newEstate(t, h, sent)
 
@@ -268,6 +278,8 @@ func TestAStatementThatDoesNotBalance(t *testing.T) {
 }
 
 func TestWhatCannotBeUploaded(t *testing.T) {
+	t.Parallel()
+
 	h, sent := newSite(t, sqldb.Infrastructure, nil)
 	e := newEstate(t, h, sent)
 
@@ -307,6 +319,8 @@ func TestWhatCannotBeUploaded(t *testing.T) {
 // administrator get the same 404 everywhere, a viewer reads and changes
 // nothing, and a file's identifier is no way into it.
 func TestStatementsAreAsPrivateAsTheirAccount(t *testing.T) {
+	t.Parallel()
+
 	const secret = "a-setup-secret-that-is-long-enough-to-be-accepted"
 
 	h, sent := newSite(t, sqldb.Infrastructure, func(c *Config) { c.Bootstrap = secret })

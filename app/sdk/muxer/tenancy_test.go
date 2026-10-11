@@ -74,6 +74,8 @@ func newEstate(t *testing.T, h http.Handler, sent *mail.Recorder) estate {
 }
 
 func TestMakingAnOrganizationAndWhatIsInIt(t *testing.T) {
+	t.Parallel()
+
 	h, sent := newSite(t, sqldb.Infrastructure, nil)
 	e := newEstate(t, h, sent)
 
@@ -97,6 +99,8 @@ func TestMakingAnOrganizationAndWhatIsInIt(t *testing.T) {
 // Everything somebody else owns answers like an address that does not
 // exist, through every route, and nothing changes.
 func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
+	t.Parallel()
+
 	const secret = "a-setup-secret-that-is-long-enough-to-be-accepted"
 
 	h, sent := newSite(t, sqldb.Infrastructure, func(c *Config) { c.Bootstrap = secret })
@@ -219,6 +223,8 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 
 // A viewer sees, and is refused when they try to change anything.
 func TestAViewerSeesAndChangesNothing(t *testing.T) {
+	t.Parallel()
+
 	h, sent := newSite(t, sqldb.Infrastructure, nil)
 	e := newEstate(t, h, sent)
 
@@ -248,6 +254,8 @@ func TestAViewerSeesAndChangesNothing(t *testing.T) {
 // An invitation goes by mail, says what and who, has no sign-in in it, and
 // the role is waiting when they sign up.
 func TestAnInvitationBecomesARole(t *testing.T) {
+	t.Parallel()
+
 	h, sent := newSite(t, sqldb.Infrastructure, nil)
 	e := newEstate(t, h, sent)
 
@@ -273,6 +281,8 @@ func TestAnInvitationBecomesARole(t *testing.T) {
 }
 
 func TestTheLastOwnerIsToldWhy(t *testing.T) {
+	t.Parallel()
+
 	h, sent := newSite(t, sqldb.Infrastructure, nil)
 	e := newEstate(t, h, sent)
 
@@ -285,6 +295,8 @@ func TestTheLastOwnerIsToldWhy(t *testing.T) {
 }
 
 func TestTheAdministratorsPage(t *testing.T) {
+	t.Parallel()
+
 	const secret = "a-setup-secret-that-is-long-enough-to-be-accepted"
 
 	h, sent := newSite(t, sqldb.Infrastructure, func(c *Config) { c.Bootstrap = secret })

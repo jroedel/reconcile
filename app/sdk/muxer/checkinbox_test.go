@@ -52,6 +52,8 @@ func importChecks(t *testing.T, e estate) {
 // the transaction with its number; the account's history says it came
 // from the treasurer's own checks.
 func TestChecksFiledFromYourOwnChecks(t *testing.T) {
+	t.Parallel()
+
 	s := newTranslatingSite(t)
 	e := newEstate(t, s.h, s.sent)
 	importChecks(t, e)
@@ -148,6 +150,8 @@ func TestChecksFiledFromYourOwnChecks(t *testing.T) {
 // whose number ends like no account is refused, and nothing moves; and
 // nobody else's key sees or reads them.
 func TestClaudeFilesYourOwnChecks(t *testing.T) {
+	t.Parallel()
+
 	s := newTranslatingSite(t)
 	e := newEstate(t, s.h, s.sent)
 	importChecks(t, e)

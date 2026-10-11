@@ -129,6 +129,8 @@ func signUp(t *testing.T, h http.Handler, sent *mail.Recorder, email string) *br
 }
 
 func TestSignUpThenSignInAgain(t *testing.T) {
+	t.Parallel()
+
 	h, sent := newSite(t, sqldb.Infrastructure, nil)
 
 	b := signUp(t, h, sent, "treasurer@example.org")
@@ -151,6 +153,8 @@ func TestSignUpThenSignInAgain(t *testing.T) {
 
 // Every address gets the same page, and a bad one is the only complaint.
 func TestAskingForACodeSaysTheSameForEveryAddress(t *testing.T) {
+	t.Parallel()
+
 	h, sent := newSite(t, sqldb.Infrastructure, nil)
 	signUp(t, h, sent, "known@example.org")
 
@@ -167,6 +171,8 @@ func TestAskingForACodeSaysTheSameForEveryAddress(t *testing.T) {
 }
 
 func TestAWrongCodeIsRefusedAndTheRightOneStillWorks(t *testing.T) {
+	t.Parallel()
+
 	h, sent := newSite(t, sqldb.Infrastructure, nil)
 	b := newBrowser(t, h)
 
@@ -193,6 +199,8 @@ func TestAWrongCodeIsRefusedAndTheRightOneStillWorks(t *testing.T) {
 // The code typed into a browser that did not ask: the cookie is missing, and
 // the page says so rather than "wrong code".
 func TestACodeTypedInAnotherBrowser(t *testing.T) {
+	t.Parallel()
+
 	h, sent := newSite(t, sqldb.Infrastructure, nil)
 
 	newBrowser(t, h).post("/sign-in", url.Values{"email": {"a@example.org"}})
@@ -204,6 +212,8 @@ func TestACodeTypedInAnotherBrowser(t *testing.T) {
 }
 
 func TestProfileAndLanguage(t *testing.T) {
+	t.Parallel()
+
 	h, sent := newSite(t, sqldb.Infrastructure, nil)
 	b := signUp(t, h, sent, "a@example.org")
 
@@ -230,6 +240,8 @@ func TestProfileAndLanguage(t *testing.T) {
 }
 
 func TestBackupCodesSignIn(t *testing.T) {
+	t.Parallel()
+
 	h, sent := newSite(t, sqldb.Infrastructure, nil)
 	b := signUp(t, h, sent, "a@example.org")
 
@@ -251,6 +263,8 @@ func TestBackupCodesSignIn(t *testing.T) {
 }
 
 func TestEmailChangeThroughTheAccountPage(t *testing.T) {
+	t.Parallel()
+
 	h, sent := newSite(t, sqldb.Infrastructure, nil)
 	b := signUp(t, h, sent, "old@example.org")
 	signUp(t, h, sent, "taken@example.org")
@@ -278,6 +292,8 @@ func TestEmailChangeThroughTheAccountPage(t *testing.T) {
 // The setup secret makes the first administrator once, and the page says so
 // afterwards rather than collecting a secret it will refuse.
 func TestTheFirstSignIn(t *testing.T) {
+	t.Parallel()
+
 	const secret = "a-setup-secret-that-is-long-enough-to-be-accepted"
 
 	h, sent := newSite(t, sqldb.Infrastructure, func(c *Config) { c.Bootstrap = secret })
@@ -306,6 +322,8 @@ func TestTheFirstSignIn(t *testing.T) {
 // A form posted from another site is refused before anything reads it, and a
 // body that is not a form is refused too.
 func TestWritesMustComeFromThisSitesForms(t *testing.T) {
+	t.Parallel()
+
 	h, _ := newSite(t, sqldb.Infrastructure, nil)
 
 	r := httptest.NewRequest(http.MethodPost, "/sign-in", strings.NewReader("email=a%40example.org"))
@@ -327,6 +345,8 @@ func TestWritesMustComeFromThisSitesForms(t *testing.T) {
 
 // Asking again and again from one address is throttled, with a Retry-After.
 func TestAskingTooOftenIsThrottled(t *testing.T) {
+	t.Parallel()
+
 	h, _ := newSite(t, sqldb.Infrastructure, nil)
 	b := newBrowser(t, h)
 
@@ -342,6 +362,8 @@ func TestAskingTooOftenIsThrottled(t *testing.T) {
 
 // With no public address there is no sign-in at all.
 func TestSignInIsOffWithoutABaseURL(t *testing.T) {
+	t.Parallel()
+
 	h, _ := newSite(t, sqldb.Infrastructure, func(c *Config) { c.BaseURL = "" })
 
 	if rec := newBrowser(t, h).get("/sign-in"); rec.Code != http.StatusNotFound {

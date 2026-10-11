@@ -72,6 +72,8 @@ func receiptsOn(body string) []string {
 // project photographs three receipts into it from the front page, and the
 // treasurer matches one to its charge.
 func TestThreeReceiptsIntoTheProjectAndOneMatched(t *testing.T) {
+	t.Parallel()
+
 	e, txs, _, signUpAs := sorted(t)
 
 	wantRedirect(t, e.owner.post(e.project+"/people", url.Values{"email": {"pilgrim@example.org"}, "role": {"contributor"}}), e.project+"?done=granted")
@@ -147,6 +149,8 @@ func TestThreeReceiptsIntoTheProjectAndOneMatched(t *testing.T) {
 }
 
 func TestPagesOfOneReceiptAndRemoving(t *testing.T) {
+	t.Parallel()
+
 	e, _, _, _ := sorted(t)
 
 	rec := e.owner.receipts(e.account+"/receipts", url.Values{"together": {"1"}, "note": {"hostel, two nights"}},
@@ -175,6 +179,8 @@ func TestPagesOfOneReceiptAndRemoving(t *testing.T) {
 }
 
 func TestAReceiptStraightOntoATransaction(t *testing.T) {
+	t.Parallel()
+
 	e, txs, _, _ := sorted(t)
 	coffee := txs["COFFEE CART"]
 
@@ -190,6 +196,8 @@ func TestAReceiptStraightOntoATransaction(t *testing.T) {
 
 // A receipt is as private as its inbox and the transactions it is on.
 func TestReceiptsAreAsPrivateAsTheirInbox(t *testing.T) {
+	t.Parallel()
+
 	e, _, _, signUpAs := sorted(t)
 
 	rec := e.owner.receipts(e.project+"/receipts", nil, [2]string{"a.jpg", photoOf("a")})
@@ -261,6 +269,8 @@ func drawnPhoto(t *testing.T, w, h int) string {
 // A list shows a receipt's small picture and its page the large one; both
 // are made on the first request, and the original is still a tap away.
 func TestReceiptsAreShownSmaller(t *testing.T) {
+	t.Parallel()
+
 	e, _, _, _ := sorted(t)
 
 	rec := e.owner.receipts(e.project+"/receipts", nil, [2]string{"till.jpg", drawnPhoto(t, 1200, 2400)})

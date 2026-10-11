@@ -134,6 +134,8 @@ func (s translatingSite) api(method, path, key, body string) *httptest.ResponseR
 // translator one that translates; the administrator makes one, sees it
 // once, and can revoke it.
 func TestOnlyATranslatorHasATranslatingKey(t *testing.T) {
+	t.Parallel()
+
 	s := newTranslatingSite(t)
 
 	stranger := signUp(t, s.h, s.sent, "stranger@example.org")
@@ -203,6 +205,8 @@ func TestOnlyATranslatorHasATranslatingKey(t *testing.T) {
 // A key reaches the translations, what it writes is on the pages at once,
 // and it reaches nothing else; a cookie does not reach the API.
 func TestAKeyReachesTheTranslationsAndNothingElse(t *testing.T) {
+	t.Parallel()
+
 	s := newTranslatingSite(t)
 	key := makeKey(t, s.admin, "laptop")
 
@@ -356,6 +360,8 @@ func toolText(res *mcp.CallToolResult) string {
 // The same three as tools on /mcp, behind a real listener so that the SDK's
 // own client talks to it as claude.ai's would.
 func TestClaudeTranslatesThroughMCP(t *testing.T) {
+	t.Parallel()
+
 	s := newTranslatingSite(t)
 	key := makeKey(t, s.admin, "Claude")
 
@@ -494,6 +500,8 @@ func (s translatingSite) program(path string, form url.Values) *httptest.Respons
 }
 
 func TestClaudeSignsInAsATranslatorAndItsKeyReachesTheAPI(t *testing.T) {
+	t.Parallel()
+
 	s := newTranslatingSite(t)
 
 	// What Claude reads first.
@@ -572,6 +580,8 @@ func TestClaudeSignsInAsATranslatorAndItsKeyReachesTheAPI(t *testing.T) {
 // claude.ai gets is what the person chose. Translating is offered only to
 // those who translate.
 func TestAnybodyMayConnectClaudeToKeepTheirBooks(t *testing.T) {
+	t.Parallel()
+
 	s := newTranslatingSite(t)
 	stranger := signUp(t, s.h, s.sent, "stranger@example.org")
 
@@ -633,6 +643,8 @@ func TestAnybodyMayConnectClaudeToKeepTheirBooks(t *testing.T) {
 }
 
 func TestSayingNoSendsClaudeAwayEmptyHanded(t *testing.T) {
+	t.Parallel()
+
 	s := newTranslatingSite(t)
 
 	form := asking()
@@ -647,6 +659,8 @@ func TestSayingNoSendsClaudeAwayEmptyHanded(t *testing.T) {
 // A program or a redirect that cannot be trusted is answered on our own
 // page; nothing is sent anywhere.
 func TestAnUntrustedRequestStaysOnOurPage(t *testing.T) {
+	t.Parallel()
+
 	s := newTranslatingSite(t)
 
 	for name, change := range map[string][2]string{
@@ -677,6 +691,8 @@ func TestAnUntrustedRequestStaysOnOurPage(t *testing.T) {
 // Everything else wrong with a request goes back to the program, which is
 // how it finds out.
 func TestARequestWithoutPKCEGoesBackWithAnError(t *testing.T) {
+	t.Parallel()
+
 	s := newTranslatingSite(t)
 
 	for _, drop := range []string{"code_challenge", "code_challenge_method", "response_type"} {
@@ -693,6 +709,8 @@ func TestARequestWithoutPKCEGoesBackWithAnError(t *testing.T) {
 // send it: a code made that way would go to whoever started that sign-in at
 // claude.ai, with the translator's account behind it.
 func TestAnotherSiteCannotSayYes(t *testing.T) {
+	t.Parallel()
+
 	s := newTranslatingSite(t)
 
 	form := asking()
@@ -708,6 +726,8 @@ func TestAnotherSiteCannotSayYes(t *testing.T) {
 }
 
 func TestTheTokenEndpointAnswersInTheRFCsWords(t *testing.T) {
+	t.Parallel()
+
 	s := newTranslatingSite(t)
 
 	for name, tc := range map[string]struct {

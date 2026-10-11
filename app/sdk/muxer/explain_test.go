@@ -12,6 +12,8 @@ import (
 // offertory, deposited as one sum, explained by the count sheets of its
 // two Masses, entered by hand with their documents. Everything invented.
 func TestExplainingAnAmount(t *testing.T) {
+	t.Parallel()
+
 	e, txs, _, signUpAs := sorted(t)
 	offertory, grocery := txs["PARISH OFFERTORY"], txs["CORNER GROCERY"]
 	accountID := strings.TrimPrefix(e.account, "/accounts/")

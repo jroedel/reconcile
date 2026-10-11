@@ -48,6 +48,8 @@ func (b *browser) entry(path string, fields url.Values, docName, doc string) *ht
 const ticket = "%PDF-1.4\n% an invented ticket\n"
 
 func TestEnteringATransactionByHand(t *testing.T) {
+	t.Parallel()
+
 	h, sent := newSite(t, sqldb.Infrastructure, nil)
 	e := newEstate(t, h, sent)
 

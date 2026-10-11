@@ -18,6 +18,8 @@ import (
 // on /mcp. A PDF is refused with the receipt's page for a person, and a
 // stranger's key finds nothing.
 func TestClaudeSeesAReceipt(t *testing.T) {
+	t.Parallel()
+
 	s := newTranslatingSite(t)
 	e := newEstate(t, s.h, s.sent)
 	key := keyFor(t, e.owner, "Claude", "books-read")
@@ -116,6 +118,8 @@ func TestClaudeSeesAReceipt(t *testing.T) {
 // nothing; one not cleared waits. The account's history says what was
 // read, and through which key, and so does list_changes.
 func TestClaudeReadsChecksThroughMCP(t *testing.T) {
+	t.Parallel()
+
 	s := newTranslatingSite(t)
 	e := newEstate(t, s.h, s.sent)
 	key := keyFor(t, e.owner, "Claude", "books-keep")

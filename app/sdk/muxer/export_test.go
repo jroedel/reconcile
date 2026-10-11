@@ -59,6 +59,8 @@ func sheet(t *testing.T, files map[string]string) [][]string {
 // from, and which rows are in a reconciled period. Then the project's,
 // which has only the project's part.
 func TestTheAccountantsPackage(t *testing.T) {
+	t.Parallel()
+
 	e, txs, _, signUpAs := sorted(t)
 	grocery := txs["CORNER GROCERY"]
 

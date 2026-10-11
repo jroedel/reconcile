@@ -12,6 +12,8 @@ import (
 // a hold on it, the hold posting at another amount, and one that never
 // posts. Everything invented.
 func TestPendingCharges(t *testing.T) {
+	t.Parallel()
+
 	e, _, _, signUpAs := sorted(t)
 
 	preview := uploaded(t, e.owner, e.account, "september.csv",

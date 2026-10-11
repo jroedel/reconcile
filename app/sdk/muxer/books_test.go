@@ -82,6 +82,8 @@ func newBooked(t *testing.T) booked {
 // treasurer does, from the overview down to one transaction, and finds,
 // tries and explains without changing anything.
 func TestReadingTheBooksThroughTheAPI(t *testing.T) {
+	t.Parallel()
+
 	b := newBooked(t)
 	s, key := b.s, b.key
 
@@ -184,6 +186,8 @@ func TestReadingTheBooksThroughTheAPI(t *testing.T) {
 // that list find none of the treasurer's. And a key for something else
 // reads nothing.
 func TestNobodyReadsTheBooksTheyWereNotGiven(t *testing.T) {
+	t.Parallel()
+
 	b := newBooked(t)
 	s := b.s
 
@@ -246,6 +250,8 @@ func TestNobodyReadsTheBooksTheyWereNotGiven(t *testing.T) {
 // On /mcp, a key that reads the books lists the reading tools and no
 // others, and a tool's answer is the API's.
 func TestClaudeReadsTheBooksThroughMCP(t *testing.T) {
+	t.Parallel()
+
 	b := newBooked(t)
 
 	srv := httptest.NewServer(b.s.h)

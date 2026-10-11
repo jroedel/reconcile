@@ -14,6 +14,8 @@ var kindForm = regexp.MustCompile(`action="(/categories/[0-9a-f]+)/kind"`)
 // a kind only the owner sets, and the project's net leaving pass-through
 // out.
 func TestKindsOfMoney(t *testing.T) {
+	t.Parallel()
+
 	e, txs, _, signUpAs := sorted(t)
 
 	grocery := txs["CORNER GROCERY"]

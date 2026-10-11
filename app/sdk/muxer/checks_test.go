@@ -16,6 +16,8 @@ import (
 // shows each check's number where its description does not say it, the
 // import keeps it, and the month and the transaction show it.
 func TestCheckNumbersFromACSV(t *testing.T) {
+	t.Parallel()
+
 	h, sent := newSite(t, sqldb.Infrastructure, nil)
 	e := newEstate(t, h, sent)
 
@@ -66,6 +68,8 @@ func TestCheckNumbersFromACSV(t *testing.T) {
 // wait in the inbox; the screenshot is numbered on its page, which
 // attaches it. A stranger and a viewer may not upload or number at all.
 func TestCheckImages(t *testing.T) {
+	t.Parallel()
+
 	h, sent := newSite(t, sqldb.Infrastructure, nil)
 	e := newEstate(t, h, sent)
 
