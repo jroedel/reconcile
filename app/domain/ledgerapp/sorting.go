@@ -46,6 +46,9 @@ type transactionView struct {
 	Settled   bool
 	ClearedBy *ledgerbus.Clearer
 
+	// PayeeProblem is set when the payee typed would not do.
+	PayeeProblem bool
+
 	sortForm
 }
 
@@ -159,6 +162,8 @@ func (a app) transactionPage(w http.ResponseWriter, r *http.Request, status int,
 		sortForm:    f,
 		Done:        r.URL.Query().Get("done"),
 		Uploaded:    uploadedFrom(r.URL.Query()),
+
+		PayeeProblem: r.URL.Query().Get("problem") == "payee",
 	}
 
 	on, err := a.cfg.Receipts.OnTransactions(r.Context(), []types.ID{id})

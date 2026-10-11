@@ -163,6 +163,56 @@ Three pull requests after this plan, each useful when merged:
 3. **Reported payees and the year** (3, 4): the marks, the page by year,
    the download, the package's column, and `get_payee_payments`.
 
+## As built
+
+### The first pull request: payees (1, 2)
+
+- **Kept by the ledger**, not a domain of their own (`ledgerbus/payees.go`,
+  `ledgerdb/payees.go`, pages in `payeeapp`). Decided in the code: a join
+  moves transactions with their spellings in one SQL transaction, which a
+  store of its own could do only by writing the ledger's table. The list
+  is still owned as categories are, by an organization or by an account
+  with no organization (`ledgerbus.PayeeOwner`), and asked of the same
+  way: reading takes Read on the owner, changing it Bookkeep.
+- **Tables**: `payees` (with the marks and `via` already in the CREATE, for
+  the later pull requests, since the table is new), `payee_names` (the
+  spellings, keyed by the list's owner and the name, case aside),
+  `payee_not_same` (suggestions dismissed), and `transactions.payee_id`, a
+  later column with its index after it. Init gives every transaction that
+  already had a payee's text the payee of its list written so, one per
+  spelling, joining none, and does nothing on the starts after.
+- **A transaction's payee follows its text.** `ledgerbus.SetPayee`, which
+  every way a payee is written already went through -- a check read,
+  numbered on its page, matched when it clears, filed from a person's own
+  checks, or typed on the receipt's page -- now finds the payee written so,
+  or makes one, in the same SQL transaction. So a person who wants a check
+  counted as another payee joins the spellings rather than overriding one
+  payment; a spelling is one payee's, as the plan says, and the payee of a
+  payment never disagrees with its spelling.
+- **A payee's name is always one of its spellings.** Renaming adds the
+  new name as one and keeps the old; a name another payee is written as is
+  refused. A payee's own name cannot be split off.
+- **Joined payees** are kept, archived, with `joined_into`, so their page
+  sends a reader on, and splitting their old name back off brings the same
+  payee back rather than a new one. A joined payee's name does not count
+  against the list's, so the payee it went into may take that name. An
+  archived payee cannot be joined into; one already joined is not found
+  for any change.
+- **Suggestions** (`ledgerbus.PayeeKey`): case, the accents Spanish and
+  Portuguese use, punctuation (dots taken out, so "S.A." is "sa"), and a
+  trailing LLC, Inc, Ltd, Ltda, ME, S.A., Corp or Co set aside. Each is to
+  be joined into the payee of its group with the most payments. Archived
+  payees are not suggested.
+- **On the site**: the list at `/orgs/{id}/payees` or `/accounts/{id}/payees`
+  (an account in an organization goes to the organization's), linked from
+  the organization's page and an account's with no organization; each
+  payee's page at `/payees/{id}`, with its spellings, joining, splitting
+  off, renaming, archiving, and its latest payments; and "Paid to" on the
+  page of every payment of money out, for whoever may attach receipts.
+- **History**: added, renamed, archived, brought back, joined (with the
+  spellings it brought), split off and "not the same", in the history of
+  the list's owner.
+
 ## Open questions
 
 - **Money in**: a payer is the same idea the other way round (who gave),

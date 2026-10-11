@@ -17,6 +17,25 @@
 {{if $e.Lock.Made}}<p class="notice">{{t "This transaction is in a reconciled period, {start} to {end}, so its parts cannot change. Receipts can still be attached." "start" $e.Lock.Start "end" $e.Lock.End}} <a href="/statements/{{$e.Lock.StatementID}}#reconcile">{{t "See the statement"}}</a></p>{{end}}
 {{if eq $v.Done "receipts"}}{{template "uploaded" $v.Uploaded}}{{end}}
 
+{{if or (lt $t.Amount 0) $t.Payee}}
+<section class="card" id="paid-to">
+<h2>{{t "Paid to"}}</h2>
+{{if $v.PayeeProblem}}<p class="notice" role="alert">{{t "Whom it was paid to is at most {max} characters." "max" 100}}</p>{{end}}
+{{if $t.Payee}}<p>{{if and $e.PayeesReadable (not $t.PayeeID.Zero)}}<a href="/payees/{{$t.PayeeID}}">{{$t.Payee}}</a>{{else}}{{$t.Payee}}{{end}}</p>{{end}}
+{{if $v.CanReceipts}}
+<form method="post" action="/transactions/{{$t.ID}}/payee">
+  <div class="field">
+    <label for="payee">{{t "Whom it was paid to"}}</label>
+    <input id="payee" name="payee" type="text" maxlength="100" list="payee-choices" value="{{$t.Payee}}" autocomplete="off">
+    <datalist id="payee-choices">{{range $e.Payees}}<option value="{{.Name}}">{{end}}</datalist>
+    <p class="hint">{{t "One of the payees already written, or a new name. Leave it empty to say nobody."}}</p>
+  </div>
+  <button type="submit" class="quiet">{{t "Save"}}</button>
+</form>
+{{else if not $t.Payee}}<p class="hint">{{t "Nobody has said yet."}}</p>{{end}}
+</section>
+{{end}}
+
 <section class="card">
 <h2>{{t "Receipts"}}</h2>
 {{if $v.Receipts}}

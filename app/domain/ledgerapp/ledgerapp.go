@@ -126,6 +126,7 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	handle("POST /accounts/{id}/sort", a.saveMonth)
 	handle("GET /transactions/{id}", a.transaction)
 	handle("POST /transactions/{id}", a.sortTransaction)
+	handle("POST /transactions/{id}/payee", a.setPayee)
 	handle("GET /transactions/{id}/explain", a.explain)
 	handle("POST /transactions/{id}/explain/lines", a.gather)
 	handle("POST /transactions/{id}/explain/settle", a.settle)

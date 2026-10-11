@@ -62,10 +62,15 @@ func (b *Business) WithCheck(ctx context.Context, account types.ID, number strin
 	return b.store.WithCheck(ctx, account, number)
 }
 
-// SetPayee writes down to whom a check was written, or takes it away with
+// SetPayee writes down to whom a payment was made -- a check, read off its
+// image, or any other payment, chosen on its page -- or takes it away with
 // "". It is whoever may attach receipts to the account's transactions who
 // may: the person with the check's image in hand. A note, not money, so a
 // reconciled period does not stop it.
+//
+// The text is kept as written, and the payee follows from it
+// (payees.go): the payee of the list written that way, or a new one named
+// as written, in the same SQL transaction.
 func (b *Business) SetPayee(ctx context.Context, now time.Time, actor, id types.ID, payee string) (Transaction, error) {
 	payee = strings.Join(strings.Fields(payee), " ")
 	if utf8.RuneCountInString(payee) > MaxPayee {
@@ -97,13 +102,27 @@ func (b *Business) SetPayee(ctx context.Context, now time.Time, actor, id types.
 		"payee":       payee,
 	})
 
-	if err := b.store.SetPayee(ctx, id, payee, ev); err != nil {
-		return Transaction{}, err
+	// Twice at most: a payee another request made, between the lookup and
+	// the write, under the same spelling is found the second time.
+	for try := 0; ; try++ {
+		p, made, err := b.payeeFor(ctx, now, actor, account, payee)
+		if err != nil {
+			return Transaction{}, err
+		}
+
+		err = b.store.SetPayee(ctx, id, payee, p, made, ev)
+		if errors.Is(err, ErrPayeeTaken) && made != nil && try == 0 {
+			continue
+		}
+
+		if err != nil {
+			return Transaction{}, err
+		}
+
+		t.Payee, t.PayeeID = payee, p.ID
+
+		return t, nil
 	}
-
-	t.Payee = payee
-
-	return t, nil
 }
 
 // SetWritten writes down what a check's memo line says and the day written

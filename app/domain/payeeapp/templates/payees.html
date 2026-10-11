@@ -1,0 +1,57 @@
+{{define "title"}}{{t "Payees"}} · {{.Data.OwnerName}}{{end}}
+{{define "content"}}{{$v := .Data}}
+<p class="crumbs"><a href="{{$v.OwnerPath}}">{{$v.OwnerName}}</a></p>
+<h1>{{t "Payees"}}</h1>
+<p class="hint">{{t "Whom the money went to. A check's payee is read off its image; any other payment's is chosen on its page. The same list for every account here."}}</p>
+{{template "done" $v.Done}}
+{{template "problem" $v.Problem}}
+
+{{if $v.Suggestions}}
+<section class="card">
+<h2>{{t "These may be one payee"}}</h2>
+<p class="hint">{{t "Their names are the same once capitals, accents, punctuation and endings such as LLC are set aside. Join them only if you know they are the same: two people can share a name."}}</p>
+<ul class="list">
+{{range $v.Suggestions}}<li>{{template "payee-line" .From}} → {{template "payee-line" .Into}}
+{{if $v.CanBookkeep}}
+<form method="post" action="/payees/{{.Into.ID}}/join" class="inline">
+  <input type="hidden" name="from" value="{{.From.ID}}"><input type="hidden" name="back" value="list">
+  <button type="submit" class="quiet">{{t "Join them"}}</button>
+</form>
+<form method="post" action="/payees/{{.From.ID}}/not-same" class="inline">
+  <input type="hidden" name="other" value="{{.Into.ID}}"><input type="hidden" name="back" value="list">
+  <button type="submit" class="link">{{t "Not the same"}}</button>
+</form>
+{{end}}
+</li>{{end}}
+</ul>
+</section>
+{{end}}
+
+<section class="card">
+<h2>{{t "Payees"}}</h2>
+{{if $v.Payees}}
+<ul class="list">
+{{range $v.Payees}}<li>{{template "payee-line" .}}</li>{{end}}
+</ul>
+{{else}}<p class="hint">{{t "No payees yet. They are added as checks are read and payments are given a payee."}}</p>{{end}}
+
+{{if $v.CanBookkeep}}
+<form method="post" action="{{$v.Path}}">
+  <div class="field">
+    <label for="name">{{t "Add a payee"}}</label>
+    <input id="name" name="name" type="text" required maxlength="100" value="{{$v.Name}}">
+  </div>
+  <button type="submit" class="quiet">{{t "Add"}}</button>
+</form>
+{{end}}
+</section>
+
+{{if $v.Archived}}
+<section class="card">
+<h2>{{t "Archived"}}</h2>
+<ul class="list">
+{{range $v.Archived}}<li>{{template "payee-line" .}}</li>{{end}}
+</ul>
+</section>
+{{end}}
+{{end}}

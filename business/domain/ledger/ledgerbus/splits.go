@@ -80,6 +80,12 @@ type Editor struct {
 	// Lock is the reconciliation whose period holds the transaction, if
 	// one does: its parts cannot change until that is reopened.
 	Lock Reconciliation
+
+	// Payees is the payees it may be paid to, not archived ones, for the
+	// "Paid to" choice (payees.go); PayeesReadable is whether the actor
+	// may open the list they are on, and so a payee's page.
+	Payees         []Payee
+	PayeesReadable bool
 }
 
 // CanSort reports whether the parts may be changed by this reader now.
@@ -144,6 +150,17 @@ func (b *Business) Transaction(ctx context.Context, actor, id types.ID) (Editor,
 	}
 
 	if e.Projects, err = b.projectChoices(ctx, actor, t, access); err != nil {
+		return Editor{}, err
+	}
+
+	if e.Payees, err = b.PayeesFor(ctx, account); err != nil {
+		return Editor{}, err
+	}
+
+	switch _, err := b.requirePayees(ctx, actor, PayeeOwner(account), tenancybus.Read); {
+	case err == nil:
+		e.PayeesReadable = true
+	case !errors.Is(err, ErrNotFound):
 		return Editor{}, err
 	}
 
