@@ -559,3 +559,48 @@ func TestRolesAllow(t *testing.T) {
 		t.Error("an unknown role allowed something")
 	}
 }
+
+// A project made or changed through a key carries the key's mark until a
+// person saves it on its page, and a program saving what is there already
+// does not mark again what a person has looked at.
+func TestAProjectMadeThroughAKey(t *testing.T) {
+	w := newWorld(t)
+	ana := w.user("ana@example.org")
+	claude := eventbus.WithVia(t.Context(), "claude.ai")
+
+	p, err := w.ten.CreateProject(claude, now, ana, types.ID{}, tenancybus.ProjectFields{Name: "Costs to be repaid", Note: "Paid here, repaid by the national account"})
+	if err != nil || p.Via != "claude.ai" {
+		t.Fatalf("made through a key: %+v, %v", p, err)
+	}
+
+	if stored, _, _ := w.ten.Project(t.Context(), ana, p.ID); stored.Via != "claude.ai" {
+		t.Errorf("stored: %+v", stored)
+	}
+
+	f := tenancybus.ProjectFields{Name: "Costs to be repaid", Note: "Paid here, repaid by the national account"}
+
+	// Saved on its page, unchanged: a person has looked.
+	if p, err = w.ten.EditProject(t.Context(), now, ana, p.ID, f); err != nil || p.Via != "" {
+		t.Errorf("saved by a person: %+v, %v", p, err)
+	}
+
+	// The same again through the key changes nothing, mark included.
+	if p, err = w.ten.EditProject(claude, now, ana, p.ID, f); err != nil || p.Via != "" {
+		t.Errorf("the same through the key: %+v, %v", p, err)
+	}
+
+	if stored, _, _ := w.ten.Project(t.Context(), ana, p.ID); stored.Via != "" {
+		t.Errorf("stored after the same through the key: %+v", stored)
+	}
+
+	// A change through the key marks it again, and is in the history.
+	f.Name = "Costs repaid by the national account"
+	if p, err = w.ten.EditProject(claude, now, ana, p.ID, f); err != nil || p.Via != "claude.ai" || p.Name != f.Name {
+		t.Errorf("changed through the key: %+v, %v", p, err)
+	}
+
+	events, _ := w.history.Recent(t.Context(), p.Scope(), 10)
+	if len(events) != 3 || events[0].Action != eventbus.Edited || events[0].Via != "claude.ai" || events[1].Via != "" || events[2].Via != "claude.ai" {
+		t.Errorf("the history: %+v", events)
+	}
+}

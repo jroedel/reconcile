@@ -157,6 +157,12 @@ type Project struct {
 	EndsOn   types.Date
 	Note     string
 
+	// Via is the API key that created it or last changed what was typed
+	// about it ("claude.ai"), until a person saves it on its page; "" for
+	// one a person made or has looked at since. Shown on the site as made
+	// by a program, as a rule written through a key is.
+	Via string
+
 	CreatedBy  types.ID
 	CreatedAt  time.Time
 	ArchivedAt time.Time
@@ -633,6 +639,10 @@ func (f ProjectFields) apply(p *Project) error {
 // CreateProject makes a project. In an organization it needs Bookkeep
 // there -- a project is bookkeeping, not administration -- and inherits the
 // organization's people; on its own its creator owns it.
+//
+// Made through an API key (eventbus.ViaFrom), as Claude makes one when the
+// person says yes to it, it is marked with the key until a person saves it
+// on its page, as a sorting rule is (docs/books-api.md).
 func (b *Business) CreateProject(ctx context.Context, now time.Time, actor, orgID types.ID, f ProjectFields) (Project, error) {
 	if !orgID.Zero() {
 		if _, err := b.require(ctx, actor, types.OrgScope(orgID), Bookkeep); err != nil {
@@ -640,7 +650,7 @@ func (b *Business) CreateProject(ctx context.Context, now time.Time, actor, orgI
 		}
 	}
 
-	p := Project{ID: types.NewID(), OrgID: orgID, CreatedBy: actor, CreatedAt: now}
+	p := Project{ID: types.NewID(), OrgID: orgID, Via: eventbus.ViaFrom(ctx), CreatedBy: actor, CreatedAt: now}
 	if err := f.apply(&p); err != nil {
 		return Project{}, err
 	}
@@ -671,6 +681,11 @@ func (b *Business) Project(ctx context.Context, actor, id types.ID) (Project, Ac
 }
 
 // EditProject changes what was typed about a project.
+//
+// Saved on its page, it takes off the mark of a program that made or
+// changed it, even unchanged: saving says a person has looked. Saved
+// through a key with what it has already, nothing changes, so that a
+// program repeating itself does not mark again what a person has checked.
 func (b *Business) EditProject(ctx context.Context, now time.Time, actor, id types.ID, f ProjectFields) (Project, error) {
 	if _, err := b.require(ctx, actor, types.ProjectScope(id), Manage); err != nil {
 		return Project{}, err
@@ -681,9 +696,17 @@ func (b *Business) EditProject(ctx context.Context, now time.Time, actor, id typ
 		return Project{}, err
 	}
 
+	was := p
 	if err := f.apply(&p); err != nil {
 		return Project{}, err
 	}
+
+	via := eventbus.ViaFrom(ctx)
+	if via != "" && p == was {
+		return p, nil
+	}
+
+	p.Via = via
 
 	return p, b.store.UpdateProject(ctx, p, eventbus.New(now, actor, p.Scope(), eventbus.Edited, map[string]string{"name": p.Name}))
 }

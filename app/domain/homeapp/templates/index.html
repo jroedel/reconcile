@@ -13,7 +13,7 @@
 <section class="card">
 <h2><a href="/orgs/{{.Org.ID}}">{{.Org.Name}}</a></h2>
 {{if .Accounts}}<h3>{{t "Accounts"}}</h3><ul class="list">{{range .Accounts}}<li><a href="/accounts/{{.ID}}">{{.Name}}</a>{{if .Last4}} <span class="hint">···{{.Last4}}</span>{{end}}</li>{{end}}</ul>{{end}}
-{{if .Projects}}<h3>{{t "Projects"}}</h3><ul class="list">{{range .Projects}}<li><a href="/projects/{{.ID}}">{{.Name}}</a> <a class="button quiet small" href="/projects/{{.ID}}/receipts">{{t "Add receipts"}}</a></li>{{end}}</ul>{{end}}
+{{if .Projects}}<h3>{{t "Projects"}}</h3><ul class="list">{{range .Projects}}<li><a href="/projects/{{.ID}}">{{.Name}}</a>{{with .Via}} <span class="badge">{{t "by {name}" "name" .}}</span>{{end}} <a class="button quiet small" href="/projects/{{.ID}}/receipts">{{t "Add receipts"}}</a></li>{{end}}</ul>{{end}}
 {{if not (or .Accounts .Projects)}}<p class="hint">{{t "No accounts or projects yet."}}</p>{{end}}
 </section>
 {{end}}
@@ -28,7 +28,7 @@
 {{if .Projects}}
 <section class="card">
 <h2>{{t "Projects on their own"}}</h2>
-<ul class="list">{{range .Projects}}<li><a href="/projects/{{.ID}}">{{.Name}}</a> <a class="button quiet small" href="/projects/{{.ID}}/receipts">{{t "Add receipts"}}</a></li>{{end}}</ul>
+<ul class="list">{{range .Projects}}<li><a href="/projects/{{.ID}}">{{.Name}}</a>{{with .Via}} <span class="badge">{{t "by {name}" "name" .}}</span>{{end}} <a class="button quiet small" href="/projects/{{.ID}}/receipts">{{t "Add receipts"}}</a></li>{{end}}</ul>
 </section>
 {{end}}
 

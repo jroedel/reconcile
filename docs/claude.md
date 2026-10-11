@@ -75,6 +75,9 @@ Start with the month in front of you, in your own words:
 - "Which checks haven't cleared?" The checks whose images were read and
   that no statement has paid yet, with whom each was paid to, what for,
   the day it was written, and their total.
+- "Set up a project for the pilgrimage." Claude looks for one that is
+  there already, proposes a name and what it is for, and with your yes
+  makes it and proposes which charges go in it.
 - "How does the pilgrimage stand?" A project's income and expenses, from
   every account it draws on.
 

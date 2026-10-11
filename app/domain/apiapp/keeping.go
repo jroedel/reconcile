@@ -12,6 +12,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
 	"github.com/jroedel/reconcile/business/domain/rule/rulebus"
+	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/user/userbus"
 	"github.com/jroedel/reconcile/business/types"
 	"github.com/jroedel/reconcile/business/types/money"
@@ -41,6 +42,22 @@ type Rules interface {
 	Save(ctx context.Context, now time.Time, actor, accountID types.ID, f rulebus.Fields) (rulebus.Rule, error)
 	Change(ctx context.Context, now time.Time, actor, id types.ID, f rulebus.Fields) (rulebus.Rule, error)
 	Remove(ctx context.Context, now time.Time, actor, id types.ID) (rulebus.Rule, error)
+}
+
+// projectFields is what create_project takes, and, without the
+// organization, change_project.
+func projectFields(creating bool) []Field {
+	var fields []Field
+	if creating {
+		fields = append(fields, Field{Name: "organization", Type: "string", Description: "The organization's id, as get_overview gives it. Left out, the project is the person's own, in no organization."})
+	}
+
+	return append(fields,
+		Field{Name: "name", Type: "string", Required: creating, Description: fmt.Sprintf("What it is called, at most %d characters.", tenancybus.MaxName)},
+		Field{Name: "note", Type: "string", Description: fmt.Sprintf("What it is for, in a sentence or two, at most %d characters.", tenancybus.MaxNote)},
+		Field{Name: "starts", Type: "string", Description: "The day it starts, YYYY-MM-DD, if it has one."},
+		Field{Name: "ends", Type: "string", Description: "The day it ends, YYYY-MM-DD, on or after the start, if it has one."},
+	)
 }
 
 // keepEndpoints is the books:write endpoints.
@@ -120,6 +137,19 @@ func (a app) keepEndpoints() []Endpoint {
 			Body:    &Body{Encoding: "json", Fields: []Field{}},
 			Returns: "{sorted, url}: url lists what rules sorted, for the person to check.",
 			handler: a.applyRules,
+		},
+		{
+			Method: http.MethodPost, Path: Prefix + "/projects", Scope: write, Tool: "create_project",
+			Summary: "Make a project -- a pilgrimage, a building fund, costs another account will repay -- that parts of transactions from any of an organization's accounts can then be sorted into. Look in get_overview first for one that is already there, and make one only with the person's yes to its name. Marked as made through this key until a person saves it on its page. In an organization, bookkeepers and owners only; with no organization it is the person's own, as on the site.",
+			Body:    &Body{Encoding: "json", Fields: projectFields(true)},
+			Returns: "{project: {id, name, organization, starts, ends, note, through, url, book_url}}; url is its page, book_url its money in and out.",
+			handler: a.createProject,
+		},
+		{
+			Method: http.MethodPut, Path: Prefix + "/projects/{project}", Scope: write, Tool: "change_project",
+			Summary: "Rename a project, or change its note or its dates. A field left out keeps what the project has; one given empty clears it. Marked as changed through this key until a person saves it on its page. Owners only. Archiving a project is the person's, on its page.",
+			Body:    &Body{Encoding: "json", Fields: projectFields(false)},
+			Returns: "{project}", handler: a.changeProject,
 		},
 		{
 			Method: http.MethodPost, Path: Prefix + "/receipts/{receipt}/attach", Scope: write, Tool: "attach_receipt",
