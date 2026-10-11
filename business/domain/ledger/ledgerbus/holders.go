@@ -82,6 +82,62 @@ func (b *Business) holders(ctx context.Context, d *Draft, opts *Options) error {
 	return nil
 }
 
+// looksByHolder notices a file that looks like one holder's month on an
+// account whose statements are not kept apart by holder (issue #81).
+//
+// Imported without the option, a holder's file is compared with the
+// other holders' as if all were downloads of one thing: two people's
+// charges of one amount on one day are one charge to the count rule, and
+// one person's pending charge can be taken by another's posted one. So
+// before the first such file goes in, the preview says what it sees and
+// asks for the option. What it sees is narrow on purpose: every row of
+// the file names the same holder, and the account already has rows that
+// name somebody else on the file's days. A file of the whole account
+// names several holders or none, and the first holder's file of an
+// account has nobody else to be confused with.
+func (b *Business) looksByHolder(ctx context.Context, d *Draft) error {
+	if d.ByHolder || len(d.Result.Records) == 0 {
+		return nil
+	}
+
+	holder := d.Result.Records[0].Holder
+
+	from, to := types.DateOf(d.Result.Records[0].Date), types.DateOf(d.Result.Records[0].Date)
+
+	for _, r := range d.Result.Records {
+		if r.Holder == "" || HolderKey(r.Holder) != HolderKey(holder) {
+			return nil
+		}
+
+		day := types.DateOf(r.Date)
+		if day.Before(from) {
+			from = day
+		}
+
+		if to.Before(day) {
+			to = day
+		}
+	}
+
+	named, err := b.store.HoldersBetween(ctx, d.Account.ID, from, to)
+	if err != nil {
+		return err
+	}
+
+	others := slices.DeleteFunc(named, func(h string) bool { return HolderKey(h) == HolderKey(holder) })
+	if len(others) == 0 {
+		return nil
+	}
+
+	d.LooksByHolder, d.FileHolder, d.OtherHolders = true, holder, others
+
+	return nil
+}
+
+// OtherNames is the other holders, for a sentence: names, which no
+// translation changes.
+func (d Draft) OtherNames() string { return strings.Join(d.OtherHolders, ", ") }
+
 // ByHolder reports whether an account's statements arrive one file per
 // holder. Anyone who may read the account may know.
 func (b *Business) ByHolder(ctx context.Context, actor, accountID types.ID) (bool, error) {
@@ -189,4 +245,59 @@ func (b *Business) Holders(ctx context.Context, actor, accountID types.ID, month
 	}
 
 	return m, nil
+}
+
+// Disagreement is a charge whose holder and whose part's memo name two
+// different holders of the account (Disagreeing): Named is the one the
+// memo names.
+type Disagreement struct {
+	Transaction Transaction
+	Named       string
+}
+
+// Disagreeing is the account's charges whose holder and whose part's memo
+// name two different holders of the account, oldest first (issue #81).
+//
+// A card's printout names who made each charge, and the import writes the
+// name both as the row's holder and as its one part's memo. They part
+// company only when something changed the row after it was read: before
+// this was fixed, one holder's posted charge could take the place of
+// another's pending one on an account that did not keep holders apart,
+// carrying its own holder in and leaving the first holder's name in the
+// memo -- and the first holder's charge out of their month. This is the
+// mark that left, so that a person can look. Only a memo that is another
+// holder's name counts; a memo a person wrote is nobody's.
+func (b *Business) Disagreeing(ctx context.Context, actor, accountID types.ID) ([]Disagreement, error) {
+	if _, _, err := b.accounts.Account(ctx, actor, accountID); err != nil {
+		return nil, err
+	}
+
+	names, err := b.store.Holders(ctx, accountID)
+	if err != nil || len(names) < 2 {
+		return nil, err
+	}
+
+	known := map[string]string{}
+	for _, n := range names {
+		known[HolderKey(n)] = n
+	}
+
+	txs, err := b.store.NamedInParts(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+
+	var out []Disagreement
+
+	for _, t := range txs {
+		for _, s := range t.Splits {
+			if m := HolderKey(s.Memo); known[m] != "" && m != HolderKey(t.Holder) {
+				out = append(out, Disagreement{Transaction: t, Named: known[m]})
+
+				break
+			}
+		}
+	}
+
+	return out, nil
 }

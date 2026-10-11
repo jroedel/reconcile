@@ -238,3 +238,36 @@ GROUP BY holder ORDER BY holder`, account.String(), start.String(), end.String()
 
 	return out, rows.Err()
 }
+
+// HoldersBetween is the holders the account's rows dated from one day to
+// another, both included, have named, by name.
+func (s *Store) HoldersBetween(ctx context.Context, account types.ID, from, to types.Date) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT DISTINCT holder FROM transactions
+WHERE account_id = ? AND holder <> '' AND posted_on BETWEEN ? AND ?
+ORDER BY holder`, account.String(), from.String(), to.String())
+	if err != nil {
+		return nil, fmt.Errorf("reading the holders: %w", err)
+	}
+	defer rows.Close()
+
+	var out []string
+
+	for rows.Next() {
+		var h string
+		if err := rows.Scan(&h); err != nil {
+			return nil, fmt.Errorf("reading the holders: %w", err)
+		}
+
+		out = append(out, h)
+	}
+
+	return out, rows.Err()
+}
+
+// NamedInParts is the account's transactions that name a holder and have a
+// part with a memo, with their parts, oldest first.
+func (s *Store) NamedInParts(ctx context.Context, account types.ID) ([]ledgerbus.Transaction, error) {
+	return s.withSplits(ctx, `account_id = ? AND holder <> '' AND id IN (SELECT transaction_id FROM splits WHERE memo <> '')`,
+		"posted_on, rowid", account.String())
+}

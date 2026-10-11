@@ -207,9 +207,17 @@ type Storer interface {
 	SetByHolder(ctx context.Context, account types.ID, on bool, by types.ID, ev eventbus.Event) error
 
 	// Holders is the holders the account's rows have named, by name;
-	// HolderTotals what each one's rows come to from start up to end.
+	// HoldersBetween those named by its rows dated from one day to
+	// another, both included; HolderTotals what each one's rows come to
+	// from start up to end.
 	Holders(ctx context.Context, account types.ID) ([]string, error)
+	HoldersBetween(ctx context.Context, account types.ID, from, to types.Date) ([]string, error)
 	HolderTotals(ctx context.Context, account types.ID, start, end types.Date) ([]HolderTotal, error)
+
+	// NamedInParts is the account's transactions that name a holder and
+	// have a part with a memo, with their parts, oldest first: where
+	// Disagreeing looks.
+	NamedInParts(ctx context.Context, account types.ID) ([]Transaction, error)
 
 	// StillPending is the account's pending charges older by within than
 	// the end of its latest statement; Release removes one, refusing a
@@ -312,6 +320,11 @@ type Options struct {
 	// although the count rule sets them aside (Doubt).
 	Import []int
 
+	// Leave is the rows, by their place, to leave out although the count
+	// rule would import them: another holder's charge a person says is
+	// the same one after all (Doubt.OtherHolder).
+	Leave []int
+
 	// Holder is whose a file is that names no holder, on an account
 	// whose statements arrive one file per holder: a person's answer
 	// on the preview (Draft.Unnamed).
@@ -373,6 +386,18 @@ type Draft struct {
 	Unnamed  int
 	Holder   string
 
+	// LooksByHolder is a file whose rows all name one holder, FileHolder,
+	// for an account without the option, which already holds charges
+	// other holders made in the file's days, OtherHolders: what an
+	// account whose statements arrive one file per holder looks like
+	// before anybody has said so (issue #81). The preview asks for the
+	// option first, and a bulk import waits. CanSplit is whether the
+	// person may turn it on, an owner's choice (SetByHolder).
+	LooksByHolder bool
+	FileHolder    string
+	OtherHolders  []string
+	CanSplit      bool
+
 	// Statement is what importing would make, with Added and Already
 	// counted.
 	Statement Statement
@@ -428,6 +453,12 @@ func (b *Business) Prepare(ctx context.Context, actor, accountID, fileID types.I
 	}
 
 	if err := b.holders(ctx, &d, opts); err != nil {
+		return Draft{}, err
+	}
+
+	d.CanSplit = access.Can(tenancybus.Manage)
+
+	if err := b.looksByHolder(ctx, &d); err != nil {
 		return Draft{}, err
 	}
 
@@ -786,7 +817,8 @@ func (b *Business) Import(ctx context.Context, now time.Time, actor, accountID, 
 }
 
 // insist marks the rows a person chose to import although the count rule
-// set them aside.
+// set them aside, and those they chose to leave out although it would
+// import them.
 func insist(txs []Transaction, opts *Options) {
 	if opts == nil {
 		return
@@ -795,6 +827,12 @@ func insist(txs []Transaction, opts *Options) {
 	for _, i := range opts.Import {
 		if i >= 0 && i < len(txs) {
 			txs[i].Insist = true
+		}
+	}
+
+	for _, i := range opts.Leave {
+		if i >= 0 && i < len(txs) && !txs[i].Insist {
+			txs[i].Leave = true
 		}
 	}
 }

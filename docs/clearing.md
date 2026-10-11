@@ -168,7 +168,8 @@ them.
   counts them, and in the accountant's package in a column of its own.
 - **Replaced when posted.** A later row of the same account (and
   holder) within ten days after it, not pending, whose description is
-  alike (`ledgerdb.alike`, eumaeus' containment first), takes the pending
+  alike (`ledgerdb.alike`, eumaeus' containment first), and whose amount
+  the pending one may have become (5, below), takes the pending
   row's place: its date, amount and description change to the posted
   ones, and it keeps its sorting, receipts and explanation. A one-part
   transaction's part follows the amount; with several parts the
@@ -185,6 +186,69 @@ them.
   pending", with a way for a bookkeeper to remove it (a hold that was
   released), outside a reconciled period; the history keeps what it
   was.
+
+## 5. Holders never taken for one another (issue #81)
+
+Found on nine months of a shared card's per-holder files, imported into an
+account whose option was off: every file imported cleanly and every month
+showed as imported, and six charges were gone. Three were two holders'
+charges of one amount on one day, the second taken for the first; three
+were one holder's pending charge taken by another holder's posted charge
+at the same shop days later, at another amount. The option, had it been
+on, would have kept them apart (3); nothing said it should be.
+
+### As built
+
+- **Never one by ignoring whose it is.** Whatever the option, a row that
+  names a holder is matched by its content hash or by the cut-short rule
+  only with a row of the same holder or one that names nobody
+  (`ledgerdb.sameHash`, `cutShort`); the posted form of a pending charge
+  likewise (`post`, `settle`). Without the option the hash leaves the
+  holder out, so two people's identical charges share it: that was the
+  silent "already here". Such a row goes on to the count rule, which on
+  an account without the option still counts every holder together, and
+  it becomes a doubt that names both holders (`Doubt.OtherHolder`).
+- **Who decides.** A doubt between two holders, in a file whose rows all
+  name one holder, is imported unless a person leaves it out: that file
+  is one person's month and cannot list another's charge. In any other
+  file it is set aside, as every doubt is (`docs/duplicates.md`), since a
+  file of the whole card may spell a holder otherwise. Either way the
+  preview names both holders, and a bulk import, and so Claude's import
+  from the inbox, waits for a person on any doubt at all, not only one set
+  aside (`Proposal.Unattended`).
+- **Noticed and asked.** A file whose rows all name one holder, for an
+  account without the option that already has other holders' charges on
+  the file's days, looks like one holder's month (`Draft.LooksByHolder`).
+  The preview says so and, to an owner, offers to turn the option on and
+  read the file again; anybody else is told to ask an owner. The imports
+  page and the API's `needs` say it too, and the file is not imported
+  unattended. A file of the whole card names several holders or none, and
+  the first holder's file has nobody to be confused with, so neither is
+  asked about.
+- **The amount a pending charge may become** (`ledgerbus.PostsAs`). The
+  holds this section began with -- a restaurant before the tip, a parking
+  or fuel hold, a hotel's deposit -- are why the amounts differ. The tip
+  is the one whose wording also changes, in the files read so far, and a
+  tip is up to a third. So: the same wording takes any amount the same way
+  round, as before (a fuel hold of 1.00 posts at 48.20); wording only
+  alike must be within a third of the pending amount, or 5.00
+  (`PostSlack`) for a charge so small that a third is less than a tip;
+  and a refund is never the posted form of a charge. A posted row refused
+  is imported as new, and the pending one waits until "still pending"
+  lists it: both visible, where a wrong match was not.
+- **Settings.** The option is on the account's transactions page, in
+  "Holders", where its holders are; the account's settings say whether it
+  is on, and link there.
+- **What already happened.** The account's transactions page lists, under
+  "Whose charge?", charges named for one holder whose part's memo names
+  another holder of the account (`ledgerbus.Disagreeing`): the mark a
+  pending charge taken by another holder's posted one left, since a card's
+  printout names the holder in the memo too. A charge lost the first way
+  left no mark. Both come back the same way: turn the option on, remove
+  the statement of the holder's file it was lost from, and import that
+  file again; with holders kept apart nothing of another's is taken for
+  it. Removing a statement takes how its rows were sorted with it, so this
+  is left to a person to choose, file by file.
 
 ## Build order
 

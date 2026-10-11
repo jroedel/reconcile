@@ -122,6 +122,15 @@ a bank identifier gives it to the stored row, as an OFX row adopting a CSV
 row does now. The next file in the same format then matches exactly,
 without asking.
 
+**Two holders** (issue #81, `docs/clearing.md`, 5). On an account
+that does not keep its holders apart, the rule counts every holder's rows
+together, and a row of one holder's file can be paired with another
+holder's stored charge. The rule takes them for one only by ignoring whose
+the files say they are, so such a doubt names both holders, and in a file
+whose rows all name one holder it is ticked to import rather than to leave
+out. The exact rules no longer match across two named holders at all: that
+was where a charge was lost without being asked about.
+
 **Why set aside rather than import.** Both mistakes are caught when the
 month is reconciled, since the stored rows no longer come to the
 statement's closing balance. But a doubled charge also misleads every

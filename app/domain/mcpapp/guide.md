@@ -63,7 +63,10 @@ what the person's role lets them change; the tools you have say which.
    the person. **import_from_inbox** imports what is ready; a file that
    needs an account the app could not tell takes one from `accounts`, when
    the person says which. Say what was imported and what is left, and why,
-   with `imports_url`.
+   with `imports_url`. A file left because it looks like one holder's, on
+   an account that does not keep its holders apart, is never something to
+   import past: tell the person what `needs` says, since importing it
+   first can take two people's charges for one.
 2. For each account: **get_account_months** says which months are
    reconciled, imported, partial (and which days are in no statement) or
    missing; **get_statement** says how a statement checked and what in it is

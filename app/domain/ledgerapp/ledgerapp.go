@@ -263,6 +263,14 @@ type transactionsView struct {
 	CanManage bool
 	Holders   ledgerbus.HolderMonth
 
+	// OpenHolders opens the holders card, for a link from the account's
+	// settings to it (?holders=1).
+	OpenHolders bool
+
+	// Disagreeing is the account's charges whose holder and memo name two
+	// holders (ledgerbus.Disagreeing).
+	Disagreeing []ledgerbus.Disagreement
+
 	// StillPending is the account's pending charges its statements should
 	// have posted by now (ledgerbus.StillPending).
 	StillPending []ledgerbus.Transaction
@@ -354,6 +362,14 @@ func (a app) transactionsPage(w http.ResponseWriter, r *http.Request, status int
 
 		return
 	}
+
+	if view.Disagreeing, err = a.cfg.Ledger.Disagreeing(ctx, me.ID, id); err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
+	view.OpenHolders = r.URL.Query().Get("holders") == "1"
 
 	switch q := r.URL.Query(); {
 	case q.Get("unsorted") == "1":
@@ -538,6 +554,10 @@ type previewView struct {
 	Opening, Closing string
 
 	Problem string
+
+	// Done is what was just done on the way here: the holder option
+	// turned on from this page (?done=split-on).
+	Done string
 }
 
 // Options is the choices for one column's select: the file's headings,
@@ -621,6 +641,10 @@ func (a app) previewPage(w http.ResponseWriter, r *http.Request, opts *ledgerbus
 		Opening:     opening,
 		Closing:     closing,
 		Problem:     problem,
+	}
+
+	if r.URL.Query().Get("done") == "split-on" {
+		view.Done = "split-on"
 	}
 
 	view.Rows = d.Result.Records[:min(len(d.Result.Records), previewRows)]
@@ -755,10 +779,18 @@ func options(r *http.Request) (ledgerbus.Options, string) {
 		opts.Holder = f.Get("holder")
 	}
 
-	// The rows the count rule set aside that are to be imported anyway.
+	// The rows the count rule set aside that are to be imported anyway,
+	// and those it would import that are to be left out: every doubt the
+	// page asked about whose box is not ticked.
 	for _, v := range f["include"] {
 		if i, err := strconv.Atoi(v); err == nil {
 			opts.Import = append(opts.Import, i)
+		}
+	}
+
+	for _, v := range f["asked"] {
+		if i, err := strconv.Atoi(v); err == nil && !slices.Contains(opts.Import, i) {
+			opts.Leave = append(opts.Leave, i)
 		}
 	}
 

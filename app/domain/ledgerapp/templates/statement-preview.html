@@ -4,7 +4,23 @@
 <h1>{{t "Check the statement"}}</h1>
 <p class="hint">{{$d.File.Name}}</p>
 {{template "problem" $v.Problem}}
+{{template "done" $v.Done}}
 {{if $d.HasEarlier}}<p class="notice">{{t "This file was imported into this account already, on {date}." "date" ($d.Earlier.ImportedAt.Format "2006-01-02")}} <a href="/statements/{{$d.Earlier.ID}}">{{t "See that statement"}}</a></p>{{end}}
+
+{{if $d.LooksByHolder}}
+<section class="card" id="one-file-per-holder">
+<h2>{{t "One file per holder?"}}</h2>
+<p class="notice">{{t "Every charge in this file is {holder}'s, and the account already has charges of {others} on the same days. That is how an account looks when each holder's month arrives as a file of its own. Until the account says so, two holders' charges of the same amount on the same day can be taken for one, and one holder's pending charge for another's posted one." "holder" $d.FileHolder "others" $d.OtherNames}}</p>
+{{if $d.CanSplit}}
+<form method="post" action="/accounts/{{$d.Account.ID}}/holders">
+  <input type="hidden" name="on" value="1">
+  <input type="hidden" name="return" value="{{$v.Path}}">
+  <button type="submit">{{t "Keep this account's holders apart, then look at the file again"}}</button>
+</form>
+<p class="hint">{{t "This turns on “Statements arrive one file per holder” for the account. Statements already imported keep their transactions."}}</p>
+{{else}}<p class="hint">{{t "An owner of the account can turn on “Statements arrive one file per holder”. Ask one to, before this file is imported."}}</p>{{end}}
+</section>
+{{end}}
 
 <form method="post" action="{{$v.Path}}">
 {{if eq (printf "%s" $d.Format) "csv"}}
@@ -184,7 +200,8 @@
 {{with $d.Statement.Doubts}}
 <h3>{{t "Probably here already"}}</h3>
 <p class="hint">{{t "These fall on days the account's earlier statements cover, which already have as many charges of the same amounts. They look like the same charges worded another way, so they are left out. Tick any that is really another charge."}}</p>
-<ul class="list">{{range .}}<li><label class="choice"><input type="checkbox" name="include" value="{{.Index}}"{{if .Imported}} checked{{end}}> {{t "Import it anyway: {amount} on {date}, “{this}” in this file, where the account has “{that}”." "amount" (money .Row.Amount $cur) "date" .Row.PostedOn "this" .Row.Description "that" .Twin.Description}}</label></li>
+{{if $d.Statement.OtherHolders}}<p class="hint">{{t "Some of them are named for one holder in this file and another in the account. Two people's charges are kept as two when the file is one person's; leave one out if it is really the same charge."}}</p>{{end}}
+<ul class="list">{{range .}}<li><input type="hidden" name="asked" value="{{.Index}}"><label class="choice"><input type="checkbox" name="include" value="{{.Index}}"{{if .Imported}} checked{{end}}> {{if .OtherHolder}}{{t "Import it: {amount} on {date}, “{this}”, {holder}'s in this file, where the account has “{that}”, {other}'s." "amount" (money .Row.Amount $cur) "date" .Row.PostedOn "this" .Row.Description "holder" .Row.Holder "that" .Twin.Description "other" .Twin.Holder}}{{else}}{{t "Import it anyway: {amount} on {date}, “{this}” in this file, where the account has “{that}”." "amount" (money .Row.Amount $cur) "date" .Row.PostedOn "this" .Row.Description "that" .Twin.Description}}{{end}}</label></li>
 {{end}}</ul>
 {{end}}
 {{if $d.Statement.Posted}}<p class="hint">{{t "{n} of its rows are charges that were pending here and have now posted. Each takes the pending charge's place, with its final date and amount, and keeps how it was sorted." "n" $d.Statement.Posted}}</p>{{end}}

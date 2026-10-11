@@ -64,3 +64,60 @@ func TestStatementsSplitByHolder(t *testing.T) {
 		}
 	}
 }
+
+// A file that looks like one holder's month, on an account that does not
+// keep its holders apart (issue #81): the preview says so and offers the
+// option, and comes back to the file once it is on. The account's
+// settings say whether it is on, and lead to it. Everything invented.
+func TestAFileThatLooksLikeOneHolders(t *testing.T) {
+	t.Parallel()
+
+	e, _, _, signUpAs := sorted(t)
+
+	settings := e.owner.get(e.account)
+	wantBody(t, settings, "Statements arrive one file per holder: off.", e.account+"/transactions?holders=1#holders")
+	wantBody(t, e.owner.get(e.account+"/transactions?holders=1"), `id="holders" open`)
+
+	held := func(action string) url.Values {
+		f := columns(action)
+		f.Set("holder_column", "Card Member")
+
+		return f
+	}
+
+	ana := uploaded(t, e.owner, e.account, "ana.csv", "Date,Description,Amount,Balance,Card Member\n2026-09-04,CITY GARAGE,-12.00,988.00,Ana\n")
+	if rec := e.owner.post(ana, held("import")); rec.Code != http.StatusSeeOther {
+		t.Fatalf("Ana's file: %d\n%s", rec.Code, rec.Body.String())
+	}
+
+	ben := uploaded(t, e.owner, e.account, "ben.csv", "Date,Description,Amount,Balance,Card Member\n2026-09-04,CITY GARAGE,-12.00,500.00,Ben\n2026-09-06,BAKERY,-4.00,496.00,Ben\n")
+	wantBody(t, e.owner.post(ben, held("preview")), "One file per holder?", "Every charge in this file is Ben&#39;s", "Keep this account&#39;s holders apart",
+		"Ben&#39;s in this file, where the account has “CITY GARAGE”, Ana&#39;s")
+
+	// A bookkeeper sees why, and is told to ask an owner.
+	wantRedirect(t, e.owner.post(e.org+"/people", url.Values{"email": {"bookkeeper@example.org"}, "role": {"bookkeeper"}}), e.org+"?done=granted")
+	bookkeeper := signUpAs("bookkeeper@example.org")
+
+	theirs := uploaded(t, bookkeeper, e.account, "ben.csv", "Date,Description,Amount,Balance,Card Member\n2026-09-04,CITY GARAGE,-12.00,500.00,Ben\n")
+	if body := bookkeeper.post(theirs, held("preview")).Body.String(); !strings.Contains(body, "Ask one to") || strings.Contains(body, "Keep this account&#39;s holders apart") {
+		t.Errorf("the bookkeeper's preview:\n%s", body)
+	}
+
+	if body := bookkeeper.get(e.account).Body.String(); strings.Contains(body, "Statements arrive one file per holder:") {
+		t.Error("a bookkeeper's settings say the option")
+	}
+
+	// Somewhere else to go back to is not taken.
+	wantRedirect(t, e.owner.post(e.account+"/holders", url.Values{"on": {""}, "return": {"https://elsewhere.invalid/"}}), e.account+"/transactions?done=split-off")
+
+	wantRedirect(t, e.owner.post(e.account+"/holders", url.Values{"on": {"1"}, "return": {ben}}), ben+"?done=split-on")
+
+	again := e.owner.get(ben + "?done=split-on")
+	wantBody(t, again, "now kept apart by holder")
+
+	if strings.Contains(again.Body.String(), "One file per holder?") {
+		t.Error("the preview still asks for the option once it is on")
+	}
+
+	wantBody(t, e.owner.get(e.account), "Statements arrive one file per holder: on.")
+}

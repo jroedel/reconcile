@@ -314,6 +314,14 @@ WHERE NOT EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id)`); err !
 //     if it has one. A bank's printed page cuts descriptions short, and the
 //     statement that follows it does not.
 //
+// The hash and the cut short match only a row of the same holder, or one
+// that names nobody (ledgerbus.SameHolder), whatever the account's
+// option. Without the option the hash leaves the holder out, so two
+// people's identical charges in two files share it; matching it alone
+// called the second "already here" and lost it without a word (issue
+// #81). Such a row goes on to the count rule, which sees the other
+// person's charge and makes it a doubt with both names.
+//
 // What is left is new by every exact rule, and the count rule then looks at
 // those together (doubts.go): one charge worded two ways in two files is
 // set aside rather than stored twice.
@@ -426,7 +434,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 
 		if !known {
 			var err error
-			if known, err = already(ctx, tx, t, on); err != nil {
+			if known, err = already(ctx, tx, t); err != nil {
 				return ledgerbus.Statement{}, err
 			}
 		}
@@ -437,7 +445,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			// The posted form of a pending charge worded and priced as
 			// it was is the same row, and only stops being pending.
 			if !t.Pending {
-				if err := settle(ctx, tx, &st, t, on); err != nil {
+				if err := settle(ctx, tx, &st, t); err != nil {
 					return ledgerbus.Statement{}, err
 				}
 			}
@@ -450,7 +458,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 
 	// A posted charge whose pending form the account already holds takes
 	// its place (pending.go), and is new to nothing after.
-	if fresh, err = post(ctx, tx, &st, txs, fresh, on); err != nil {
+	if fresh, err = post(ctx, tx, &st, txs, fresh); err != nil {
 		return ledgerbus.Statement{}, err
 	}
 
@@ -528,7 +536,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 }
 
 // already applies the rule in Import's comment to one row.
-func already(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction, byHolder bool) (bool, error) {
+func already(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction) (bool, error) {
 	exists := func(q string, args ...any) (bool, error) {
 		var one int
 
@@ -546,7 +554,7 @@ func already(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction, byHolder 
 	account := t.AccountID.String()
 
 	if t.ExternalID == "" {
-		if found, err := exists(`SELECT 1 FROM transactions WHERE account_id = ? AND hash = ? LIMIT 1`, account, t.Hash); found || err != nil {
+		if found, err := sameHash(ctx, tx, t); found || err != nil {
 			return found, err
 		}
 
@@ -556,7 +564,7 @@ func already(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction, byHolder 
 
 		// As many cut-short matches as this row's occurrence: two charges
 		// the page printed alike are two, and claim two.
-		rows, err := cutShort(ctx, tx, t, false, byHolder)
+		rows, err := cutShort(ctx, tx, t, false)
 
 		return len(rows) >= max(t.Occurrence, 1), err
 	}
@@ -592,7 +600,7 @@ WHERE external_id = '' AND id = (SELECT transaction_id FROM transaction_aliases 
 		return n == 1, err
 	}
 
-	rows, err := cutShort(ctx, tx, t, true, byHolder)
+	rows, err := cutShort(ctx, tx, t, true)
 	if err != nil || len(rows) == 0 {
 		return false, err
 	}
@@ -604,13 +612,38 @@ WHERE external_id = '' AND id = (SELECT transaction_id FROM transaction_aliases 
 	return true, nil
 }
 
+// sameHash reports a stored row with t's hash that is t's holder's, or
+// names nobody, or any row when t names nobody (Import's comment).
+func sameHash(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction) (bool, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT holder FROM transactions WHERE account_id = ? AND hash = ?`, t.AccountID.String(), t.Hash)
+	if err != nil {
+		return false, fmt.Errorf("looking for a transaction: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var holder string
+		if err := rows.Scan(&holder); err != nil {
+			return false, fmt.Errorf("looking for a transaction: %w", err)
+		}
+
+		if ledgerbus.SameHolder(holder, t.Holder) {
+			return true, nil
+		}
+	}
+
+	return false, rows.Err()
+}
+
 // cutShort is the rows of other statements on t's day for t's amount whose
 // description is t's cut short or the other way round, oldest first; with
 // unclaimed, only those no bank identifier has claimed.
 //
-// On an account split by holder, only rows of t's holder count,
-// and rows that name nobody (ledgerbus.SameHolder).
-func cutShort(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction, unclaimed, byHolder bool) ([]int64, error) {
+// Only rows of t's holder count, and rows that name nobody
+// (ledgerbus.SameHolder), whether or not the account keeps holders apart:
+// without the option, another holder's row the rule would have taken is
+// left to the count rule, which makes it a doubt (Import's comment).
+func cutShort(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction, unclaimed bool) ([]int64, error) {
 	q := `SELECT rowid, description, holder FROM transactions WHERE account_id = ? AND posted_on = ? AND amount = ? AND statement_id <> ?`
 	if unclaimed {
 		q += ` AND external_id = ''`
@@ -634,7 +667,7 @@ func cutShort(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction, unclaime
 			return nil, fmt.Errorf("looking for a transaction: %w", err)
 		}
 
-		if byHolder && !ledgerbus.SameHolder(holder, t.Holder) {
+		if !ledgerbus.SameHolder(holder, t.Holder) {
 			continue
 		}
 

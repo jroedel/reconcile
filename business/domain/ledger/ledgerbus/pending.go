@@ -8,6 +8,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/event/eventbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/types"
+	"github.com/jroedel/reconcile/business/types/money"
 )
 
 // Pending charges (docs/clearing.md, 4).
@@ -33,6 +34,48 @@ import (
 // its account's latest statement a pending charge may be dated before it
 // is listed as still pending.
 const PostWithin = 10
+
+// PostSlack is the least a posted charge's amount may differ from its
+// pending one's and still be taken for it, in the currency's smallest
+// units: five dollars, euros or reais. A third of the pending amount is
+// the rule (PostsAs); this is its floor, for a charge so small that a
+// third of it is less than a tip.
+const PostSlack money.Amount = 500
+
+// PostsAs reports whether a posted charge's amount may be what a pending
+// charge of another amount became, when their descriptions are alike but
+// not the same (sameWording false).
+//
+// The holds docs/clearing.md names are the reason pending and posted
+// differ at all: a restaurant's charge before the tip, which a tip of up
+// to a third covers; a parking or fuel hold, and a hotel's deposit, which
+// settle at whatever was spent and are, in the files read so far, worded
+// the same pending and posted. So:
+//
+//   - The same wording keeps the tolerance it always had: any amount the
+//     same way round. A fuel hold of 1.00 that posts at 48.20 under the
+//     same description is the same charge.
+//   - Wording that is only alike -- one inside the other, or cut short --
+//     must also be close in amount: within a third of the pending amount,
+//     or PostSlack, whichever is more. A 40.00 charge at one shop and a
+//     25.00 charge at the same shop days later are two charges, which is
+//     what the issue found one taking the other's place.
+//   - Never turned round: a refund is not the posted form of a charge.
+//
+// A posted charge refused here is imported as new, and the pending one
+// stays until "still pending" lists it -- both visible, where a wrong
+// match was invisible.
+func PostsAs(pending, posted money.Amount, sameWording bool) bool {
+	if pending == 0 || posted == 0 || (pending < 0) != (posted < 0) {
+		return false
+	}
+
+	if sameWording {
+		return true
+	}
+
+	return (posted - pending).Abs() <= max(pending.Abs()/3, PostSlack)
+}
 
 // The history lines of a pending charge.
 const (

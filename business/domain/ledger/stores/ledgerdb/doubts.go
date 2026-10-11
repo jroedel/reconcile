@@ -66,6 +66,15 @@ CREATE INDEX IF NOT EXISTS transaction_aliases_transaction ON transaction_aliase
 // too: a holder's rows are counted against that holder's stored
 // rows and those that name nobody, and a row that names nobody against
 // all of them (docs/clearing.md, 3).
+//
+// On an account that is not, every holder's rows are counted together,
+// and a doubt may pair a row that names one holder with a stored row
+// that names another (issue #81): Doubt.OtherHolder. The rule only takes
+// it for the same charge by ignoring whose the files say it is, so a
+// twin of the row's own holder is chosen first, when there is one, and a
+// doubt left with another's is imported in a file whose rows all name one
+// holder -- such a file cannot list the other person's charge -- unless a
+// person leaves it out (Transaction.Leave).
 func countRule(ctx context.Context, tx *sql.Tx, statement types.ID, txs []ledgerbus.Transaction, fresh []int, byHolder bool) ([]ledgerbus.Doubt, error) {
 	type key struct {
 		day    string
@@ -86,6 +95,12 @@ func countRule(ctx context.Context, tx *sql.Tx, statement types.ID, txs []ledger
 	for _, t := range txs {
 		listed[keyOf(t)]++
 	}
+
+	// Whether every row of the file names the same holder: one person's
+	// month.
+	oneHolder := len(txs) > 0 && !slices.ContainsFunc(txs, func(t ledgerbus.Transaction) bool {
+		return t.Holder == "" || ledgerbus.HolderKey(t.Holder) != ledgerbus.HolderKey(txs[0].Holder)
+	})
 
 	var order []key
 
@@ -136,17 +151,33 @@ func countRule(ctx context.Context, tx *sql.Tx, statement types.ID, txs []ledger
 
 		used := make([]bool, len(twins))
 
+		// A twin of the row's own holder before another's, and then the
+		// likest wording.
+		score := func(i int, tw ledgerbus.Transaction) float64 {
+			s := alike(txs[i].Description, tw.Description)
+			if ledgerbus.SameHolder(tw.Holder, txs[i].Holder) {
+				s += 10
+			}
+
+			return s
+		}
+
 		for _, i := range chosen {
 			pick := -1
 
 			for j, tw := range twins {
-				if !used[j] && (pick < 0 || alike(txs[i].Description, tw.Description) > alike(txs[i].Description, twins[pick].Description)) {
+				if !used[j] && (pick < 0 || score(i, tw) > score(i, twins[pick])) {
 					pick = j
 				}
 			}
 
 			used[pick] = true
-			doubts = append(doubts, ledgerbus.Doubt{Index: i, Row: txs[i], Twin: twins[pick], Imported: txs[i].Insist})
+
+			other := !ledgerbus.SameHolder(twins[pick].Holder, txs[i].Holder)
+			doubts = append(doubts, ledgerbus.Doubt{
+				Index: i, Row: txs[i], Twin: twins[pick], OtherHolder: other,
+				Imported: txs[i].Insist || other && oneHolder && !txs[i].Leave,
+			})
 		}
 	}
 
