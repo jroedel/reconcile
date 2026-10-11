@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jroedel/reconcile/business/domain/category/categorybus"
+	"github.com/jroedel/reconcile/business/domain/importing/sources/pdfsource/pdfsourcetest"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/rule/rulebus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
@@ -15,9 +16,9 @@ import (
 // ruled is an organization's account with rules made before its first
 // statement arrives, and a project that ends in the middle of July.
 type ruled struct {
-	owner, account, project types.ID
-	groceries, utilities    types.ID
-	coffee, electric, gift  rulebus.Rule
+	owner, org, account, project types.ID
+	groceries, utilities         types.ID
+	coffee, electric, gift       rulebus.Rule
 }
 
 func newRuled(w *world) ruled {
@@ -41,7 +42,7 @@ func newRuled(w *world) ruled {
 		w.t.Fatal(err)
 	}
 
-	r.account, r.project = acct.ID, p.ID
+	r.org, r.account, r.project = org.ID, acct.ID, p.ID
 
 	for name, into := range map[string]*types.ID{"Utilities": &r.utilities, "Groceries": &r.groceries} {
 		c, err := w.cats.Create(ctx, now, r.owner, org.Scope(), name, categorybus.Expense)
@@ -283,5 +284,65 @@ func TestWhoMayApplyRules(t *testing.T) {
 		if u.Rule.ID == r.gift.ID && u.Problem != ledgerbus.RuleProject {
 			t.Errorf("the clerk sees the offertory rule's problem as %q", u.Problem)
 		}
+	}
+}
+
+// A statement that names a holder on each row writes the name into each
+// part's memo (docs/clearing.md, 3). That memo is the import's, not a
+// person's, so the rules sort the part, and keep the memo, which "Whose
+// charge?" reads (issue #91). A memo a person wrote still keeps a rule off.
+func TestRulesSortWhatAHoldersStatementBrought(t *testing.T) {
+	needPoppler(t)
+
+	w := newWorld(t)
+	r := newRuled(w)
+	ctx := t.Context()
+
+	acct, err := w.ten.CreateAccount(ctx, now, r.owner, r.org, tenancybus.AccountFields{Name: "Parish card", Kind: "card"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w.add(r.owner, acct.ID, "cardholder.pdf", pdfsourcetest.Fixtures["cardholder-pdf"]())
+
+	sep := byDescription(w, r.owner, acct.ID, "2026-09")
+
+	hardware, office := sep["Corner Hardware"][0], sep["Parish Office Supply"][0]
+	if hardware.Splits[0].Memo == "" || hardware.Holder == "" {
+		t.Fatalf("the fixture's charge has no holder in its memo: %+v", hardware)
+	}
+
+	// A person's own memo on another holder's charge.
+	if _, err := w.ledger.SetSplits(ctx, now, r.owner, office.ID, []ledgerbus.Part{{Amount: office.Amount, Memo: "for the office"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, match := range []string{"Corner Hardware", "Parish Office"} {
+		trial, err := w.ledger.TryRule(ctx, now, r.owner, acct.ID, rulebus.Fields{Match: match, Direction: rulebus.Out, CategoryID: r.utilities})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		want := map[string]int{"Corner Hardware": 1, "Parish Office": 0}[match]
+		if trial.WouldCount != want {
+			t.Errorf("trying %q: would sort %d, want %d", match, trial.WouldCount, want)
+		}
+
+		if _, err := w.rules.Save(ctx, now, r.owner, acct.ID, rulebus.Fields{Match: match, Direction: rulebus.Out, CategoryID: r.utilities}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if n, err := w.ledger.SortUnsorted(ctx, now.Add(time.Hour), r.owner, acct.ID); err != nil || n != 1 {
+		t.Errorf("sorted %d: %v", n, err)
+	}
+
+	sep = byDescription(w, r.owner, acct.ID, "2026-09")
+	if sp := sep["Corner Hardware"][0].Splits[0]; sp.CategoryID != r.utilities || sp.RuleID.Zero() || sp.Memo != hardware.Splits[0].Memo {
+		t.Errorf("the hardware, sorted by its rule: %+v", sp)
+	}
+
+	if sp := sep["Parish Office Supply"][0].Splits[0]; !sp.CategoryID.Zero() || sp.Memo != "for the office" {
+		t.Errorf("a rule sorted a part with a person's memo: %+v", sp)
 	}
 }

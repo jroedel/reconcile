@@ -124,16 +124,22 @@ func (s sorter) problem(r rulebus.Rule, on types.Date) RuleProblem {
 }
 
 // blank reports whether a rule may still sort the transaction: one part,
-// nothing chosen, no memo. Anything else is a person's, or was a rule's
-// already. (The store also leaves out a reconciled period.)
+// nothing chosen, no memo of a person's. Anything else is a person's, or
+// was a rule's already. (The store also leaves out a reconciled period.)
+//
+// A memo that is only the transaction's own holder counts as none: the
+// import wrote it, from a statement that names a holder on each row. A
+// rule that sorts the part keeps it, since "Whose charge?" (Disagreeing)
+// reads it.
 func blank(t Transaction) bool {
 	if len(t.Splits) != 1 {
 		return false
 	}
 
 	sp := t.Splits[0]
+	importsOwn := t.Holder != "" && HolderKey(sp.Memo) == HolderKey(t.Holder)
 
-	return sp.CategoryID.Zero() && sp.ProjectID.Zero() && sp.Memo == ""
+	return sp.CategoryID.Zero() && sp.ProjectID.Zero() && (sp.Memo == "" || importsOwn)
 }
 
 // sort gives a blank transaction's part the choice of the one rule it

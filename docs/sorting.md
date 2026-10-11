@@ -82,6 +82,12 @@ A new domain, `rule` (`business/domain/rule/rulebus`, `stores/ruledb`).
   - On the rules page, "Sort what is not sorted yet": every transaction of
     the account that is still one part with nothing chosen, outside a
     reconciled period.
+  - "Nothing chosen" is no category, no project and no memo of a
+    person's. A memo that only repeats the transaction's own holder is the
+    import's -- a statement that names a holder on each row writes the name
+    there (`docs/clearing.md`, 3) -- and counts as none; a rule that sorts
+    the part keeps it (issue #91: until then no rule sorted anything on such
+    an account).
   - Never to a transaction a person has saved, never to one in more than
     one part, never in a reconciled period, and never by changing a rule:
     editing or removing a rule leaves what it already sorted as it is.
