@@ -20,7 +20,7 @@
 <section class="card">
 <h2>{{t "Projects"}}</h2>
 {{if .Projects}}<ul class="list">
-{{range .Projects}}<li><a href="/projects/{{.ID}}">{{.Name}}</a>{{if .StartsOn.String}} <span class="hint">{{.StartsOn}}{{if .EndsOn.String}} – {{.EndsOn}}{{end}}</span>{{end}}</li>
+{{range .Projects}}<li><a href="/projects/{{.ID}}">{{.Name}}</a>{{with .Via}} <span class="badge">{{t "by {name}" "name" .}}</span>{{end}}{{if .StartsOn.String}} <span class="hint">{{.StartsOn}}{{if .EndsOn.String}} – {{.EndsOn}}{{end}}</span>{{end}}</li>
 {{end}}</ul>
 {{else}}<p class="hint">{{t "No projects yet."}}</p>{{end}}
 {{if .CanBookkeep}}<p><a class="button quiet" href="/projects/new?org={{.Org.ID}}">{{t "Add a project"}}</a></p>{{end}}

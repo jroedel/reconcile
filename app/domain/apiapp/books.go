@@ -69,6 +69,11 @@ type Tenancy interface {
 	Overview(ctx context.Context, actor types.ID) (tenancybus.Overview, error)
 	Account(ctx context.Context, actor, id types.ID) (tenancybus.Account, tenancybus.Access, error)
 	ProjectNames(ctx context.Context, ids []types.ID) (map[types.ID]string, error)
+
+	// What keeping the books changes about projects (projects.go).
+	Project(ctx context.Context, actor, id types.ID) (tenancybus.Project, tenancybus.Access, error)
+	CreateProject(ctx context.Context, now time.Time, actor, orgID types.ID, f tenancybus.ProjectFields) (tenancybus.Project, error)
+	EditProject(ctx context.Context, now time.Time, actor, id types.ID, f tenancybus.ProjectFields) (tenancybus.Project, error)
 }
 
 // Categories is an account's list, for the names of what a part is in.
@@ -609,6 +614,7 @@ func (a app) bookRefused(w http.ResponseWriter, r *http.Request, err error, what
 	receipt, isReceipt := errors.AsType[receiptbus.Invalid](err)
 	differs, isDiffers := errors.AsType[receiptbus.AmountDiffers](err)
 	unknown, isUnknown := errors.AsType[receiptbus.AccountUnknown](err)
+	project, isProject := errors.AsType[tenancybus.Invalid](err)
 
 	switch {
 	case err == nil:
@@ -644,6 +650,8 @@ func (a app) bookRefused(w http.ResponseWriter, r *http.Request, err error, what
 		web.WriteJSON(w, http.StatusForbidden, web.Problem("", fmt.Sprintf("Your role on this %s does not allow this; it needs a bookkeeper or owner.", what)))
 	case isInvalid:
 		web.WriteJSON(w, http.StatusUnprocessableEntity, web.Problem(invalid.Field, "The "+invalid.Field+" will not do: "+invalid.Err.Error()+"."))
+	case isProject:
+		web.WriteJSON(w, http.StatusUnprocessableEntity, web.Problem(project.Field, "The "+project.Field+" will not do ("+project.Err.Error()+"). Nothing was changed."))
 	default:
 		a.fail(w, r, "reading the books", err)
 	}
@@ -775,27 +783,15 @@ func (a app) overview(w http.ResponseWriter, r *http.Request) {
 		return out
 	}
 
-	projects := func(list []tenancybus.Project) []map[string]string {
-		out := make([]map[string]string, 0, len(list))
-		for _, p := range list {
-			out = append(out, map[string]string{
-				"id": p.ID.String(), "name": p.Name, "starts": p.StartsOn.String(), "ends": p.EndsOn.String(),
-				"url": rd.url("/projects/" + p.ID.String() + "/book"),
-			})
-		}
-
-		return out
-	}
-
 	orgs := make([]map[string]any, 0, len(ov.Orgs))
 	for _, o := range ov.Orgs {
 		orgs = append(orgs, map[string]any{
-			"id": o.Org.ID.String(), "name": o.Org.Name, "accounts": accounts(o.Accounts), "projects": projects(o.Projects),
+			"id": o.Org.ID.String(), "name": o.Org.Name, "accounts": accounts(o.Accounts), "projects": rd.projectsOf(o.Projects),
 			"url": rd.url("/orgs/" + o.Org.ID.String()),
 		})
 	}
 
-	rd.done(w, r, map[string]any{"organizations": orgs, "accounts": accounts(ov.Accounts), "projects": projects(ov.Projects)})
+	rd.done(w, r, map[string]any{"organizations": orgs, "accounts": accounts(ov.Accounts), "projects": rd.projectsOf(ov.Projects)})
 }
 
 func (a app) listInbox(w http.ResponseWriter, r *http.Request) {

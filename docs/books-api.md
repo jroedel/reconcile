@@ -213,6 +213,8 @@ from (`docs/design.md`). Lists take `limit` and a `cursor`.
 | `PUT /api/v1/rules/{rule}` | `change_rule` | `rulebus.Change` |
 | `DELETE /api/v1/rules/{rule}` | `remove_rule` | `rulebus.Remove`. A rule is removable here because it changes no transaction it already sorted, and a rule Claude wrote wrongly should be undoable by Claude |
 | `POST /api/v1/accounts/{account}/rules/apply` | `apply_rules` | `SortUnsorted`: the account's rules over what is not sorted yet |
+| `POST /api/v1/projects` `{organization, name, note, starts, ends}` | `create_project` | **New** (issue #77, `tenancybus.CreateProject`): a project, in an organization or the person's own, as the site's "Add a project" makes one |
+| `PUT /api/v1/projects/{project}` `{name, note, starts, ends}` | `change_project` | **New** (issue #77, `EditProject`): a field left out keeps what the project has |
 | `POST /api/v1/receipts/{receipt}/attach` `{transaction}` | `attach_receipt` | `receiptbus.Attach` |
 | `POST /api/v1/receipts/{receipt}/detach` `{transaction}` | `detach_receipt` | `receiptbus.Detach`, which removes nothing: the receipt goes back to waiting |
 | `POST /api/v1/receipts/{receipt}/check` `{number, amount, payee, date, memo}` | `read_check` | `receiptbus.ReadCheck`: a check image read, attached when the bank's amount for the number is the one read, refused with both when not (`docs/phone.md`, 6); the memo and the day written go on the transaction too (7). For one of the person's own checks, `ReadInboxCheck` with `account_number`: filed under the one account whose last four digits it ends in, then read there; no account, or several, is refused and nothing moves (8) |
@@ -245,12 +247,36 @@ them. The accountant's package keeps the bank's wording under
 sheet set up for the earlier columns still reads them, and the line can
 still be found on the statement in the same package.
 
+As built, later (issue #77): **projects.** Claude could sort into a
+project but not make one, so a person asking for one had to make it on
+the site before Claude could propose anything. `create_project` and
+`change_project` are the project pages' own methods, with their
+permissions and their checks: making one in an organization is a
+bookkeeper's, as on the site, and changing one an owner's. A project made
+or changed through a key is marked with it (`projects.via`) on its page,
+in the organization's list and on the front page, until an owner saves
+its settings, changed or not; the same thing sent again through the key
+changes nothing, mark included, so that a program repeating itself does
+not mark again what a person has checked. A project in an answer is
+`{id, name, organization, starts, ends, note, through, url, book_url}`,
+in `get_overview` too, where its `url` is now its page and `book_url` its
+money in and out. Archiving a project stays the person's: it hides what
+was put into it.
+
+What the tools do not do is make a repayment cancel a cost. Money moving
+between an organization's own accounts is a transfer, which a project's
+book counts on its own line, outside income and expenses (`docs/plan.md`,
+"Kinds of money"). A project of costs one account pays and another
+repays comes out even in the book only if both sides are sorted as
+pass-through, or if the book gains a line for it; that is a decision for
+a plan, not for this tool.
+
 ### Not in the API, on purpose
 
 Reconciling a period, reopening one, removing a statement, removing or
 restoring a receipt, **accepting an explanation's difference**, changing who
-has a role, making or archiving an organization, account, project or
-category, setting a budget, and entries by hand. The first four are the
+has a role, making or archiving an organization, account or category,
+archiving a project, setting a budget, and entries by hand. The first four are the
 person's by decision. Accepting a difference is the same kind of word:
 "this payment is 38.20 more than its charges, and that is fine" closes a
 question, and the note that says why is the person's. Claude reports the

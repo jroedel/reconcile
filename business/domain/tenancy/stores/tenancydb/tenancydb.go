@@ -32,7 +32,7 @@ var _ tenancybus.Storer = (*Store)(nil)
 var Expected = sqldb.Expected{
 	"orgs":     {"id", "name", "created_by", "created_at", "archived_at", "fiscal_start"},
 	"accounts": {"id", "org_id", "name", "kind", "last4", "currency", "opened_on", "created_by", "created_at", "archived_at"},
-	"projects": {"id", "org_id", "name", "starts_on", "ends_on", "note", "created_by", "created_at", "archived_at"},
+	"projects": {"id", "org_id", "name", "starts_on", "ends_on", "note", "created_by", "created_at", "archived_at", "via"},
 	"grants":   {"id", "scope_kind", "scope_id", "user_id", "email", "role", "granted_by", "created_at"},
 }
 
@@ -116,7 +116,14 @@ CREATE INDEX IF NOT EXISTS grants_waiting ON grants (email) WHERE email IS NOT N
 	// The month an organization's budget year starts (docs/budgets.md), a
 	// later column beside the CREATE: January for every organization made
 	// before it, which is what they had.
-	return sqldb.AddColumn(ctx, db, "orgs", "fiscal_start", "INTEGER NOT NULL DEFAULT 1")
+	if err := sqldb.AddColumn(ctx, db, "orgs", "fiscal_start", "INTEGER NOT NULL DEFAULT 1"); err != nil {
+		return err
+	}
+
+	// The API key that made or changed a project, until a person saves it
+	// on its page (issue #77): a later column again, and '' for every
+	// project made before it, which people made.
+	return sqldb.AddColumn(ctx, db, "projects", "via", "TEXT NOT NULL DEFAULT ''")
 }
 
 // --- transactions -----------------------------------------------------------
@@ -323,14 +330,14 @@ func scanAccount(row scanner) (tenancybus.Account, error) {
 
 // --- projects ---------------------------------------------------------------
 
-const projectColumns = `id, org_id, name, starts_on, ends_on, note, created_by, created_at, archived_at`
+const projectColumns = `id, org_id, name, starts_on, ends_on, note, created_by, created_at, archived_at, via`
 
 // CreateProject inserts a project, and its owner's grant if it has one.
 func (s *Store) CreateProject(ctx context.Context, p tenancybus.Project, owner *tenancybus.Grant, ev eventbus.Event) error {
 	return s.inTx(ctx, ev, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO projects (`+projectColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		if _, err := tx.ExecContext(ctx, `INSERT INTO projects (`+projectColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			p.ID.String(), nullID(p.OrgID), p.Name, p.StartsOn.String(), p.EndsOn.String(), p.Note,
-			p.CreatedBy.String(), ms(p.CreatedAt), nullMS(p.ArchivedAt)); err != nil {
+			p.CreatedBy.String(), ms(p.CreatedAt), nullMS(p.ArchivedAt), p.Via); err != nil {
 			return fmt.Errorf("inserting the project: %w", err)
 		}
 
@@ -346,9 +353,9 @@ func (s *Store) CreateProject(ctx context.Context, p tenancybus.Project, owner *
 func (s *Store) UpdateProject(ctx context.Context, p tenancybus.Project, ev eventbus.Event) error {
 	return s.inTx(ctx, ev, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx, `
-UPDATE projects SET name = ?, starts_on = ?, ends_on = ?, note = ?, archived_at = ?
+UPDATE projects SET name = ?, starts_on = ?, ends_on = ?, note = ?, archived_at = ?, via = ?
 WHERE id = ?`,
-			p.Name, p.StartsOn.String(), p.EndsOn.String(), p.Note, nullMS(p.ArchivedAt), p.ID.String())
+			p.Name, p.StartsOn.String(), p.EndsOn.String(), p.Note, nullMS(p.ArchivedAt), p.Via, p.ID.String())
 		if err != nil {
 			return fmt.Errorf("updating the project: %w", err)
 		}
@@ -393,7 +400,7 @@ func scanProject(row scanner) (tenancybus.Project, error) {
 		archived           sql.NullInt64
 	)
 
-	if err := row.Scan(&id, &org, &p.Name, &start, &end, &p.Note, &by, &made, &archived); err != nil {
+	if err := row.Scan(&id, &org, &p.Name, &start, &end, &p.Note, &by, &made, &archived, &p.Via); err != nil {
 		return tenancybus.Project{}, notFound(err, "the project")
 	}
 

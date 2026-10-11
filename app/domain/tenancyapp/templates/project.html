@@ -2,6 +2,7 @@
 {{define "content"}}{{with .Data}}
 <p class="crumbs">{{if .Org.Name}}<a href="/orgs/{{.Org.ID}}">{{.Org.Name}}</a>{{else}}<a href="/">{{t "Your organizations"}}</a>{{end}}</p>
 <h1>{{.Project.Name}}</h1>
+{{with .Project.Via}}<p class="hint"><span class="badge">{{t "by {name}" "name" .}}</span> {{t "A program made or changed this project through the API key “{name}”. An owner saving its settings, changed or not, says a person has checked it." "name" .}}</p>{{end}}
 {{if .Project.StartsOn.String}}<p class="hint">{{.Project.StartsOn}}{{if .Project.EndsOn.String}} – {{.Project.EndsOn}}{{end}}</p>{{end}}
 {{with .Project.Note}}<p>{{.}}</p>{{end}}
 {{if .Project.Archived}}<p class="notice">{{t "This project is archived."}}</p>{{end}}

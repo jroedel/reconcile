@@ -327,10 +327,12 @@ func TestTheAPIsWritesAreTheList(t *testing.T) {
 		"POST /api/v1/accounts/{account}/sort books:write",
 		"POST /api/v1/inbox upload",
 		"POST /api/v1/inbox/import books:write",
+		"POST /api/v1/projects books:write",
 		"POST /api/v1/receipts/{receipt}/attach books:write",
 		"POST /api/v1/receipts/{receipt}/check books:write",
 		"POST /api/v1/receipts/{receipt}/detach books:write",
 		"POST /api/v1/transactions/{transaction}/explanation/lines books:write",
+		"PUT /api/v1/projects/{project} books:write",
 		"PUT /api/v1/rules/{rule} books:write",
 		"PUT /api/v1/transactions/{transaction}/description books:write",
 		"PUT /api/v1/transactions/{transaction}/splits books:write",
@@ -371,7 +373,7 @@ func TestNobodyKeepsTheBooksTheyWereNotGiven(t *testing.T) {
 
 	ids := strings.NewReplacer(
 		"{account}", k.account, "{transaction}", grocery, "{receipt}", k.receipt,
-		"{rule}", field(rule, "rule", "id").(string),
+		"{rule}", field(rule, "rule", "id").(string), "{project}", strings.TrimPrefix(k.e.project, "/projects/"),
 	)
 
 	bodies := map[string]any{
@@ -386,6 +388,8 @@ func TestNobodyKeepsTheBooksTheyWereNotGiven(t *testing.T) {
 		"gather_explanation": map[string]any{"add": []string{}},
 		"apply_rules":        map[string]any{},
 		"import_from_inbox":  map[string]any{},
+		"create_project":     map[string]string{"organization": strings.TrimPrefix(k.e.org, "/orgs/"), "name": "Mine now"},
+		"change_project":     map[string]string{"name": "Mine now"},
 	}
 
 	var idx struct {
@@ -422,8 +426,10 @@ func TestNobodyKeepsTheBooksTheyWereNotGiven(t *testing.T) {
 
 		rec := s.api(e.Method, path, theirs, raw)
 
+		// A project made in the treasurer's organization is as much theirs
+		// as anything with an id in its path.
 		switch {
-		case strings.Contains(e.Path, "{"):
+		case strings.Contains(e.Path, "{") || e.Tool == "create_project":
 			if rec.Code != http.StatusNotFound {
 				t.Errorf("a stranger: %s %s = %d, want 404\n%s", e.Method, e.Path, rec.Code, rec.Body)
 			}
@@ -432,8 +438,8 @@ func TestNobodyKeepsTheBooksTheyWereNotGiven(t *testing.T) {
 		}
 	}
 
-	if walked != 12 {
-		t.Errorf("%d keeping endpoints were walked, want 12", walked)
+	if walked != 14 {
+		t.Errorf("%d keeping endpoints were walked, want 14", walked)
 	}
 
 	if after := s.api(http.MethodGet, "/api/v1/accounts/"+k.account+"/transactions?month=2026-07", k.key, "").Body.String(); after != before {
