@@ -158,6 +158,11 @@ type Transaction struct {
 	Payee   string
 	PayeeID types.ID
 
+	// PayeeVia is the key a program wrote Payee through -- Claude reading
+	// a check, or choosing whom a payment went to -- until a person saves
+	// the transaction's payee on the web; "" otherwise.
+	PayeeVia string
+
 	// CheckMemo is what a check's memo line says it was for, and WrittenOn
 	// the day written on it -- not the day it cleared, which is PostedOn --
 	// as read off its image (checks.go); "" and zero until somebody has.
@@ -315,14 +320,19 @@ func (t Transaction) Through() string {
 }
 
 // ByProgram is the name of the key any of it was changed through that no
-// person has saved on the web since -- its parts or its own description --
-// or "": what the month list's filter of changes to check shows.
+// person has saved on the web since -- its parts, its own description or
+// whom it was paid to -- or "": what the month list's filter of changes to
+// check shows.
 func (t Transaction) ByProgram() string {
 	if via := t.Through(); via != "" {
 		return via
 	}
 
-	return t.OwnVia
+	if t.OwnVia != "" {
+		return t.OwnVia
+	}
+
+	return t.PayeeVia
 }
 
 // Month is one month of an account's transactions, summed.
@@ -340,9 +350,9 @@ type Month struct {
 	// saved since: the ones to check.
 	ByRule int
 
-	// ThroughKey is how many were sorted or described through a key, by a
-	// person's Claude, that nobody has saved on the web since: the others
-	// to check (Transaction.ByProgram).
+	// ThroughKey is how many were sorted, described or given a payee
+	// through a key, by a person's Claude, that nobody has saved on the web
+	// since: the others to check (Transaction.ByProgram).
 	ThroughKey int
 
 	// Operations is the month's parts by kind, beside the cash.

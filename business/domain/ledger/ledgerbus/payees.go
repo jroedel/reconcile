@@ -52,6 +52,17 @@ import (
 // whose: the spellings and the transactions move together, in one SQL
 // transaction, and a store of their own could do that only by writing
 // another domain's table.
+//
+// # Through a key
+//
+// A program -- the person's Claude, on their yes -- may join payees, split
+// them and set a payment's payee through a key (docs/payees.md, 5). What
+// it changes says so on the site until a person looks: a payee it made,
+// joined into or split carries the key (Payee.Via), the spellings it
+// brought into a payee carry it too (Payee.BroughtVia), and so does a
+// payment's payee (Transaction.PayeeVia). Any change a person makes to a
+// payee on the site, or saving its name unchanged, takes its marks off,
+// as saving a project or a rule does.
 
 // The history's lines for a list of payees, written into its owner's.
 const (
@@ -110,6 +121,13 @@ type Payee struct {
 	// is off the list; its page sends a reader on to the one it is in now.
 	JoinedInto types.ID
 
+	// Via is the API key a program last made, joined into or split this
+	// payee through, until a person changes or saves it on the site.
+	// BroughtVia is the spellings it brought in from other payees, by
+	// joining or splitting, until then: what a person is asked to check.
+	Via        string
+	BroughtVia []string
+
 	CreatedBy  types.ID
 	CreatedAt  time.Time
 	ArchivedAt time.Time
@@ -117,6 +135,9 @@ type Payee struct {
 
 // Archived reports whether it is off the choices.
 func (p Payee) Archived() bool { return !p.ArchivedAt.IsZero() }
+
+// Marked reports whether a program changed it and no person has looked.
+func (p Payee) Marked() bool { return p.Via != "" || len(p.BroughtVia) > 0 }
 
 // Joined reports whether it was joined into another.
 func (p Payee) Joined() bool { return !p.JoinedInto.Zero() }
@@ -227,7 +248,7 @@ func (b *Business) CreatePayee(ctx context.Context, now time.Time, actor types.I
 		return Payee{}, err
 	}
 
-	p := Payee{ID: types.NewID(), Owner: owner, Name: name, Spellings: []string{name}, CreatedBy: actor, CreatedAt: now}
+	p := Payee{ID: types.NewID(), Owner: owner, Name: name, Spellings: []string{name}, Via: eventbus.ViaFrom(ctx), CreatedBy: actor, CreatedAt: now}
 
 	if err := b.store.CreatePayee(ctx, p, eventbus.New(now, actor, owner, PayeeAdded, map[string]string{"name": name})); err != nil {
 		return Payee{}, err
@@ -259,6 +280,10 @@ func (b *Business) keptPayee(ctx context.Context, actor, id types.ID) (Payee, er
 // spellings too, so that a check written that way next month finds it; the
 // old name stays one, since a check was written that way. A name that will
 // not do comes back with the payee as it was.
+//
+// Saved on the web, it takes a program's marks off the payee, even
+// unchanged: saving says a person has looked, and the history has nothing
+// new to hear.
 func (b *Business) RenamePayee(ctx context.Context, now time.Time, actor, id types.ID, name string) (Payee, error) {
 	p, err := b.keptPayee(ctx, actor, id)
 	if err != nil {
@@ -270,19 +295,33 @@ func (b *Business) RenamePayee(ctx context.Context, now time.Time, actor, id typ
 		return p, err
 	}
 
+	via := eventbus.ViaFrom(ctx)
+
 	if name == p.Name {
-		return p, nil
+		if via != "" || !p.Marked() {
+			return p, nil
+		}
+
+		p.Via, p.BroughtVia = "", nil
+
+		return p, b.store.UpdatePayee(ctx, p, "", nil)
 	}
 
 	from := p.Name
-	p.Name = name
+	p.Name, p.Via = name, via
+
+	if via == "" {
+		p.BroughtVia = nil
+	}
 
 	if !slices.ContainsFunc(p.Spellings, func(s string) bool { return strings.EqualFold(s, name) }) {
 		p.Spellings = append(p.Spellings, name)
 		slices.SortFunc(p.Spellings, compareFold)
 	}
 
-	return p, b.store.UpdatePayee(ctx, p, name, eventbus.New(now, actor, p.Owner, PayeeRenamed, map[string]string{"from": from, "name": name}))
+	ev := eventbus.New(now, actor, p.Owner, PayeeRenamed, map[string]string{"from": from, "name": name})
+
+	return p, b.store.UpdatePayee(ctx, p, name, &ev)
 }
 
 // SetPayeeArchived takes a payee off the choices, or puts it back. Its
@@ -305,7 +344,13 @@ func (b *Business) SetPayeeArchived(ctx context.Context, now time.Time, actor, i
 		p.ArchivedAt, action = now, PayeeArchived
 	}
 
-	return p, b.store.UpdatePayee(ctx, p, "", eventbus.New(now, actor, p.Owner, action, map[string]string{"name": p.Name}))
+	if p.Via = eventbus.ViaFrom(ctx); p.Via == "" {
+		p.BroughtVia = nil
+	}
+
+	ev := eventbus.New(now, actor, p.Owner, action, map[string]string{"name": p.Name})
+
+	return p, b.store.UpdatePayee(ctx, p, "", &ev)
 }
 
 // JoinPayees puts each of from, with its spellings and transactions, into
@@ -324,9 +369,12 @@ func (b *Business) JoinPayees(ctx context.Context, now time.Time, actor, into ty
 		return target, ErrJoinArchived
 	}
 
+	via := eventbus.ViaFrom(ctx)
+
 	var (
-		ids    []types.ID
-		events []eventbus.Event
+		ids     []types.ID
+		events  []eventbus.Event
+		brought []string
 	)
 
 	for _, id := range from {
@@ -356,6 +404,7 @@ func (b *Business) JoinPayees(ctx context.Context, now time.Time, actor, into ty
 
 		target.Spellings = append(target.Spellings, p.Spellings...)
 		target.Payments += p.Payments
+		brought = append(brought, p.Spellings...)
 	}
 
 	if len(ids) == 0 {
@@ -364,8 +413,18 @@ func (b *Business) JoinPayees(ctx context.Context, now time.Time, actor, into ty
 
 	slices.SortFunc(target.Spellings, compareFold)
 
-	if err := b.store.JoinPayees(ctx, now, target.ID, ids, events); err != nil {
+	if err := b.store.JoinPayees(ctx, now, target.ID, ids, via, events); err != nil {
 		return Payee{}, err
+	}
+
+	target.Via = via
+
+	switch via {
+	case "":
+		target.BroughtVia = nil
+	default:
+		target.BroughtVia = append(target.BroughtVia, brought...)
+		slices.SortFunc(target.BroughtVia, compareFold)
 	}
 
 	return target, nil
@@ -429,6 +488,8 @@ func (b *Business) SplitPayee(ctx context.Context, now time.Time, actor, id type
 		}
 	}
 
+	target.Via = eventbus.ViaFrom(ctx)
+
 	ev := eventbus.New(now, actor, p.Owner, PayeeSplit, map[string]string{"from": p.Name, "spelling": spelling, "name": target.Name})
 
 	moved, err := b.store.SplitPayee(ctx, p.ID, spelling, target, ev)
@@ -436,9 +497,19 @@ func (b *Business) SplitPayee(ctx context.Context, now time.Time, actor, id type
 		return p, err
 	}
 
-	target.Spellings = append(slices.DeleteFunc(target.Spellings, func(s string) bool { return strings.EqualFold(s, spelling) }), spelling)
+	same := func(s string) bool { return strings.EqualFold(s, spelling) }
+
+	target.Spellings = append(slices.DeleteFunc(target.Spellings, same), spelling)
 	slices.SortFunc(target.Spellings, compareFold)
 	target.Payments += moved
+
+	switch target.Via {
+	case "":
+		target.BroughtVia = nil
+	default:
+		target.BroughtVia = append(slices.DeleteFunc(target.BroughtVia, same), spelling)
+		slices.SortFunc(target.BroughtVia, compareFold)
+	}
 
 	return target, nil
 }
@@ -554,6 +625,11 @@ func (b *Business) PayeesFor(ctx context.Context, a tenancybus.Account) ([]Payee
 // payeeFor is the payee a transaction of an account written as name is
 // paid to: the one with that spelling, or one to be made, named so, with
 // the history's line for making it. "" is no payee.
+//
+// A payee made so carries no key's mark, even through one: the payment it
+// was made for carries it (Transaction.PayeeVia), and that is what a
+// person checks. Marking it too would mark every payee of every check
+// Claude reads, and a mark on everything is a mark on nothing.
 func (b *Business) payeeFor(ctx context.Context, now time.Time, actor types.ID, account tenancybus.Account, name string) (Payee, *eventbus.Event, error) {
 	if name == "" {
 		return Payee{}, nil, nil

@@ -190,7 +190,7 @@ func (b *Business) AddChecks(ctx context.Context, now time.Time, actor, accountI
 	}
 
 	if payee != "" && len(paid) > 0 {
-		if _, err := b.ledger.SetPayee(ctx, now, actor, paid[0], payee); err != nil {
+		if _, err := b.ledger.SetCheckPayee(ctx, now, actor, paid[0], payee); err != nil {
 			return receipts, err
 		}
 	}
@@ -347,7 +347,7 @@ func (b *Business) saveCheck(ctx context.Context, now time.Time, actor types.ID,
 // does not, where it differs from what the image said before.
 func (b *Business) writeOnto(ctx context.Context, now time.Time, actor, transactionID types.ID, before, after Receipt) error {
 	if after.Merchant != before.Merchant {
-		if _, err := b.ledger.SetPayee(ctx, now, actor, transactionID, after.Merchant); err != nil {
+		if _, err := b.ledger.SetCheckPayee(ctx, now, actor, transactionID, after.Merchant); err != nil {
 			return err
 		}
 	}

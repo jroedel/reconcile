@@ -96,6 +96,18 @@ CREATE TABLE IF NOT EXISTS payee_not_same (
 		return fmt.Errorf("creating the payee index: %w", err)
 	}
 
+	// The key a program set a transaction's payee through, and the key it
+	// brought a spelling into a payee through (docs/payees.md, 5), until a
+	// person saves the transaction's payee or the payee on the site: later
+	// columns, from the pull request that let Claude join and set payees.
+	if err := sqldb.AddColumn(ctx, db, "transactions", "payee_via", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+
+	if err := sqldb.AddColumn(ctx, db, "payee_names", "via", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+
 	return givePayees(ctx, db, time.Now())
 }
 
@@ -211,17 +223,41 @@ func payeeOwner(s types.Scope) (org, account any) {
 	return nil, s.ID.String()
 }
 
-// insertPayee stores a payee and its name as its first spelling.
+// insertPayee stores a payee, with the key it was made through, and its
+// name as its first spelling. The spelling carries no mark: it was not
+// brought in from another payee, and the payee's own mark says who made it.
 func insertPayee(ctx context.Context, tx *sql.Tx, p ledgerbus.Payee) error {
 	org, account := payeeOwner(p.Owner)
 
 	if _, err := tx.ExecContext(ctx, `
-INSERT INTO payees (id, org_id, account_id, name, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		p.ID.String(), org, account, p.Name, p.CreatedBy.String(), p.CreatedAt.UnixMilli()); err != nil {
+INSERT INTO payees (id, org_id, account_id, name, via, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		p.ID.String(), org, account, p.Name, p.Via, p.CreatedBy.String(), p.CreatedAt.UnixMilli()); err != nil {
 		return payeeErr(err, "storing a payee")
 	}
 
 	return addSpelling(ctx, tx, p.Owner, p.ID, p.Name)
+}
+
+// markPayees writes the key a change to some payees came through onto
+// them, or, for a change a person made on the site (via ""), takes every
+// mark off them and off their spellings: a person who changed a payee has
+// looked at it.
+func markPayees(ctx context.Context, tx *sql.Tx, via string, ids ...types.ID) error {
+	for _, id := range ids {
+		if _, err := tx.ExecContext(ctx, `UPDATE payees SET via = ? WHERE id = ?`, via, id.String()); err != nil {
+			return fmt.Errorf("marking a payee: %w", err)
+		}
+
+		if via != "" {
+			continue
+		}
+
+		if _, err := tx.ExecContext(ctx, `UPDATE payee_names SET via = '' WHERE payee_id = ? AND via <> ''`, id.String()); err != nil {
+			return fmt.Errorf("unmarking a payee's spellings: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // addSpelling makes a way of writing a payee its, unless it is already.
@@ -286,12 +322,19 @@ func (s *Store) CreatePayee(ctx context.Context, p ledgerbus.Payee, ev eventbus.
 	return s.inPayeeTx(ctx, func(tx *sql.Tx) error { return insertPayee(ctx, tx, p) }, ev)
 }
 
-// UpdatePayee writes a payee's name and archived time, adds a spelling
-// unless it is "", and ev.
-func (s *Store) UpdatePayee(ctx context.Context, p ledgerbus.Payee, spelling string, ev eventbus.Event) error {
+// UpdatePayee writes a payee's name, archived time and mark (markPayees),
+// adds a spelling unless it is "", and ev when there is one: a person who
+// saves a payee unchanged takes a program's marks off it and tells the
+// history nothing.
+func (s *Store) UpdatePayee(ctx context.Context, p ledgerbus.Payee, spelling string, ev *eventbus.Event) error {
 	var archived any
 	if p.Archived() {
 		archived = p.ArchivedAt.UnixMilli()
+	}
+
+	var events []eventbus.Event
+	if ev != nil {
+		events = append(events, *ev)
 	}
 
 	return s.inPayeeTx(ctx, func(tx *sql.Tx) error {
@@ -299,20 +342,29 @@ func (s *Store) UpdatePayee(ctx context.Context, p ledgerbus.Payee, spelling str
 			return payeeErr(err, "changing a payee")
 		}
 
+		if err := markPayees(ctx, tx, p.Via, p.ID); err != nil {
+			return err
+		}
+
 		if spelling == "" {
 			return nil
 		}
 
 		return addSpelling(ctx, tx, p.Owner, p.ID, spelling)
-	}, ev)
+	}, events...)
 }
 
-// SetPayee writes a transaction's payee text and the payee it is, making
-// the payee first when made says to, with ev.
-func (s *Store) SetPayee(ctx context.Context, id types.ID, payee string, p ledgerbus.Payee, made *eventbus.Event, ev eventbus.Event) error {
-	events := []eventbus.Event{ev}
-	if made != nil {
-		events = []eventbus.Event{*made, ev}
+// SetPayee writes a transaction's payee text, the payee it is and the key
+// it was written through, making the payee first when made says to, with
+// the events there are: none when a person saves on the site what a
+// program wrote, which only takes its mark off.
+func (s *Store) SetPayee(ctx context.Context, id types.ID, payee, via string, p ledgerbus.Payee, made, ev *eventbus.Event) error {
+	var events []eventbus.Event
+
+	for _, e := range []*eventbus.Event{made, ev} {
+		if e != nil {
+			events = append(events, *e)
+		}
 	}
 
 	return s.inPayeeTx(ctx, func(tx *sql.Tx) error {
@@ -327,7 +379,7 @@ func (s *Store) SetPayee(ctx context.Context, id types.ID, payee string, p ledge
 			payeeID = p.ID.String()
 		}
 
-		res, err := tx.ExecContext(ctx, `UPDATE transactions SET payee = ?, payee_id = ? WHERE id = ?`, payee, payeeID, id.String())
+		res, err := tx.ExecContext(ctx, `UPDATE transactions SET payee = ?, payee_id = ?, payee_via = ? WHERE id = ?`, payee, payeeID, via, id.String())
 		if err != nil {
 			return fmt.Errorf("writing a payee: %w", err)
 		}
@@ -341,27 +393,31 @@ func (s *Store) SetPayee(ctx context.Context, id types.ID, payee string, p ledge
 }
 
 // JoinPayees moves each of from's spellings and transactions to into and
-// marks it joined into it, archived, with the events.
-func (s *Store) JoinPayees(ctx context.Context, now time.Time, into types.ID, from []types.ID, events []eventbus.Event) error {
+// marks it joined into it, archived, with the events. Through a key (via),
+// into and the spellings it is given are marked with it; by a person, into
+// and all its spellings are unmarked (markPayees).
+func (s *Store) JoinPayees(ctx context.Context, now time.Time, into types.ID, from []types.ID, via string, events []eventbus.Event) error {
 	return s.inPayeeTx(ctx, func(tx *sql.Tx) error {
 		for _, id := range from {
 			for _, q := range []string{
-				`UPDATE payee_names SET payee_id = ?1 WHERE payee_id = ?2`,
+				`UPDATE payee_names SET payee_id = ?1, via = ?4 WHERE payee_id = ?2`,
 				`UPDATE transactions SET payee_id = ?1 WHERE payee_id = ?2`,
 				`UPDATE payees SET joined_into = ?1, archived_at = coalesce(archived_at, ?3) WHERE id = ?2 AND joined_into IS NULL`,
 			} {
-				if _, err := tx.ExecContext(ctx, q, into.String(), id.String(), now.UnixMilli()); err != nil {
+				if _, err := tx.ExecContext(ctx, q, into.String(), id.String(), now.UnixMilli(), via); err != nil {
 					return fmt.Errorf("joining payees: %w", err)
 				}
 			}
 		}
 
-		return nil
+		return markPayees(ctx, tx, via, into)
 	}, events...)
 }
 
 // SplitPayee moves a spelling of from, and from's transactions written so,
 // to into: stored first if it is new, brought back if it was joined.
+// Through a key (into.Via) both payees and the spelling are marked with
+// it; by a person both are unmarked (markPayees).
 func (s *Store) SplitPayee(ctx context.Context, from types.ID, spelling string, into ledgerbus.Payee, ev eventbus.Event) (int, error) {
 	var moved int64
 
@@ -382,8 +438,8 @@ func (s *Store) SplitPayee(ctx context.Context, from types.ID, spelling string, 
 			return payeeErr(err, "splitting a payee")
 		}
 
-		res, err := tx.ExecContext(ctx, `UPDATE payee_names SET payee_id = ? WHERE owner = ? AND name = ? AND payee_id = ?`,
-			into.ID.String(), into.Owner.ID.String(), spelling, from.String())
+		res, err := tx.ExecContext(ctx, `UPDATE payee_names SET payee_id = ?, via = ? WHERE owner = ? AND name = ? AND payee_id = ?`,
+			into.ID.String(), into.Via, into.Owner.ID.String(), spelling, from.String())
 		if err != nil {
 			return payeeErr(err, "splitting a payee")
 		}
@@ -397,9 +453,11 @@ func (s *Store) SplitPayee(ctx context.Context, from types.ID, spelling string, 
 			return fmt.Errorf("splitting a payee: %w", err)
 		}
 
-		moved, err = res.RowsAffected()
+		if moved, err = res.RowsAffected(); err != nil {
+			return fmt.Errorf("splitting a payee: %w", err)
+		}
 
-		return err
+		return markPayees(ctx, tx, into.Via, from, into.ID)
 	}, ev)
 
 	return int(moved), err
@@ -451,7 +509,7 @@ WHERE coalesce(p.org_id, p.account_id) = ?`, owner.ID.String())
 	return out, rows.Err()
 }
 
-const payeeColumns = `p.id, p.org_id, p.account_id, p.name, coalesce(p.joined_into, ''), p.created_by, p.created_at, p.archived_at,
+const payeeColumns = `p.id, p.org_id, p.account_id, p.name, p.via, coalesce(p.joined_into, ''), p.created_by, p.created_at, p.archived_at,
     (SELECT count(*) FROM transactions t WHERE t.payee_id = p.id)`
 
 // Payees is an owner's list, not joined ones, by name, archived ones last.
@@ -568,7 +626,7 @@ func (s *Store) payees(ctx context.Context, q string, args ...any) ([]ledgerbus.
 			archived       sql.NullInt64
 		)
 
-		if err := rows.Scan(&id, &org, &account, &p.Name, &joined, &by, &at, &archived, &p.Payments); err != nil {
+		if err := rows.Scan(&id, &org, &account, &p.Name, &p.Via, &joined, &by, &at, &archived, &p.Payments); err != nil {
 			return nil, fmt.Errorf("reading a payee: %w", err)
 		}
 
@@ -615,27 +673,31 @@ func (s *Store) payees(ctx context.Context, q string, args ...any) ([]ledgerbus.
 	}
 
 	for i := range out {
-		out[i].Spellings = spellings[out[i].ID]
+		got := spellings[out[i].ID]
+		out[i].Spellings, out[i].BroughtVia = got.names, got.brought
 	}
 
 	return out, nil
 }
 
+// spelled is a payee's spellings, and those a program brought in.
+type spelled struct{ names, brought []string }
+
 // spellings is the ways each of some payees has been written, in the
-// order of the alphabet.
-func (s *Store) spellings(ctx context.Context, ids []any) (map[types.ID][]string, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT payee_id, name FROM payee_names WHERE payee_id IN (`+
+// order of the alphabet, with those a key brought in apart.
+func (s *Store) spellings(ctx context.Context, ids []any) (map[types.ID]spelled, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT payee_id, name, via FROM payee_names WHERE payee_id IN (`+
 		strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")+`) ORDER BY name`, ids...)
 	if err != nil {
 		return nil, fmt.Errorf("reading payees' spellings: %w", err)
 	}
 	defer rows.Close()
 
-	out := map[types.ID][]string{}
+	out := map[types.ID]spelled{}
 
 	for rows.Next() {
-		var id, name string
-		if err := rows.Scan(&id, &name); err != nil {
+		var id, name, via string
+		if err := rows.Scan(&id, &name, &via); err != nil {
 			return nil, fmt.Errorf("reading payees' spellings: %w", err)
 		}
 
@@ -644,7 +706,14 @@ func (s *Store) spellings(ctx context.Context, ids []any) (map[types.ID][]string
 			return nil, fmt.Errorf("a stored spelling is unreadable: %w", err)
 		}
 
-		out[pid] = append(out[pid], name)
+		got := out[pid]
+		got.names = append(got.names, name)
+
+		if via != "" {
+			got.brought = append(got.brought, name)
+		}
+
+		out[pid] = got
 	}
 
 	return out, rows.Err()

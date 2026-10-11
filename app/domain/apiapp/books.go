@@ -55,6 +55,15 @@ type Ledger interface {
 	Candidates(ctx context.Context, actor, id types.ID, accounts []types.ID, from, to string) ([]ledgerbus.Line, error)
 	ProjectBook(ctx context.Context, actor, projectID types.ID) (ledgerbus.Book, error)
 
+	// Payees (payees.go).
+	Payees(ctx context.Context, actor types.ID, owner types.Scope) ([]ledgerbus.Payee, tenancybus.Access, error)
+	Payee(ctx context.Context, actor, id types.ID) (ledgerbus.Payee, tenancybus.Access, error)
+	PayeePayments(ctx context.Context, actor, id types.ID, limit int) ([]ledgerbus.PayeePayment, error)
+	PayeeSuggestions(ctx context.Context, actor types.ID, owner types.Scope) ([]ledgerbus.JoinSuggestion, error)
+	JoinPayees(ctx context.Context, now time.Time, actor, into types.ID, from []types.ID) (ledgerbus.Payee, error)
+	SplitPayee(ctx context.Context, now time.Time, actor, id types.ID, spelling string, into types.ID) (ledgerbus.Payee, error)
+	SetPayee(ctx context.Context, now time.Time, actor, id types.ID, payee string) (ledgerbus.Transaction, error)
+
 	// What keeping the books changes (keeping.go).
 	ImportProposals(ctx context.Context, now time.Time, actor types.ID, props []ledgerbus.Proposal) (int, error)
 	SortMany(ctx context.Context, now time.Time, actor, accountID types.ID, choices []ledgerbus.Choice) (int, map[types.ID]error, error)
@@ -335,7 +344,13 @@ type txOut struct {
 	// web. Description stays the bank's, since it is what rules read.
 	OwnDescription string `json:"own_description,omitempty"`
 	Described      string `json:"own_description_through,omitempty"`
-	Payee          string `json:"payee,omitempty"`
+
+	// Payee is whom it was paid to as written, PayeeID the payee of the
+	// list that is (list_payees), and PayeeThrough the key a program
+	// wrote it through, until a person saves it on the web.
+	Payee        string `json:"payee,omitempty"`
+	PayeeID      string `json:"payee_id,omitempty"`
+	PayeeThrough string `json:"payee_through,omitempty"`
 
 	// CheckMemo and Written are what a check's image says it was for and
 	// the day it was written; Date stays the day it cleared.
@@ -509,6 +524,11 @@ func (rd *reader) tx(t ledgerbus.Transaction, a tenancybus.Account) txOut {
 		ID: t.ID.String(), Account: t.AccountID.String(), Date: t.PostedOn.String(), Description: t.Description,
 		OwnDescription: t.OwnDescription, Described: t.OwnVia, Payee: t.Payee, CheckMemo: t.CheckMemo, Written: t.WrittenOn.String(), Amount: t.Amount, Currency: a.Currency, Holder: t.Holder, Check: t.CheckNumber,
 		Pending: t.Pending, Sorted: t.Sorted(), Parts: []partOut{}, URL: rd.url("/transactions/" + t.ID.String()),
+		PayeeThrough: t.PayeeVia,
+	}
+
+	if !t.PayeeID.Zero() {
+		out.PayeeID = t.PayeeID.String()
 	}
 
 	if t.HasBalance {

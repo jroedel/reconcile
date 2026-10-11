@@ -72,6 +72,21 @@ func (b *Business) WithCheck(ctx context.Context, account types.ID, number strin
 // (payees.go): the payee of the list written that way, or a new one named
 // as written, in the same SQL transaction.
 func (b *Business) SetPayee(ctx context.Context, now time.Time, actor, id types.ID, payee string) (Transaction, error) {
+	return b.setPayee(ctx, now, actor, id, payee, true)
+}
+
+// SetCheckPayee is SetPayee for a check's payee, written from its image,
+// which is never marked as a program's to check, even when Claude read it
+// through a key. The bank's amount has already held the reading to
+// account (receiptbus.ReadCheck), and a month's checks read at once would
+// otherwise be a month of marks for the person to clear one by one, which
+// is what they asked not to have. The history still says the key it came
+// through.
+func (b *Business) SetCheckPayee(ctx context.Context, now time.Time, actor, id types.ID, payee string) (Transaction, error) {
+	return b.setPayee(ctx, now, actor, id, payee, false)
+}
+
+func (b *Business) setPayee(ctx context.Context, now time.Time, actor, id types.ID, payee string, mark bool) (Transaction, error) {
 	payee = strings.Join(strings.Fields(payee), " ")
 	if utf8.RuneCountInString(payee) > MaxPayee {
 		return Transaction{}, ErrPayee
@@ -91,16 +106,30 @@ func (b *Business) SetPayee(ctx context.Context, now time.Time, actor, id types.
 		return Transaction{}, ErrForbidden
 	}
 
-	if t.Payee == payee {
-		return t, nil
+	// Through a key it is marked until a person saves it on the web, as a
+	// description is (describe.go); no payee carries no mark.
+	via := eventbus.ViaFrom(ctx)
+	if payee == "" || !mark {
+		via = ""
 	}
 
-	ev := eventbus.New(now, actor, account.Scope(), TransactionPaidTo, map[string]string{
-		"description": t.Description,
-		"date":        t.PostedOn.String(),
-		"before":      t.Payee,
-		"payee":       payee,
-	})
+	var ev *eventbus.Event
+
+	switch {
+	case t.Payee != payee:
+		e := eventbus.New(now, actor, account.Scope(), TransactionPaidTo, map[string]string{
+			"description": t.Description,
+			"date":        t.PostedOn.String(),
+			"before":      t.Payee,
+			"payee":       payee,
+		})
+		ev = &e
+	case via == "" && t.PayeeVia != "":
+		// A person saved what a program wrote: the mark goes, and the
+		// history has nothing new to say.
+	default:
+		return t, nil
+	}
 
 	// Twice at most: a payee another request made, between the lookup and
 	// the write, under the same spelling is found the second time.
@@ -110,7 +139,7 @@ func (b *Business) SetPayee(ctx context.Context, now time.Time, actor, id types.
 			return Transaction{}, err
 		}
 
-		err = b.store.SetPayee(ctx, id, payee, p, made, ev)
+		err = b.store.SetPayee(ctx, id, payee, via, p, made, ev)
 		if errors.Is(err, ErrPayeeTaken) && made != nil && try == 0 {
 			continue
 		}
@@ -119,7 +148,7 @@ func (b *Business) SetPayee(ctx context.Context, now time.Time, actor, id types.
 			return Transaction{}, err
 		}
 
-		t.Payee, t.PayeeID = payee, p.ID
+		t.Payee, t.PayeeID, t.PayeeVia = payee, p.ID, via
 
 		return t, nil
 	}

@@ -38,7 +38,7 @@ var Expected = sqldb.Expected{
 		"checked", "added", "already", "imported_by", "imported_at", "shape"},
 	"transactions": {"id", "account_id", "statement_id", "posted_on", "description", "amount", "balance",
 		"external_id", "hash", "occurrence", "holder", "pending", "check_number", "payee",
-		"own_description", "own_description_via", "check_memo", "check_written_on", "payee_id"},
+		"own_description", "own_description_via", "check_memo", "check_written_on", "payee_id", "payee_via"},
 	"csv_mappings":        {"account_id", "fingerprint", "mapping", "updated_by", "updated_at"},
 	"splits":              {"id", "transaction_id", "position", "amount", "category_id", "project_id", "memo", "rule_id", "via"},
 	"transaction_aliases": {"account_id", "hash", "transaction_id", "created_at"},
@@ -52,7 +52,7 @@ var Expected = sqldb.Expected{
 		"reconciled_by", "reconciled_at"},
 	"payees": {"id", "org_id", "account_id", "name", "reported", "details_on_file", "note", "via",
 		"joined_into", "created_by", "created_at", "archived_at"},
-	"payee_names":    {"owner", "name", "payee_id"},
+	"payee_names":    {"owner", "name", "payee_id", "via"},
 	"payee_not_same": {"a", "b", "said_by", "said_at"},
 }
 
@@ -895,7 +895,7 @@ SELECT substr(posted_on, 1, 7), count(*),
        min(posted_on),
        sum(EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id AND s.category_id IS NULL)),
        sum(EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id AND s.rule_id IS NOT NULL)),
-       sum(t.own_description_via <> '' OR EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id AND s.via <> ''))
+       sum(t.own_description_via <> '' OR t.payee_via <> '' OR EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id AND s.via <> ''))
 FROM transactions t WHERE account_id = ?
 GROUP BY 1 ORDER BY 1 DESC`, account.String())
 	if err != nil {
@@ -1110,7 +1110,7 @@ func inList(ids []types.ID) (string, []any) {
 	return strings.Join(marks, ", "), args
 }
 
-const transactionColumns = `id, account_id, statement_id, posted_on, description, amount, balance, external_id, hash, occurrence, holder, pending, check_number, payee, own_description, own_description_via, check_memo, check_written_on, coalesce(payee_id, '')`
+const transactionColumns = `id, account_id, statement_id, posted_on, description, amount, balance, external_id, hash, occurrence, holder, pending, check_number, payee, own_description, own_description_via, check_memo, check_written_on, coalesce(payee_id, ''), payee_via`
 
 func (s *Store) transactions(ctx context.Context, q string, args ...any) ([]ledgerbus.Transaction, error) {
 	rows, err := s.db.QueryContext(ctx, q, args...)
@@ -1130,7 +1130,7 @@ func (s *Store) transactions(ctx context.Context, q string, args ...any) ([]ledg
 			balance                sql.NullInt64
 		)
 
-		if err := rows.Scan(&id, &acct, &stmt, &posted, &t.Description, &amount, &balance, &t.ExternalID, &t.Hash, &t.Occurrence, &t.Holder, &t.Pending, &t.CheckNumber, &t.Payee, &t.OwnDescription, &t.OwnVia, &t.CheckMemo, &written, &payee); err != nil {
+		if err := rows.Scan(&id, &acct, &stmt, &posted, &t.Description, &amount, &balance, &t.ExternalID, &t.Hash, &t.Occurrence, &t.Holder, &t.Pending, &t.CheckNumber, &t.Payee, &t.OwnDescription, &t.OwnVia, &t.CheckMemo, &written, &payee, &t.PayeeVia); err != nil {
 			return nil, fmt.Errorf("reading the transactions: %w", err)
 		}
 
