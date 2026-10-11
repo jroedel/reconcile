@@ -72,6 +72,21 @@ func (b *Business) WithCheck(ctx context.Context, account types.ID, number strin
 // (payees.go): the payee of the list written that way, or a new one named
 // as written, in the same SQL transaction.
 func (b *Business) SetPayee(ctx context.Context, now time.Time, actor, id types.ID, payee string) (Transaction, error) {
+	return b.setPayee(ctx, now, actor, id, payee, true)
+}
+
+// SetCheckPayee is SetPayee for a check's payee, written from its image,
+// which is never marked as a program's to check, even when Claude read it
+// through a key. The bank's amount has already held the reading to
+// account (receiptbus.ReadCheck), and a month's checks read at once would
+// otherwise be a month of marks for the person to clear one by one, which
+// is what they asked not to have. The history still says the key it came
+// through.
+func (b *Business) SetCheckPayee(ctx context.Context, now time.Time, actor, id types.ID, payee string) (Transaction, error) {
+	return b.setPayee(ctx, now, actor, id, payee, false)
+}
+
+func (b *Business) setPayee(ctx context.Context, now time.Time, actor, id types.ID, payee string, mark bool) (Transaction, error) {
 	payee = strings.Join(strings.Fields(payee), " ")
 	if utf8.RuneCountInString(payee) > MaxPayee {
 		return Transaction{}, ErrPayee
@@ -94,7 +109,7 @@ func (b *Business) SetPayee(ctx context.Context, now time.Time, actor, id types.
 	// Through a key it is marked until a person saves it on the web, as a
 	// description is (describe.go); no payee carries no mark.
 	via := eventbus.ViaFrom(ctx)
-	if payee == "" {
+	if payee == "" || !mark {
 		via = ""
 	}
 

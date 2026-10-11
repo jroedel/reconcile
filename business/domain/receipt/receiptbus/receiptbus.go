@@ -166,7 +166,7 @@ type Ledger interface {
 	LookupAll(ctx context.Context, ids []types.ID) ([]ledgerbus.Transaction, error)
 	Matching(ctx context.Context, accounts []types.ID, amount money.Amount, on types.Date, days int) ([]ledgerbus.Transaction, error)
 	WithCheck(ctx context.Context, account types.ID, number string) ([]ledgerbus.Transaction, error)
-	SetPayee(ctx context.Context, now time.Time, actor, id types.ID, payee string) (ledgerbus.Transaction, error)
+	SetCheckPayee(ctx context.Context, now time.Time, actor, id types.ID, payee string) (ledgerbus.Transaction, error)
 	SetWritten(ctx context.Context, now time.Time, actor, id types.ID, memo string, on types.Date) (ledgerbus.Transaction, error)
 }
 

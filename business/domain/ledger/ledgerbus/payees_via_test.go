@@ -70,6 +70,14 @@ func TestWhatAKeyChangesInPayeesIsMarked(t *testing.T) {
 		t.Errorf("the payee it left: %+v", left)
 	}
 
+	// A check's payee, read off its image through the key, is not marked:
+	// the bank's amount has checked the reading, and the history still
+	// names the key.
+	read, err := w.ledger.SetCheckPayee(claude, now, p.owner, p.checks["1178"], "Valley Electric")
+	if err != nil || read.PayeeVia != "" || read.ByProgram() != "" || read.Payee != "Valley Electric" {
+		t.Fatalf("a check's payee through the key: %+v, %v", read, err)
+	}
+
 	// A payment's payee, through the key: marked once.
 	set, err := w.ledger.SetPayee(claude, now, p.owner, p.checks["1178"], "Hilltop Plumbing")
 	if err != nil || set.PayeeVia != "Claude" || set.PayeeID != shop.ID || set.ByProgram() != "Claude" {

@@ -237,11 +237,13 @@ Three pull requests after this plan, each useful when merged:
   a payment's goes when a person saves its "Paid to", changed or not. The
   same change sent again through a key marks nothing again, and saving
   unchanged adds no line of history.
-- **A check read through a key is marked** on its payment, since it is a
-  payee set through a key, and Claude's reading of the name is what a
-  person checks; its amount the bank has already checked. Decided in the
-  code, and easy to reverse if it proves noisy: the mark is set in
-  `ledgerbus.SetPayee` from the request's key, whatever called it.
+- **A check read through a key is not marked** (decided 2026-10-11, the
+  first version marked it): the bank's amount has already held Claude's
+  reading to account, and a month's checks read at once made a month of
+  marks to clear one by one. Its payee goes through
+  `ledgerbus.SetCheckPayee`, which never marks; the history still names
+  the key. A payee set with `set_payee`, on a payment no image speaks for,
+  is marked as before.
 - **A payee made for a new name is not marked**, through a key or not:
   the payment that made it is, and a mark on every payee of every check
   Claude reads would be a mark on nothing.
