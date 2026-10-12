@@ -48,6 +48,7 @@ func Read(data []byte) (importbus.Result, error) {
 
 	for _, st := range statements {
 		width := cutWidth(st.Transactions)
+		res.CutAt = max(res.CutAt, width)
 
 		// The first statement to state a balance wins: a later account's
 		// balance would be a wrong number rather than a missing one.
@@ -97,6 +98,7 @@ func Read(data []byte) (importbus.Result, error) {
 	// and a balance at 03:11 are one moment told two ways.
 	if res.Closing.Known && !res.End.IsZero() && res.Closing.AsOf.After(res.End.AddDate(0, 0, 1)) {
 		res.Closing = importbus.Balance{}
+		res.LateBalance = true
 	}
 
 	return res, nil

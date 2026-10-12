@@ -88,7 +88,7 @@ func (a app) keepEndpoints() []Endpoint {
 				{Name: "files", Type: "array of string", Description: "The files to import, by the file id list_inbox gives; every file waiting when left out."},
 				{Name: "accounts", Type: "array of object {file, part, account}", Description: "An account for a file, or for one part of a file, that list_inbox proposed none for, or proposed the wrong one: the file's id, the part as list_inbox gives it (empty for a file of one), and the account. Only an account you keep the books of."},
 			}},
-			Returns: "{imported, files: [{file, name, parts: [{part, account, account_name, outcome: imported|already_imported|waiting, needs, page, mends}]}], imports_url} (mends as list_inbox says it; for an imported part, what the import did); or, while the files are still being read or imported, " + workingReturns,
+			Returns: "{imported, files: [{file, name, parts: [{part, account, account_name, outcome: imported|already_imported|waiting, needs, page, mends, capabilities}]}], together, imports_url}; mends, capabilities and together as list_inbox says them (for an imported part, mends is what the import did). While the files are still being read or imported, " + workingReturns,
 			handler: a.importInbox,
 		},
 		{
@@ -409,7 +409,7 @@ func (a app) importInbox(w http.ResponseWriter, r *http.Request) {
 		out = append(out, map[string]any{"file": id.String(), "name": names[id], "parts": parts})
 	}
 
-	answer := map[string]any{"imported": n, "files": out, "imports_url": rd.url("/imports")}
+	answer := map[string]any{"imported": n, "files": out, "together": rd.together(props), "imports_url": rd.url("/imports")}
 
 	// Imported meanwhile in another tab, say, or refused at the last
 	// moment: the import's own page says why, and list_inbox says what

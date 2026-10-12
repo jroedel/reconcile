@@ -424,6 +424,11 @@ func TestReadDropsABalanceFromAfterThePeriod(t *testing.T) {
 		t.Errorf("a balance dated after the period was kept: %s", got.Closing.Amount.Display())
 	}
 
+	// And it is said, for the page that says what the file can do.
+	if !got.LateBalance {
+		t.Error("a balance left out for its date was not said")
+	}
+
 	// A day after the period's end is the same moment in another clock.
 	nextDay := strings.Replace(sgml, "<DTASOF>20260731", "<DTASOF>20260801", 1)
 
@@ -456,6 +461,11 @@ func TestNamesCutAtTheBanksWidthEndInAnEllipsis(t *testing.T) {
 		if got[i].Description != w {
 			t.Errorf("record %d = %q, want %q", i, got[i].Description, w)
 		}
+	}
+
+	// The width is kept, for the page that says what the file can do.
+	if res, err := ofxsource.Read([]byte(cutAt12("HARDWARE BAR", "COFFEE CART ", "BOOK STALL #"))); err != nil || res.CutAt != 12 {
+		t.Errorf("cut at %d (error %v), want 12", res.CutAt, err)
 	}
 
 	// Two different names tied at the longest is no width anybody cut at.
