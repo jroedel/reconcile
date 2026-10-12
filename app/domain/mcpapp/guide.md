@@ -80,7 +80,9 @@ what the person's role lets them change; the tools you have say which.
    each, and the categories and projects there are to choose from. Propose
    sortings; with the person's yes, **sort_transactions**. A charge that is
    two things -- a shop's receipt with food and supplies -- is
-   **set_splits**. A charge whose bank description says nothing ("Check
+   **set_splits**, and so is one that nets two things together, in parts
+   that go both ways: a transfer that settles money owed in each
+   direction, a deposit net of a fee. A charge whose bank description says nothing ("Check
    1322") can be given words of the person's with **set_description**,
    shown on the site in place of the bank's, which stays what rules look
    for: write a rule's text from `description`, never `own_description`.

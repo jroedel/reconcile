@@ -117,9 +117,9 @@ func TestSplittingATransaction(t *testing.T) {
 		field string
 	}{
 		"not adding up": {[]ledgerbus.Part{{Amount: money.MustParse("-30.00")}}, "sum"},
-		"the wrong way round": {[]ledgerbus.Part{
-			{Amount: money.MustParse("-40.00")}, {Amount: money.MustParse("6.01")},
-		}, "amount"},
+		"either way, not adding up": {[]ledgerbus.Part{
+			{Amount: money.MustParse("-40.00")}, {Amount: money.MustParse("6.00")},
+		}, "sum"},
 		"a zero part":              {[]ledgerbus.Part{{Amount: money.MustParse("-33.99")}, {}}, "amount"},
 		"none":                     {nil, "count"},
 		"somebody else's category": {[]ledgerbus.Part{{Amount: money.MustParse("-33.99"), CategoryID: types.NewID()}}, "category"},
@@ -144,6 +144,76 @@ func TestSplittingATransaction(t *testing.T) {
 		ledgerbus.Part{Amount: money.MustParse("-2.99"), CategoryID: e.utilities},
 	); err != nil {
 		t.Errorf("keeping an archived category that was there: %v", err)
+	}
+}
+
+// A transaction that nets two things together is split into parts that go
+// both ways (issue #101), and each is added up with its own sign: the
+// project has the whole of what came in for it, and the expense netted out
+// of it is an expense.
+func TestPartsEitherWay(t *testing.T) {
+	w := newWorld(t)
+	e := newEstate(w)
+	ctx := t.Context()
+
+	trips, err := w.cats.Create(ctx, now, e.owner, types.OrgScope(e.org), "Trips & retreats", categorybus.Income)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	july := func() ledgerbus.Total {
+		t.Helper()
+
+		_, totals, err := w.ledger.OrgPeriod(ctx, e.owner, e.org, date(t, "2026-07-01"), date(t, "2026-07-31"))
+		if err != nil || len(totals) != 1 {
+			t.Fatalf("%+v, %v", totals, err)
+		}
+
+		return totals[0]
+	}
+
+	before := july()
+
+	// The deposit of 1000.00 was 1050.00 for the trip, net of 50.00 of
+	// groceries this account had bought for another.
+	if _, err := w.ledger.SetSplits(ctx, now, e.owner, e.deposit.ID, []ledgerbus.Part{
+		{Amount: money.MustParse("1050.00"), CategoryID: trips.ID, ProjectID: e.project},
+		{Amount: money.MustParse("-50.00"), CategoryID: e.groceries, Memo: "bought for us on their card"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	book, err := w.ledger.ProjectBook(ctx, e.owner, e.project)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	in := money.MustParse("1050.00")
+	if want := (ledgerbus.Total{Currency: "USD", In: in, Operations: ledgerbus.Operations{Income: in}}); len(book.Totals) != 1 || book.Totals[0] != want {
+		t.Errorf("the project's totals: %+v", book.Totals)
+	}
+
+	after := july()
+	if d := after.Income - before.Income; d != in {
+		t.Errorf("income went up by %s, want 1050.00", d)
+	}
+
+	if d := after.Expenses - before.Expenses; d != money.MustParse("-50.00") {
+		t.Errorf("expenses went by %s, want -50.00", d)
+	}
+
+	if d := after.Unsorted - before.Unsorted; d != -e.deposit.Amount {
+		t.Errorf("unsorted went by %s, want the deposit out of it", d)
+	}
+
+	// A zero part beside them says nothing; a single part is the whole.
+	for name, parts := range map[string][]ledgerbus.Part{
+		"a zero part":           {{Amount: money.MustParse("1050.00")}, {Amount: money.MustParse("-50.00")}, {}},
+		"one part turned round": {{Amount: -e.deposit.Amount}},
+	} {
+		if _, err := w.ledger.SetSplits(ctx, now, e.owner, e.deposit.ID, parts); err == nil {
+			t.Errorf("%s was saved", name)
+		}
 	}
 }
 

@@ -17,7 +17,7 @@
 {{template "cleared" (dict "By" $v.ClearedBy "Currency" $cur)}}
 {{if $v.Explained}}<p><a href="/transactions/{{$t.ID}}/explain">{{t "What makes up this amount"}}</a> {{if $v.Settled}}<span class="badge ok">{{t "explained"}}</span>{{else}}<span class="badge">{{t "open"}}</span>{{end}}</p>
 {{else if not $v.ClearedBy}}<p class="hint"><a href="/transactions/{{$t.ID}}/explain">{{t "Explain this amount"}}</a> · {{t "which transactions make it up?"}}</p>{{end}}
-{{template "parts-problem" $v}}
+{{template "parts-problem" (dict "Problem" $v.Problem "Part" $v.Part "Left" $v.Left "Currency" $cur)}}
 {{template "done" $v.Done}}
 {{if $t.ByRule}}<p class="hint"><span class="badge">{{t "sorted by rule"}}</span> {{t "A sorting rule chose this. Saving it, changed or not, says a person has checked it."}}</p>
 {{else}}{{with $t.Through}}<p class="hint"><span class="badge">{{t "sorted by a program"}}</span> {{t "A program sorted this through the API key “{name}”. Saving it, changed or not, says a person has checked it." "name" .}}</p>{{end}}{{end}}
@@ -115,7 +115,8 @@
   </div>
 </fieldset>
 {{end}}
-{{if gt (len $v.Rows) 1}}<p class="hint">{{t "The parts must add up to {total}. To take a part out, empty all of its fields." "total" (money $t.Amount.Abs $cur)}}</p>
+{{if gt (len $v.Rows) 1}}<p class="hint">{{t "The parts must add up to {total}. To take a part out, empty all of its fields." "total" (money $t.Amount.Abs $cur)}}
+{{if $v.Out}}{{t "A part that is money in, such as a credit netted out of the charge, takes a plus sign: +20.00."}}{{else}}{{t "A part that is money out, such as a fee netted out of the deposit, takes a minus sign: -20.00."}}{{end}}</p>
 {{else}}
 <div class="card always">
   <label class="choice"><input type="checkbox" name="always" value="1"{{if $v.Always}} checked{{end}}> {{t "Always sort charges like this the same way"}}</label>

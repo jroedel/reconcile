@@ -106,7 +106,7 @@ func TestSortingATransaction(t *testing.T) {
 		t.Fatalf("parts that do not add up: %d", rec.Code)
 	}
 
-	wantBody(t, rec, "must add up to the whole transaction", `value="3.98"`, "light bulbs")
+	wantBody(t, rec, "$0.01 is still to go into a part", `value="3.98"`, "light bulbs")
 
 	two.Set("amount-1", "3.99")
 	wantRedirect(t, e.owner.post(grocery, two), e.account+"/transactions?month=2026-07&done=sorted")
@@ -115,6 +115,39 @@ func TestSortingATransaction(t *testing.T) {
 	// The project's book and history.
 	wantBody(t, e.owner.get(e.project), `href="`+e.project+`/book"`, "put -$30.00 of CORNER GROCERY (2026-07-03, Parish checking) into it")
 	wantBody(t, e.owner.get(e.project+"/book"), "Short by $30.00", "Groceries", "Parish checking", "CORNER GROCERY")
+}
+
+// A part that goes the other way from its transaction is typed with its
+// sign (issue #101); one without a sign goes the transaction's way.
+func TestPartsEitherWayOnThePage(t *testing.T) {
+	t.Parallel()
+
+	e, txs, _, _ := sorted(t)
+	grocery := txs["CORNER GROCERY"]
+	choices := options(e.owner.get(grocery).Body.String())
+
+	// -33.99 is 40.00 of groceries less a 6.01 credit for a returned item.
+	parts := url.Values{
+		"action":   {"save"},
+		"amount-0": {"40.00"}, "category-0": {choices["Groceries"]}, "project-0": {""}, "memo-0": {""},
+		"amount-1": {"6.01"}, "category-1": {choices["Groceries"]}, "project-1": {""}, "memo-1": {"returned"},
+	}
+
+	rec := e.owner.post(grocery, parts)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("6.01 without a sign was not taken as money out: %d", rec.Code)
+	}
+
+	wantBody(t, rec, "together they come to $12.02 more than it", "takes a plus sign")
+
+	parts.Set("amount-1", "+6.01")
+	wantRedirect(t, e.owner.post(grocery, parts), e.account+"/transactions?month=2026-07&done=sorted")
+
+	// Shown again as typed: the part that goes the other way with its sign.
+	wantBody(t, e.owner.get(grocery), `value="40.00"`, `value="&#43;6.01"`)
+
+	// Saved again from the page as shown, it is the same.
+	wantRedirect(t, e.owner.post(grocery, parts), e.account+"/transactions?month=2026-07&done=sorted")
 }
 
 func TestCategoryLists(t *testing.T) {

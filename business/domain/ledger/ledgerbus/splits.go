@@ -221,8 +221,15 @@ func (b *Business) projectChoices(ctx context.Context, actor types.ID, t Transac
 
 // SetSplits replaces a transaction's parts.
 //
-// The parts must add up to the transaction, each one the same way round as
-// it -- money out split into money out -- and none of them zero. A category
+// The parts must add up to the transaction, and none of them be zero. They
+// may go either way: one transfer of 30.00 that settles 50.00 owed to this
+// account and 20.00 it owed back is a part of 50.00 in and one of 20.00
+// out, and putting the 30.00 in one category would understate the first
+// and leave the second off the books (issue #101). Each part is added up
+// with its own sign everywhere, so a project's book and the totals by kind
+// already read them so; only this check ever held them to the whole's.
+// A single part is the whole, so its sign is the whole's anyway. A
+// category
 // must be on the account's list. A project must be one the actor keeps the
 // books of, unless a part was in it already: a bookkeeper of the account
 // who cannot see a project may still re-sort a transaction that somebody
@@ -277,7 +284,7 @@ func (b *Business) SetSplits(ctx context.Context, now time.Time, actor, id types
 
 var (
 	errSum      = errors.New("the parts must add up to the whole")
-	errAmount   = errors.New("each part needs an amount, the same way round as the whole")
+	errAmount   = errors.New("each part needs an amount that is not zero")
 	errCount    = errors.New("there must be at least one part, and not too many")
 	errCategory = errors.New("that category is not on this account's list")
 	errProject  = errors.New("that project is not one you keep the books of")
@@ -302,9 +309,9 @@ func (b *Business) checkParts(ctx context.Context, actor types.ID, e Editor, par
 		sum += p.Amount
 
 		switch {
-		case p.Amount == 0 && t.Amount != 0,
-			p.Amount < 0 && t.Amount > 0,
-			p.Amount > 0 && t.Amount < 0:
+		// A zero part says nothing, so it is refused unless it is the
+		// only part of a transaction of nothing.
+		case p.Amount == 0 && len(parts) > 1, p.Amount == 0 && t.Amount != 0:
 			return Invalid{Index: i, Field: "amount", Err: errAmount}
 		case utf8.RuneCountInString(p.Memo) > MaxMemo:
 			return Invalid{Index: i, Field: "memo", Err: errMemo}
