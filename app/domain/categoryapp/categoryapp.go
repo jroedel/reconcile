@@ -76,6 +76,12 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	handle("POST /categories/{id}/rename", a.rename)
 	handle("POST /categories/{id}/archive", a.archive)
 	handle("POST /categories/{id}/kind", a.setKind)
+	handle("POST /categories/{id}/group", a.setGroup)
+
+	handle("POST /orgs/{id}/categories/groups", a.addGroup(types.ScopeOrg))
+	handle("POST /accounts/{id}/categories/groups", a.addGroup(types.ScopeAccount))
+	handle("POST /category-groups/{id}/rename", a.renameGroup)
+	handle("POST /category-groups/{id}/archive", a.archiveGroup)
 }
 
 func actor(w http.ResponseWriter, r *http.Request) (userbus.User, bool) {
@@ -113,8 +119,11 @@ func (a app) failed(w http.ResponseWriter, r *http.Request, err error) {
 // problem is the code a page words for an error with what was typed.
 func problem(err error) string {
 	if invalid, ok := errors.AsType[tenancybus.Invalid](err); ok {
-		if invalid.Field == "category-kind" {
+		switch invalid.Field {
+		case "category-kind":
 			return "kind"
+		case "group-name", "group-kind", "group-archived":
+			return invalid.Field
 		}
 
 		return "name"
@@ -152,6 +161,10 @@ type listView struct {
 	Archived []categorybus.Category
 	Kinds    []categorybus.Kind
 
+	// ArchivedHeadings is the groups off the choices and holding nothing
+	// still in use; one that holds a category is shown over it instead.
+	ArchivedHeadings []categorybus.Heading
+
 	// Settling is the balances that should come back to zero: each
 	// pass-through category's, and the transfers across the accounts.
 	Settling ledgerbus.Settling
@@ -163,8 +176,27 @@ type listView struct {
 	Done    string
 }
 
+// group is the categories of one kind: under the groups (headings) a list
+// has for reading its reports, and under none.
 type group struct {
 	Kind       categorybus.Kind
+	Categories []categorybus.Category // under no group
+	Shelves    []shelf
+
+	// Headings is the groups a category of the kind may be put under:
+	// the ones not archived.
+	Headings []categorybus.Heading
+}
+
+// Groupable reports whether the kind's categories can have groups worth
+// reading: a report's rows are income and expenses.
+func (g group) Groupable() bool {
+	return g.Kind == categorybus.Income || g.Kind == categorybus.Expense
+}
+
+// shelf is a heading and the categories under it.
+type shelf struct {
+	Heading    categorybus.Heading
 	Categories []categorybus.Category
 }
 
@@ -239,7 +271,15 @@ func (a app) page(w http.ResponseWriter, r *http.Request, me userbus.User, owner
 		view.Kind = categorybus.Expense
 	}
 
+	headings, err := a.cfg.Categories.Headings(r.Context(), me.ID, owner)
+	if err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
 	byKind := map[categorybus.Kind][]categorybus.Category{}
+	under := map[types.ID][]categorybus.Category{}
 
 	for _, c := range list {
 		switch {
@@ -247,14 +287,35 @@ func (a app) page(w http.ResponseWriter, r *http.Request, me userbus.User, owner
 			view.Archived = append(view.Archived, c)
 		case c.Kind == categorybus.Unsaid:
 			view.Unsaid = append(view.Unsaid, c)
+		case !c.GroupID.Zero():
+			under[c.GroupID] = append(under[c.GroupID], c)
 		default:
 			byKind[c.Kind] = append(byKind[c.Kind], c)
 		}
 	}
 
 	for _, k := range categorybus.Kinds {
-		if len(byKind[k]) > 0 {
-			view.Groups = append(view.Groups, group{Kind: k, Categories: byKind[k]})
+		g := group{Kind: k, Categories: byKind[k]}
+
+		for _, h := range headings {
+			if h.Kind != k {
+				continue
+			}
+
+			if !h.Archived() {
+				g.Headings = append(g.Headings, h)
+			}
+
+			switch {
+			case len(under[h.ID]) > 0 || !h.Archived():
+				g.Shelves = append(g.Shelves, shelf{Heading: h, Categories: under[h.ID]})
+			default:
+				view.ArchivedHeadings = append(view.ArchivedHeadings, h)
+			}
+		}
+
+		if len(g.Categories) > 0 || len(g.Shelves) > 0 {
+			view.Groups = append(view.Groups, g)
 		}
 	}
 
@@ -372,4 +433,118 @@ func (a app) change(w http.ResponseWriter, r *http.Request, do func(userbus.User
 	}
 
 	http.Redirect(w, r, pathOf(c.Owner)+"?done="+done, http.StatusSeeOther)
+}
+
+// setGroup puts a category under a group of its list, or under none when
+// the form's group is empty.
+func (a app) setGroup(w http.ResponseWriter, r *http.Request) {
+	a.change(w, r, func(me userbus.User, id types.ID) (categorybus.Category, string, error) {
+		var heading types.ID
+
+		if s := r.PostForm.Get("group"); s != "" {
+			var err error
+			if heading, err = types.ParseID(s); err != nil {
+				return categorybus.Category{}, "", categorybus.ErrNotFound
+			}
+		}
+
+		c, err := a.cfg.Categories.SetHeading(r.Context(), a.cfg.Now(), me.ID, id, heading)
+
+		done := "grouped"
+		if heading.Zero() {
+			done = "ungrouped"
+		}
+
+		return c, done, err
+	})
+}
+
+// --- groups ------------------------------------------------------------------------
+
+func (a app) addGroup(kind types.ScopeKind) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		me, ok := actor(w, r)
+		if !ok {
+			return
+		}
+
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "That form could not be read. Open the page again and send it from there.", http.StatusBadRequest)
+
+			return
+		}
+
+		owner, _, ok := a.owner(w, r, me, kind)
+		if !ok {
+			return
+		}
+
+		_, err := a.cfg.Categories.AddHeading(r.Context(), a.cfg.Now(), me.ID, owner, r.PostForm.Get("name"), categorybus.Kind(r.PostForm.Get("kind")))
+
+		switch code := problem(err); {
+		case errors.Is(err, categorybus.ErrDuplicate):
+			http.Redirect(w, r, pathOf(owner)+"?problem=group-duplicate", http.StatusSeeOther)
+		case code != "":
+			http.Redirect(w, r, pathOf(owner)+"?problem="+url.QueryEscape(code), http.StatusSeeOther)
+		case err != nil:
+			a.failed(w, r, err)
+		default:
+			http.Redirect(w, r, pathOf(owner)+"?done=group-added", http.StatusSeeOther)
+		}
+	}
+}
+
+func (a app) renameGroup(w http.ResponseWriter, r *http.Request) {
+	a.changeGroup(w, r, func(me userbus.User, id types.ID) (categorybus.Heading, string, error) {
+		h, err := a.cfg.Categories.RenameHeading(r.Context(), a.cfg.Now(), me.ID, id, r.PostForm.Get("name"))
+
+		return h, "group-renamed", err
+	})
+}
+
+func (a app) archiveGroup(w http.ResponseWriter, r *http.Request) {
+	a.changeGroup(w, r, func(me userbus.User, id types.ID) (categorybus.Heading, string, error) {
+		archived := r.PostForm.Get("archived") == "1"
+
+		h, err := a.cfg.Categories.SetHeadingArchived(r.Context(), a.cfg.Now(), me.ID, id, archived)
+
+		done := "group-restored"
+		if archived {
+			done = "group-archived"
+		}
+
+		return h, done, err
+	})
+}
+
+// changeGroup is change, for a group.
+func (a app) changeGroup(w http.ResponseWriter, r *http.Request, do func(userbus.User, types.ID) (categorybus.Heading, string, error)) {
+	me, ok := actor(w, r)
+	if !ok {
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "That form could not be read. Open the page again and send it from there.", http.StatusBadRequest)
+
+		return
+	}
+
+	id, ok := a.pathID(w, r)
+	if !ok {
+		return
+	}
+
+	h, done, err := do(me, id)
+
+	switch code := problem(err); {
+	case errors.Is(err, categorybus.ErrDuplicate) && !h.ID.Zero():
+		http.Redirect(w, r, pathOf(h.Owner)+"?problem=group-duplicate", http.StatusSeeOther)
+	case code != "" && !h.ID.Zero():
+		http.Redirect(w, r, pathOf(h.Owner)+"?problem="+url.QueryEscape(code), http.StatusSeeOther)
+	case err != nil:
+		a.failed(w, r, err)
+	default:
+		http.Redirect(w, r, pathOf(h.Owner)+"?done="+done, http.StatusSeeOther)
+	}
 }

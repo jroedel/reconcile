@@ -109,10 +109,12 @@ type Storer interface {
 type storedChoices struct {
 	Accounts    []string `json:"accounts,omitempty"`
 	PassThrough string   `json:"passthrough,omitempty"`
+	Detail      string   `json:"detail,omitempty"`
 }
 
 func encodeChoices(c IncomeExpensesChoices) string {
-	sc := storedChoices{PassThrough: string(c.normal().PassThrough)}
+	c = c.normal()
+	sc := storedChoices{PassThrough: string(c.PassThrough), Detail: string(c.Detail)}
 	for _, id := range c.Accounts {
 		sc.Accounts = append(sc.Accounts, id.String())
 	}
@@ -130,7 +132,7 @@ func (s Saved) IncomeExpensesChoices() IncomeExpensesChoices {
 
 	_ = json.Unmarshal([]byte(s.Choices), &sc)
 
-	c := IncomeExpensesChoices{PassThrough: PassThroughShown(sc.PassThrough)}
+	c := IncomeExpensesChoices{PassThrough: PassThroughShown(sc.PassThrough), Detail: Detail(sc.Detail)}
 
 	for _, a := range sc.Accounts {
 		if id, err := types.ParseID(a); err == nil {

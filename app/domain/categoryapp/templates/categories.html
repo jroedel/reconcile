@@ -26,36 +26,43 @@
 </section>
 {{end}}
 
-{{range $v.Groups}}
+{{range $g := $v.Groups}}
 <section class="card">
 <h2>{{template "kind" .Kind}}</h2>
 <p class="hint">{{template "kind-help" .Kind}}</p>
-<ul class="list">
-{{range .Categories}}<li>
-{{if $v.CanBookkeep}}
-<form method="post" action="/categories/{{.ID}}/rename" class="inline">
-  <label class="visually-hidden" for="name-{{.ID}}">{{t "Name"}}</label>
-  <input id="name-{{.ID}}" name="name" type="text" required maxlength="60" value="{{.Name}}">
+{{range .Shelves}}{{$h := .Heading}}
+<h3>{{$h.Name}}{{if $h.Archived}} <span class="badge">{{t "archived"}}</span>{{end}}</h3>
+{{if $v.CanBookkeep}}<details class="inline"><summary>{{t "Change the group"}}</summary>
+<form method="post" action="/category-groups/{{$h.ID}}/rename" class="inline">
+  <label class="visually-hidden" for="group-name-{{$h.ID}}">{{t "Name"}}</label>
+  <input id="group-name-{{$h.ID}}" name="name" type="text" required maxlength="60" value="{{$h.Name}}">
   <button type="submit" class="quiet">{{t "Rename"}}</button>
 </form>
-<form method="post" action="/categories/{{.ID}}/archive" class="inline">
-  <input type="hidden" name="archived" value="1"><button type="submit" class="link">{{t "Archive"}}</button>
+<form method="post" action="/category-groups/{{$h.ID}}/archive" class="inline">
+  {{if $h.Archived}}<input type="hidden" name="archived" value="0"><button type="submit" class="link">{{t "Bring it back"}}</button>
+  {{else}}<input type="hidden" name="archived" value="1"><button type="submit" class="link">{{t "Archive"}}</button>{{end}}
 </form>
-{{if $v.CanManage}}{{$cur := .Kind}}
-<details class="inline"><summary>{{t "Change its kind"}}</summary>
-<form method="post" action="/categories/{{.ID}}/kind" class="inline">
-  <label class="visually-hidden" for="kind-{{.ID}}">{{t "Kind"}}</label>
-  <select id="kind-{{.ID}}" name="kind">
-    {{range $v.Kinds}}<option value="{{.}}"{{if eq . $cur}} selected{{end}}>{{template "kind" .}}</option>{{end}}
-  </select>
-  <button type="submit" class="quiet">{{t "Save"}}</button>
-  <p class="hint">{{t "Every part already in it moves with it, earlier months included."}}</p>
+<p class="hint">{{t "An archived group keeps its categories, so that earlier reports read as they did; none can be put under it."}}</p>
+</details>{{end}}
+{{if .Categories}}<ul class="list">
+{{range .Categories}}{{template "category-item" (dict "C" . "V" $v "G" $g)}}{{end}}
+</ul>{{else}}<p class="hint">{{t "No categories under it yet."}}</p>{{end}}
+{{end}}
+{{if .Categories}}{{if .Shelves}}<h3>{{t "Under no group"}}</h3>{{end}}
+<ul class="list">
+{{range .Categories}}{{template "category-item" (dict "C" . "V" $v "G" $g)}}{{end}}
+</ul>{{end}}
+{{if and $v.CanBookkeep .Groupable}}
+<details><summary>{{t "Add a group"}}</summary>
+<p class="hint">{{t "A group puts several categories on one line of a report, such as Food over groceries and meals out. Transactions are still sorted into the categories."}}</p>
+<form method="post" action="{{$v.Path}}/groups" class="inline">
+  <input type="hidden" name="kind" value="{{.Kind}}">
+  <label class="visually-hidden" for="group-new-{{.Kind}}">{{t "Name"}}</label>
+  <input id="group-new-{{.Kind}}" name="name" type="text" required maxlength="60" placeholder="{{t "Food"}}">
+  <button type="submit" class="quiet">{{t "Add"}}</button>
 </form>
 </details>
 {{end}}
-{{else}}{{.Name}}{{end}}
-</li>
-{{end}}</ul>
 </section>
 {{end}}
 
@@ -106,4 +113,49 @@
 {{range $v.Archived}}<li>{{.Name}}
 {{if $v.CanBookkeep}}<form method="post" action="/categories/{{.ID}}/archive" class="inline"><input type="hidden" name="archived" value="0"><button type="submit" class="link">{{t "Bring it back"}}</button></form>{{end}}
 </li>{{end}}</ul></details></section>{{end}}
+
+{{if $v.ArchivedHeadings}}<section class="card"><details><summary>{{t "Archived groups"}}</summary>
+<ul class="list">
+{{range $v.ArchivedHeadings}}<li>{{.Name}} <span class="hint">{{template "kind" .Kind}}</span>
+{{if $v.CanBookkeep}}<form method="post" action="/category-groups/{{.ID}}/archive" class="inline"><input type="hidden" name="archived" value="0"><button type="submit" class="link">{{t "Bring it back"}}</button></form>{{end}}
+</li>{{end}}</ul></details></section>{{end}}
+{{end}}
+
+{{/* category-item is one category of a kind's card, with what a person may do to it. */}}
+{{define "category-item"}}{{$c := .C}}{{$v := .V}}{{$g := .G}}<li>
+{{if $v.CanBookkeep}}
+<form method="post" action="/categories/{{$c.ID}}/rename" class="inline">
+  <label class="visually-hidden" for="name-{{$c.ID}}">{{t "Name"}}</label>
+  <input id="name-{{$c.ID}}" name="name" type="text" required maxlength="60" value="{{$c.Name}}">
+  <button type="submit" class="quiet">{{t "Rename"}}</button>
+</form>
+<form method="post" action="/categories/{{$c.ID}}/archive" class="inline">
+  <input type="hidden" name="archived" value="1"><button type="submit" class="link">{{t "Archive"}}</button>
+</form>
+{{if or $g.Headings (not $c.GroupID.Zero)}}
+<details class="inline"><summary>{{t "Its group"}}</summary>
+<form method="post" action="/categories/{{$c.ID}}/group" class="inline">
+  <label class="visually-hidden" for="group-{{$c.ID}}">{{t "Group"}}</label>
+  <select id="group-{{$c.ID}}" name="group">
+    <option value="">{{t "Under no group"}}</option>
+    {{range $g.Headings}}<option value="{{.ID}}"{{if eq .ID $c.GroupID}} selected{{end}}>{{.Name}}</option>{{end}}
+  </select>
+  <button type="submit" class="quiet">{{t "Save"}}</button>
+</form>
+</details>
+{{end}}
+{{if $v.CanManage}}{{$cur := $c.Kind}}
+<details class="inline"><summary>{{t "Change its kind"}}</summary>
+<form method="post" action="/categories/{{$c.ID}}/kind" class="inline">
+  <label class="visually-hidden" for="kind-{{$c.ID}}">{{t "Kind"}}</label>
+  <select id="kind-{{$c.ID}}" name="kind">
+    {{range $v.Kinds}}<option value="{{.}}"{{if eq . $cur}} selected{{end}}>{{template "kind" .}}</option>{{end}}
+  </select>
+  <button type="submit" class="quiet">{{t "Save"}}</button>
+  <p class="hint">{{t "Every part already in it moves with it, earlier months included."}}</p>
+</form>
+</details>
+{{end}}
+{{else}}{{$c.Name}}{{end}}
+</li>
 {{end}}

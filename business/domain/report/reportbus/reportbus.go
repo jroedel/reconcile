@@ -51,16 +51,25 @@ type Ledger interface {
 	Coverage(ctx context.Context, actor, accountID types.ID, today types.Date) ([]ledgerbus.MonthCover, error)
 }
 
+// Categories is the books' categories and the groups they are under
+// (categorybus), read for grouping and asked no permission: the books
+// have been asked already.
+type Categories interface {
+	Of(ctx context.Context, owner types.Scope) ([]categorybus.Category, error)
+	HeadingsOf(ctx context.Context, owner types.Scope) ([]categorybus.Heading, error)
+}
+
 // Business is the reports.
 type Business struct {
-	access Access
-	ledger Ledger
-	store  Storer
+	access     Access
+	ledger     Ledger
+	categories Categories
+	store      Storer
 }
 
 // NewBusiness constructs one.
-func NewBusiness(access Access, ledger Ledger, store Storer) *Business {
-	return &Business{access: access, ledger: ledger, store: store}
+func NewBusiness(access Access, ledger Ledger, categories Categories, store Storer) *Business {
+	return &Business{access: access, ledger: ledger, categories: categories, store: store}
 }
 
 // --- the books a report is of ---------------------------------------------------
@@ -133,10 +142,12 @@ func (bk Books) chosen(ids []types.ID) []tenancybus.Account {
 // Dimension is a way the engine groups parts.
 type Dimension string
 
-// The dimensions. Category groups and payees join them when the reports
-// that read them do (docs/reports.md, build order).
+// The dimensions. A category's group is the heading it is under
+// (categorybus.Heading), zero for one under none. Payees join them when a
+// report that reads them does (docs/reports.md, build order).
 const (
 	ByKind     Dimension = "kind"
+	ByGroup    Dimension = "group"
 	ByCategory Dimension = "category"
 	ByProject  Dimension = "project"
 	ByAccount  Dimension = "account"
@@ -144,7 +155,7 @@ const (
 )
 
 // Dimensions is every one, for reading one from an address.
-var Dimensions = []Dimension{ByKind, ByCategory, ByProject, ByAccount, ByMonth}
+var Dimensions = []Dimension{ByKind, ByGroup, ByCategory, ByProject, ByAccount, ByMonth}
 
 // Question is what the engine is asked: the parts of a scope's books in a
 // period, of some of its accounts or all of them, grouped by some
@@ -162,6 +173,7 @@ type Question struct {
 // part in no category, or in one whose kind its owner has not said.
 type Key struct {
 	Kind       categorybus.Kind
+	GroupID    types.ID
 	CategoryID types.ID
 	ProjectID  types.ID
 	AccountID  types.ID
@@ -174,6 +186,7 @@ type Key struct {
 type Cell struct {
 	Key
 	Category string // the category's name, when grouped by category
+	Group    string // the group's name, when grouped by group and it has one
 	Sum      money.Amount
 	In, Out  money.Amount
 	Count    int
@@ -190,7 +203,12 @@ type Answer struct {
 
 	Cells []Cell
 
-	lines []ledgerbus.ProjectLine
+	// Headings is the books' groups, by ID, archived ones too: a report
+	// of last year names the groups it was read under.
+	Headings map[types.ID]categorybus.Heading
+
+	lines   []ledgerbus.ProjectLine
+	groupOf map[types.ID]types.ID // a category's group
 }
 
 // Sum answers a question, for anyone who may read the scope.
@@ -200,7 +218,7 @@ func (b *Business) Sum(ctx context.Context, actor types.ID, q Question) (Answer,
 		return Answer{}, err
 	}
 
-	a.Cells = sum(a.lines, q.By)
+	a.Cells = sum(a.lines, q.By, a.groupOf, a.Headings)
 
 	return a, nil
 }
@@ -218,7 +236,7 @@ func (b *Business) Parts(ctx context.Context, actor types.ID, q Question, k Key)
 	var out []ledgerbus.ProjectLine
 
 	for _, l := range a.lines {
-		got := keyOf(l, q.By)
+		got := keyOf(l, q.By, a.groupOf)
 		if k.Currency == "" {
 			got.Currency = ""
 		}
@@ -259,6 +277,28 @@ func (b *Business) read(ctx context.Context, actor types.ID, q Question) (Answer
 
 	a.lines = slices.DeleteFunc(a.lines, func(l ledgerbus.ProjectLine) bool { return !in[l.AccountID] })
 
+	cats, err := b.categories.Of(ctx, q.Scope)
+	if err != nil {
+		return Answer{}, err
+	}
+
+	a.groupOf = make(map[types.ID]types.ID, len(cats))
+	for _, c := range cats {
+		if !c.GroupID.Zero() {
+			a.groupOf[c.ID] = c.GroupID
+		}
+	}
+
+	headings, err := b.categories.HeadingsOf(ctx, q.Scope)
+	if err != nil {
+		return Answer{}, err
+	}
+
+	a.Headings = make(map[types.ID]categorybus.Heading, len(headings))
+	for _, h := range headings {
+		a.Headings[h.ID] = h
+	}
+
 	for _, l := range a.lines {
 		m := l.PostedOn.String()[:7]
 		if a.First == "" || m < a.First {
@@ -281,14 +321,16 @@ func kindOf(l ledgerbus.ProjectLine) categorybus.Kind {
 	return l.CategoryKind
 }
 
-// keyOf is a part's group under some dimensions.
-func keyOf(l ledgerbus.ProjectLine, by []Dimension) Key {
+// keyOf is a part's place under some dimensions.
+func keyOf(l ledgerbus.ProjectLine, by []Dimension, groupOf map[types.ID]types.ID) Key {
 	k := Key{Currency: l.Currency}
 
 	for _, d := range by {
 		switch d {
 		case ByKind:
 			k.Kind = kindOf(l)
+		case ByGroup:
+			k.GroupID = groupOf[l.Split.CategoryID]
 		case ByCategory:
 			k.CategoryID = l.Split.CategoryID
 		case ByProject:
@@ -303,14 +345,14 @@ func keyOf(l ledgerbus.ProjectLine, by []Dimension) Key {
 	return k
 }
 
-// sum groups the parts.
-func sum(lines []ledgerbus.ProjectLine, by []Dimension) []Cell {
+// sum adds the parts up by the dimensions.
+func sum(lines []ledgerbus.ProjectLine, by []Dimension, groupOf map[types.ID]types.ID, headings map[types.ID]categorybus.Heading) []Cell {
 	index := map[Key]int{}
 
 	var out []Cell
 
 	for _, l := range lines {
-		k := keyOf(l, by)
+		k := keyOf(l, by, groupOf)
 
 		i, ok := index[k]
 		if !ok {
@@ -320,6 +362,10 @@ func sum(lines []ledgerbus.ProjectLine, by []Dimension) []Cell {
 			c := Cell{Key: k}
 			if slices.Contains(by, ByCategory) {
 				c.Category = l.CategoryName
+			}
+
+			if !k.GroupID.Zero() {
+				c.Group = headings[k.GroupID].Name
 			}
 
 			out = append(out, c)
@@ -340,6 +386,8 @@ func sum(lines []ledgerbus.ProjectLine, by []Dimension) []Cell {
 		return cmp.Or(
 			strings.Compare(a.Currency, b.Currency),
 			strings.Compare(string(a.Kind), string(b.Kind)),
+			strings.Compare(strings.ToLower(a.Group), strings.ToLower(b.Group)),
+			strings.Compare(a.GroupID.String(), b.GroupID.String()),
 			strings.Compare(strings.ToLower(a.Category), strings.ToLower(b.Category)),
 			strings.Compare(a.CategoryID.String(), b.CategoryID.String()),
 			strings.Compare(a.ProjectID.String(), b.ProjectID.String()),

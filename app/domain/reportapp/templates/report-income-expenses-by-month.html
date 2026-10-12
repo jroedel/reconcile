@@ -37,7 +37,7 @@
 {{if gt (len $r.Sections) 1}}<h2>{{$cur}}</h2>{{end}}
 <div class="scroll">
 <table class="ledger report">
-<thead><tr><th scope="col">{{t "Category"}}</th>{{range $r.Months}}<th scope="col" class="money">{{template "month" .}}</th>{{end}}<th scope="col" class="money">{{t "Total"}}</th></tr></thead>
+<thead><tr><th scope="col">{{if eq (printf "%s" $r.Choices.Detail) "group"}}{{t "Group or category"}}{{else}}{{t "Category"}}{{end}}</th>{{range $r.Months}}<th scope="col" class="money">{{template "month" .}}</th>{{end}}<th scope="col" class="money">{{t "Total"}}</th></tr></thead>
 <tbody>
 <tr class="kind"><th scope="rowgroup" colspan="{{$cols}}">{{t "Income"}}</th></tr>
 {{range $s.Income}}{{template "category-row" (dict "Row" . "View" $v "Cur" $cur)}}{{end}}
@@ -87,10 +87,15 @@
     <legend>{{t "Pass-through"}}</legend>
     <label class="choice"><input type="radio" name="passthrough" value="total"{{if ne (printf "%s" $r.Choices.PassThrough) "each"}} checked{{end}}> {{t "One total"}}</label>
     <label class="choice"><input type="radio" name="passthrough" value="each"{{if eq (printf "%s" $r.Choices.PassThrough) "each"}} checked{{end}}> {{t "Each category"}}</label>
-  </fieldset>{{end}}
+  </fieldset>
+  {{if $v.Grouped}}<fieldset class="field">
+    <legend>{{t "A row for"}}</legend>
+    <label class="choice"><input type="radio" name="detail" value="category"{{if ne (printf "%s" $r.Choices.Detail) "group"}} checked{{end}}> {{t "Each category"}}</label>
+    <label class="choice"><input type="radio" name="detail" value="group"{{if eq (printf "%s" $r.Choices.Detail) "group"}} checked{{end}}> {{t "Each group, and each category under none"}}</label>
+  </fieldset>{{end}}{{end}}
   <button type="submit">{{t "Show"}}</button>
 </form>
-{{if and $v.Saved $v.CanKeep}}<p><a href="{{$v.Base}}/edit">{{t "Change its title, description, accounts or pass-through"}}</a></p>{{end}}
+{{if and $v.Saved $v.CanKeep}}<p><a href="{{$v.Base}}/edit">{{t "Change its title, description or what it shows"}}</a></p>{{end}}
 </section>
 
 {{if and $v.Saved $v.CanKeep}}
@@ -118,6 +123,7 @@
   <input type="hidden" name="default" value="{{$v.Preset}}">
   {{if $r.Partial}}{{range $r.Chosen}}<input type="hidden" name="account" value="{{.ID}}">{{end}}{{end}}
   <input type="hidden" name="passthrough" value="{{$r.Choices.PassThrough}}">
+  <input type="hidden" name="detail" value="{{$r.Choices.Detail}}">
   <div class="field">
     <label for="title">{{t "Title"}}</label>
     <input id="title" name="title" maxlength="100" required value="{{$v.Typed.Title}}" placeholder="{{t "Profit and loss"}}">
@@ -136,11 +142,11 @@
 </div>
 {{end}}
 
-{{/* category-row is one category's line, each figure linked to its parts. */}}
+{{/* category-row is one category's line, or one group's, each figure linked to its parts. */}}
 {{define "category-row"}}{{$row := .Row}}{{$v := .View}}{{$cur := .Cur}}
 <tr><th scope="row">{{$row.Name}}</th>
-{{- range $i, $m := $v.Report.Months}}<td class="money">{{template "figure" (dict "Amount" (index $row.Months $i) "Cur" $cur "Href" ($v.Figure "category,month" "" $row.CategoryID.String $m $cur))}}</td>{{end -}}
-<td class="money">{{template "figure" (dict "Amount" $row.Total "Cur" $cur "Href" ($v.Figure "category" "" $row.CategoryID.String "" $cur))}}</td></tr>
+{{- range $i, $m := $v.Report.Months}}<td class="money">{{template "figure" (dict "Amount" (index $row.Months $i) "Cur" $cur "Href" ($v.RowFigure $row $m $cur))}}</td>{{end -}}
+<td class="money">{{template "figure" (dict "Amount" $row.Total "Cur" $cur "Href" ($v.RowFigure $row "" $cur))}}</td></tr>
 {{end}}
 
 {{/* kind-row is a kind's total, or what is not sorted yet. */}}

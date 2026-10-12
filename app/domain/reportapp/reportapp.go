@@ -233,6 +233,7 @@ func askedOf(r *http.Request) asked {
 	}
 
 	ask.choices.PassThrough = reportbus.PassThroughShown(q.Get("passthrough"))
+	ask.choices.Detail = reportbus.Detail(q.Get("detail"))
 
 	return ask
 }
@@ -250,6 +251,10 @@ func choiceValues(r reportbus.IncomeExpenses) url.Values {
 
 	if r.Choices.PassThrough == reportbus.EachCategory {
 		v.Set("passthrough", string(reportbus.EachCategory))
+	}
+
+	if r.Choices.Detail == reportbus.EachGroupRow {
+		v.Set("detail", string(reportbus.EachGroupRow))
 	}
 
 	return v
@@ -394,6 +399,34 @@ func (v reportView) Figure(by, kind, category, month, currency string) string {
 	return v.Base + "/parts?" + q.Encode()
 }
 
+// RowFigure is the address of the parts behind a row's figure for a month,
+// or for the period when month is "": a group's, or a category's.
+func (v reportView) RowFigure(row reportbus.Row, month, currency string) string {
+	if row.GroupID.Zero() {
+		by := "category"
+		if month != "" {
+			by += ",month"
+		}
+
+		return v.Figure(by, "", row.CategoryID.String(), month, currency)
+	}
+
+	by := "group"
+	if month != "" {
+		by += ",month"
+	}
+
+	u := v.Figure(by, "", "", month, currency)
+
+	return u + "&" + url.Values{"group": {row.GroupID.String()}}.Encode()
+}
+
+// Grouped reports whether the books have groups of categories, or the
+// report shows them: the choice of rows is worth offering only then.
+func (v reportView) Grouped() bool {
+	return len(v.Report.Headings) > 0 || v.Report.Choices.Detail == reportbus.EachGroupRow
+}
+
 // builder is how a page finds the report it is about: a style run with
 // its choices in the address (unsaved), or a saved report (saved).
 type builder func(w http.ResponseWriter, r *http.Request) (reportView, bool)
@@ -462,6 +495,7 @@ type partsView struct {
 	Lines  []ledgerbus.ProjectLine
 	Key    reportbus.Key
 	Kind   string // as the address names it
+	Group  string // the group's name, for a group's figure
 	Sum    money.Amount
 }
 
@@ -496,16 +530,20 @@ func (a app) parts(build builder) http.HandlerFunc {
 			k.CategoryID = id
 		}
 
+		if id, err := types.ParseID(q.Get("group")); err == nil {
+			k.GroupID = id
+		}
+
 		question := reportbus.Question{Scope: v.Report.Scope, Accounts: v.Report.Choices.Accounts, Period: v.Report.Period, By: by}
 
-		_, lines, err := a.cfg.Reports.Parts(r.Context(), me.ID, question, k)
+		answer, lines, err := a.cfg.Reports.Parts(r.Context(), me.ID, question, k)
 		if err != nil {
 			a.failed(w, r, err)
 
 			return
 		}
 
-		view := partsView{Report: v, Lines: lines, Key: k, Kind: q.Get("kind")}
+		view := partsView{Report: v, Lines: lines, Key: k, Kind: q.Get("kind"), Group: answer.Headings[k.GroupID].Name}
 		for _, l := range lines {
 			view.Sum += l.Split.Amount
 		}

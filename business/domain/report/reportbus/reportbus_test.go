@@ -80,7 +80,7 @@ func newWorld(t *testing.T) *world {
 
 	return &world{
 		t: t, ledger: ledger, ten: ten, cats: cats, files: files, users: users,
-		reports: reportbus.NewBusiness(ten, ledger, reportdb.NewStore(db)), store: reportdb.NewStore(db),
+		reports: reportbus.NewBusiness(ten, ledger, cats, reportdb.NewStore(db)), store: reportdb.NewStore(db),
 	}
 }
 

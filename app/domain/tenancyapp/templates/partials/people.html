@@ -99,6 +99,13 @@
 {{- else if eq .Action "category.renamed"}} {{t "renamed the category {from} to {name}" "from" .Detail.from "name" .Detail.name}}
 {{- else if eq .Action "category.archived"}} {{t "archived the category {name}" "name" .Detail.name}}
 {{- else if eq .Action "category.restored"}} {{t "brought back the category {name}" "name" .Detail.name}}
+{{- else if eq .Action "category.kind"}} {{if eq .Detail.kind "income"}}{{t "said the category {name} is income" "name" .Detail.name}}{{else if eq .Detail.kind "expense"}}{{t "said the category {name} is an expense" "name" .Detail.name}}{{else if eq .Detail.kind "transfer"}}{{t "said the category {name} is a transfer" "name" .Detail.name}}{{else}}{{t "said the category {name} is pass-through" "name" .Detail.name}}{{end}}{{with .Detail.group}}. {{t "It left the group {group}, which is of another kind." "group" .}}{{end}}
+{{- else if eq .Action "category.grouped"}} {{t "put the category {name} under the group {group}" "name" .Detail.name "group" .Detail.group}}
+{{- else if eq .Action "category.ungrouped"}} {{t "took the category {name} out of the group {group}" "name" .Detail.name "group" .Detail.group}}
+{{- else if eq .Action "group.added"}} {{t "added the group of categories {name}" "name" .Detail.name}}
+{{- else if eq .Action "group.renamed"}} {{t "renamed the group of categories {from} to {name}" "from" .Detail.from "name" .Detail.name}}
+{{- else if eq .Action "group.archived"}} {{t "archived the group of categories {name}" "name" .Detail.name}}
+{{- else if eq .Action "group.restored"}} {{t "brought back the group of categories {name}" "name" .Detail.name}}
 {{- else if eq .Action "payee.added"}} {{t "added the payee {name}" "name" .Detail.name}}
 {{- else if eq .Action "payee.renamed"}} {{t "renamed the payee {from} to {name}" "from" .Detail.from "name" .Detail.name}}
 {{- else if eq .Action "payee.archived"}} {{t "archived the payee {name}" "name" .Detail.name}}
