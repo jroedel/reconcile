@@ -46,6 +46,7 @@
   {{if not .Account.Zero}}
   {{if .Problem}}{{template "problem" ($v.ProblemOf .Problem)}}
   {{else if .Imported}}<p><span class="badge ok">{{t "Imported"}}</span> <a href="/statements/{{$d.Earlier.ID}}">{{t "See the statement"}}</a></p>
+  {{template "mended" $d.Earlier}}
   {{else}}
   <p>
     {{if $d.Choose}}<span class="badge warn">{{t "This account's number is not in the file"}}</span>
@@ -57,6 +58,7 @@
     {{else}}<span class="badge warn">{{t "not checked"}}</span>{{end}}
     {{end}}
   </p>
+  {{template "will-mend" $d.Statement}}
   {{if .Unattended}}<p><span class="badge ok">{{t "Ready to import"}}</span>{{if not $d.Check.OK}} {{t "Every transaction in it is here already, so it needs no balances: importing it adds nothing, and gives the ones here what this file knows of them."}}{{end}}</p>
   {{else}}
   <p class="hint">

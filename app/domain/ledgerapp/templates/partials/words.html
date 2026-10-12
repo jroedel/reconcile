@@ -169,3 +169,26 @@ one. Given a dict of By, a *ledgerbus.Clearer, and Currency. */}}
 {{- else if eq . "locked"}}{{t "Not saved: it is in a reconciled period now."}}
 {{- else}}{{t "Not saved. Open it on its own page to sort it."}}
 {{- end}}{{end}}
+
+{{/*
+  What an import does to the transactions already here (ledgerbus.Statement:
+  Posted, Completed, Superseded, Renamed, Identified). "will-mend" before
+  importing -- the preview and the bulk list -- and "mended" after, on the
+  statement's page and an imported row of the bulk list, from the counts
+  the statement keeps.
+*/}}
+{{define "will-mend"}}
+{{if .Posted}}<p class="hint">{{t "{n} of its rows are charges that were pending here and have now posted. Each is the one that counts from now on, and takes how the pending charge was sorted; the pending charge stays in its statement, marked as posted." "n" .Posted}}</p>{{end}}
+{{if .Completed}}<p class="hint">{{t "{n} of the transactions already here will take this file's description of them, which says more." "n" .Completed}}</p>{{end}}
+{{if .Identified}}<p class="hint">{{t "{n} of the transactions already here will take the bank's identifier from this file, so that no later file of the same days can duplicate them." "n" .Identified}}</p>{{end}}
+{{if .Renamed}}<p class="hint">{{t "{n} of the transactions already here name their holder cut short, as a narrow printed column left it. Each will name the whole name, which the rest of the account uses." "n" .Renamed}}</p>{{end}}
+{{if .Superseded}}<p class="hint">{{t "{n} of its rows are pending charges that it also lists as posted. Both are imported, so that the statement is whole, and only the posted ones count." "n" .Superseded}}</p>{{end}}
+{{end}}
+
+{{define "mended"}}{{if .Mended}}<ul class="mended">
+{{if .Posted}}<li>{{t "{n} charges that were pending here have posted with this file, and the posted ones count from now on." "n" .Posted}}</li>{{end}}
+{{if .Completed}}<li>{{t "{n} transactions already here took this file's description, which says more." "n" .Completed}}</li>{{end}}
+{{if .Identified}}<li>{{t "{n} transactions already here took the bank's identifier from this file, so no later file of the same days can duplicate them." "n" .Identified}}</li>{{end}}
+{{if .Renamed}}<li>{{t "{n} transactions already here took their holder's whole name." "n" .Renamed}}</li>{{end}}
+{{if .Superseded}}<li>{{t "{n} of its own pending charges were cleared by the posted form it also lists." "n" .Superseded}}</li>{{end}}
+</ul>{{end}}{{end}}

@@ -178,7 +178,7 @@ func (a app) bookEndpoints() []Endpoint {
 			Method: http.MethodGet, Path: Prefix + "/inbox", Scope: read, Tool: "list_inbox",
 			Summary: "The statement files waiting in your inbox, sent by your Gmail script, each read for the account proposed for it: its period, how it checked, how many transactions are new, and whether it can be imported with no person looking at it, or what needs a person. " + workingNote,
 			Query:   []Field{jobField("list_inbox")},
-			Returns: "{files: [{inbox_id, file, name, received, source, parts: [{part, account, account_name, by, period, transactions, new, check, ready, imported, needs}]}], imports_url}; or, while the files are still being read, " + workingReturns,
+			Returns: "{files: [{inbox_id, file, name, received, source, parts: [{part, account, account_name, by, period, transactions, new, mends, check, ready, imported, needs}]}], imports_url}; mends, when there is anything, is what the file gives the transactions already here: {pending_posted, descriptions_completed, identifiers_given, holders_completed, own_pending_posted}, counts; or, while the files are still being read, " + workingReturns,
 			handler: a.listInbox,
 		},
 		{
@@ -916,6 +916,15 @@ func (rd *reader) proposal(p ledgerbus.Proposal) map[string]any {
 	}
 
 	out["transactions"], out["new"] = len(d.Result.Records), d.Statement.Added
+
+	// What it gives the transactions already here, as the statement's page
+	// says it: so that Claude can tell the person, as the page does.
+	if st := d.Statement; st.Mended() {
+		out["mends"] = map[string]int{
+			"pending_posted": st.Posted, "descriptions_completed": st.Completed, "identifiers_given": st.Identified,
+			"holders_completed": st.Renamed, "own_pending_posted": st.Superseded,
+		}
+	}
 
 	switch {
 	case d.Check.OK:

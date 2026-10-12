@@ -92,8 +92,14 @@ func TestTheOFXThenTheCSV(t *testing.T) {
 		t.Errorf("the preview completes %d", d.Statement.Completed)
 	}
 
-	if st := w.add(me, card, "december.csv", cardCSV()); counts(st) != [3]int{0, 5, 0} || st.Completed != 4 {
-		t.Fatalf("CSV after OFX: %v, completed %d", counts(st), st.Completed)
+	st := w.add(me, card, "december.csv", cardCSV())
+	if counts(st) != [3]int{0, 5, 0} || st.Completed != 4 || st.Identified != 0 {
+		t.Fatalf("CSV after OFX: %v, completed %d, identified %d", counts(st), st.Completed, st.Identified)
+	}
+
+	// What it did is kept, for the statement's page to say afterwards.
+	if kept, _, err := w.ledger.Statement(t.Context(), me, st.ID); err != nil || kept.Completed != 4 || !kept.Mended() {
+		t.Errorf("kept: completed %d, mended %v, %v", kept.Completed, kept.Mended(), err)
 	}
 
 	w.wholeAndIdentified(me, card)
@@ -117,11 +123,27 @@ func TestTheCSVThenTheOFX(t *testing.T) {
 
 	w.add(me, card, "december.csv", cardCSV())
 
-	if st := w.add(me, card, "december.ofx", cardOFX()); counts(st) != [3]int{0, 5, 0} || st.Completed != 0 {
-		t.Fatalf("OFX after CSV: %v, completed %d", counts(st), st.Completed)
+	// The preview says the OFX gives the five rows here their identifiers;
+	// the import does, and the statement keeps that it did.
+	if d, _ := w.preview(me, card, "december.ofx", cardOFX()); d.Statement.Identified != 5 {
+		t.Errorf("the preview identifies %d", d.Statement.Identified)
+	}
+
+	st := w.add(me, card, "december.ofx", cardOFX())
+	if counts(st) != [3]int{0, 5, 0} || st.Completed != 0 || st.Identified != 5 {
+		t.Fatalf("OFX after CSV: %v, completed %d, identified %d", counts(st), st.Completed, st.Identified)
+	}
+
+	if kept, _, err := w.ledger.Statement(t.Context(), me, st.ID); err != nil || kept.Identified != 5 || kept.Completed != 0 {
+		t.Errorf("kept: identified %d, completed %d, %v", kept.Identified, kept.Completed, err)
 	}
 
 	w.wholeAndIdentified(me, card)
+
+	// The same OFX again finds every row with its identifier already.
+	if st := w.add(me, card, "december-again.ofx", append(cardOFX(), '\n')); st.Identified != 0 || st.Mended() {
+		t.Errorf("OFX again: identified %d", st.Identified)
+	}
 }
 
 // What was reconciled is left as it was: matched, and not rewritten.

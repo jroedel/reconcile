@@ -65,7 +65,9 @@ what the person's role lets them change; the tools you have say which.
    the person. **import_from_inbox** imports what is ready; a file that
    needs an account the app could not tell takes one from `accounts`, when
    the person says which. Say what was imported and what is left, and why,
-   with `imports_url`. A file left because it looks like one holder's, on
+   with `imports_url`, and what a part gave the transactions already there
+   (`mends`: pending charges posted, descriptions completed, identifiers
+   given), which is often the point of importing a second format. A file left because it looks like one holder's, on
    an account that does not keep its holders apart, is never something to
    import past: tell the person what `needs` says, since importing it
    first can take two people's charges for one. A full inbox takes longer

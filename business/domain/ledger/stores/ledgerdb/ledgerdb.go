@@ -35,7 +35,8 @@ var _ ledgerbus.Storer = (*Store)(nil)
 // Expected is what CheckSchema verifies at startup and on every /healthz.
 var Expected = sqldb.Expected{
 	"statements": {"id", "account_id", "file_id", "format", "period_start", "period_end", "opening", "closing",
-		"checked", "added", "already", "imported_by", "imported_at", "shape"},
+		"checked", "added", "already", "imported_by", "imported_at", "shape",
+		"posted", "completed", "superseded", "renamed", "identified"},
 	"transactions": {"id", "account_id", "statement_id", "posted_on", "description", "amount", "balance",
 		"external_id", "hash", "occurrence", "holder", "pending", "check_number", "payee",
 		"own_description", "own_description_via", "check_memo", "check_written_on", "payee_id", "payee_via", "wording", "posted_as"},
@@ -123,6 +124,19 @@ CREATE TABLE IF NOT EXISTS csv_mappings (
 	// proposes nothing for the next file in its layout.
 	if err := sqldb.AddColumn(ctx, db, "statements", "shape", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
+	}
+
+	// What an import did to the transactions already here, kept so that
+	// the statement's page can say it afterwards: pending charges its rows
+	// cleared, descriptions and holders' names it made whole, and the
+	// bank's identifiers it gave (ledgerbus.Statement). Before these, the
+	// counts were made and shown only on the preview, and a person who
+	// imported from the bulk list never saw them. Later columns, 0 for
+	// every statement from before them, of which nobody can now say.
+	for _, column := range []string{"posted", "completed", "superseded", "renamed", "identified"} {
+		if err := sqldb.AddColumn(ctx, db, "statements", column, "INTEGER NOT NULL DEFAULT 0"); err != nil {
+			return err
+		}
 	}
 
 	// The holder a file said made the charge (docs/clearing.md, 3), a
@@ -405,8 +419,10 @@ func (s *Store) Import(ctx context.Context, st ledgerbus.Statement, txs []ledger
 		return st, nil
 	}
 
-	if _, err := tx.ExecContext(ctx, `UPDATE statements SET added = ?, already = ? WHERE id = ?`,
-		st.Added, st.Already, st.ID.String()); err != nil {
+	if _, err := tx.ExecContext(ctx, `
+UPDATE statements SET added = ?, already = ?, posted = ?, completed = ?, superseded = ?, renamed = ?, identified = ?
+WHERE id = ?`,
+		st.Added, st.Already, st.Posted, st.Completed, st.Superseded, st.Renamed, st.Identified, st.ID.String()); err != nil {
 		return ledgerbus.Statement{}, fmt.Errorf("counting the statement: %w", err)
 	}
 
@@ -468,7 +484,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		return ledgerbus.Statement{}, fmt.Errorf("storing the statement: %w", err)
 	}
 
-	st.Added, st.Already, st.ByRule, st.Completed, st.Superseded, st.Renamed, st.Doubts = 0, 0, 0, 0, 0, 0, nil
+	st.Added, st.Already, st.ByRule, st.Completed, st.Superseded, st.Renamed, st.Identified, st.Doubts = 0, 0, 0, 0, 0, 0, 0, nil
 
 	// The holders' names first, so that every rule below compares one
 	// person's rows under one name.
@@ -491,12 +507,17 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 
 		if !known {
 			var (
-				twin int64
-				err  error
+				twin    int64
+				adopted bool
+				err     error
 			)
 
-			if known, twin, err = already(ctx, tx, t); err != nil {
+			if known, adopted, twin, err = already(ctx, tx, t); err != nil {
 				return ledgerbus.Statement{}, err
+			}
+
+			if adopted {
+				st.Identified++
 			}
 
 			if twin != 0 {
@@ -647,8 +668,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 
 // already applies the rule in Import's comment to one row. twin is the
 // stored row it was matched to by a description cut short, which may be
-// completed by it (complete).
-func already(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction) (found bool, twin int64, err error) {
+// completed by it (complete); adopted is a stored row that had no
+// identifier of the bank's and took this row's.
+func already(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction) (found, adopted bool, twin int64, err error) {
 	exists := func(q string, args ...any) (bool, error) {
 		var one int
 
@@ -667,11 +689,11 @@ func already(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction) (found bo
 
 	if t.ExternalID == "" {
 		if found, err := sameHash(ctx, tx, t); found || err != nil {
-			return found, 0, err
+			return found, false, 0, err
 		}
 
 		if found, err := exists(`SELECT 1 FROM transaction_aliases WHERE account_id = ? AND hash = ?`, account, t.Hash); found || err != nil {
-			return found, 0, err
+			return found, false, 0, err
 		}
 
 		// As many cut-short matches as this row's occurrence: two charges
@@ -681,14 +703,14 @@ func already(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction) (found bo
 
 		n := max(t.Occurrence, 1)
 		if err != nil || len(rows) < n {
-			return false, 0, err
+			return false, false, 0, err
 		}
 
-		return true, rows[n-1], nil
+		return true, false, rows[n-1], nil
 	}
 
 	if found, err := exists(`SELECT 1 FROM transactions WHERE account_id = ? AND external_id = ?`, account, t.ExternalID); found || err != nil {
-		return found, 0, err
+		return found, false, 0, err
 	}
 
 	// Adopt: one row, the oldest, so that two identical CSV rows are
@@ -698,11 +720,11 @@ UPDATE transactions SET external_id = ?
 WHERE rowid = (SELECT rowid FROM transactions WHERE account_id = ? AND hash = ? AND external_id = '' ORDER BY rowid LIMIT 1)`,
 		t.ExternalID, account, t.Hash)
 	if err != nil {
-		return false, 0, fmt.Errorf("matching a transaction: %w", err)
+		return false, false, 0, fmt.Errorf("matching a transaction: %w", err)
 	}
 
 	if n, err := res.RowsAffected(); n == 1 || err != nil {
-		return n == 1, 0, err
+		return n == 1, n == 1, 0, err
 	}
 
 	// A wording remembered as another name for an unclaimed row: the same.
@@ -711,23 +733,23 @@ UPDATE transactions SET external_id = ?
 WHERE external_id = '' AND id = (SELECT transaction_id FROM transaction_aliases WHERE account_id = ? AND hash = ?)`,
 		t.ExternalID, account, t.Hash)
 	if err != nil {
-		return false, 0, fmt.Errorf("matching a transaction: %w", err)
+		return false, false, 0, fmt.Errorf("matching a transaction: %w", err)
 	}
 
 	if n, err := res.RowsAffected(); n == 1 || err != nil {
-		return n == 1, 0, err
+		return n == 1, n == 1, 0, err
 	}
 
 	rows, err := cutShort(ctx, tx, t, true)
 	if err != nil || len(rows) == 0 {
-		return false, 0, err
+		return false, false, 0, err
 	}
 
 	if _, err := tx.ExecContext(ctx, `UPDATE transactions SET external_id = ? WHERE rowid = ?`, t.ExternalID, rows[0]); err != nil {
-		return false, 0, fmt.Errorf("matching a transaction: %w", err)
+		return false, false, 0, fmt.Errorf("matching a transaction: %w", err)
 	}
 
-	return true, rows[0], nil
+	return true, true, rows[0], nil
 }
 
 // sameHash reports a stored row with t's hash that is t's holder's, or
@@ -864,6 +886,7 @@ ON CONFLICT (account_id, hash) DO NOTHING`,
 
 const statementColumns = `s.id, s.account_id, s.file_id, f.name, s.format, s.period_start, s.period_end, s.opening, s.closing,
 s.checked, s.added, s.already, s.imported_by, s.imported_at, s.shape,
+s.posted, s.completed, s.superseded, s.renamed, s.identified,
 r.period_start, r.period_end, r.note, r.reconciled_by, r.reconciled_at`
 
 const statementFrom = ` FROM statements s JOIN files f ON f.id = s.file_id
@@ -1035,7 +1058,9 @@ func scanStatement(row scanner) (ledgerbus.Statement, error) {
 	)
 
 	if err := row.Scan(&id, &account, &file, &st.FileName, &format, &start, &end, &opening, &closing,
-		&chkd, &st.Added, &st.Already, &by, &at, &st.Shape, &rStart, &rEnd, &rNote, &rBy, &rAt); err != nil {
+		&chkd, &st.Added, &st.Already, &by, &at, &st.Shape,
+		&st.Posted, &st.Completed, &st.Superseded, &st.Renamed, &st.Identified,
+		&rStart, &rEnd, &rNote, &rBy, &rAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ledgerbus.Statement{}, err
 		}

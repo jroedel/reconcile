@@ -102,26 +102,41 @@ type Statement struct {
 	// option has changed since. Not kept.
 	ByHolder bool
 
+	// What it did to the transactions already here, counted on import and
+	// in the preview, and kept, so that the statement's page says it
+	// afterwards: a person who imported from the bulk list saw no preview
+	// (issue reported 2026-10-12). Zero for a statement imported before
+	// they were kept.
+	//
 	// Posted is how many pending charges already in the account its rows
-	// were the posted form of, and cleared (pending.go). Counted on
-	// import and in the preview; not kept.
+	// were the posted form of, and cleared (pending.go).
 	Posted int
 
 	// Completed is how many of its rows found a row already here whose
 	// description was theirs cut short, and gave it the whole of theirs
-	// (ledgerdb's complete). Counted on import and in the preview; not
-	// kept.
+	// (ledgerdb's complete).
 	Completed int
 
 	// Superseded is how many of its rows were pending charges the same
 	// file also lists as posted, and were cleared by them (ledgerdb's
-	// superseded). Counted on import and in the preview; not kept.
+	// superseded).
 	Superseded int
 
 	// Renamed is how many rows already here named their holder cut short
 	// and took the whole name, from this file or the account (ledgerdb's
-	// wholeHolders). Counted on import and in the preview; not kept.
+	// wholeHolders).
 	Renamed int
+
+	// Identified is how many rows already here had no identifier of the
+	// bank's and took the one this file gives the same row (ledgerdb's
+	// already): a later file of the same days cannot duplicate them.
+	Identified int
+}
+
+// Mended reports whether importing it changed any transaction already
+// here.
+func (s Statement) Mended() bool {
+	return s.Posted+s.Completed+s.Superseded+s.Renamed+s.Identified > 0
 }
 
 // OtherHolders reports a doubt that names two holders (Doubt.OtherHolder).
