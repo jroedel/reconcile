@@ -171,7 +171,7 @@ func (a app) bookEndpoints() []Endpoint {
 		{
 			Method: http.MethodGet, Path: Prefix + "/overview", Scope: read, Tool: "get_overview",
 			Summary: "Start here: every organization, account and project you may see, with your role on each, and for each account the end of its last statement, how many of its transactions are not sorted yet, and how many months have no statement.",
-			Returns: "{organizations: [{id, name, accounts, projects}], accounts (in no organization), projects (in no organization)}; an account is {id, name, kind, currency, last4, roles, last_statement_ends, unsorted, months_missing, url}.",
+			Returns: "{organizations: [{id, name, accounts, projects}], accounts (in no organization), projects (in no organization)}; an account is {id, name, kind, currency, last4, roles, reference, last_statement_ends, unsorted, months_missing, url}: reference is true for an account kept only to explain the organization's own, whose money counts in none of its totals; its transactions are not to be sorted.",
 			handler: a.overview,
 		},
 		{
@@ -328,6 +328,10 @@ type accountOut struct {
 	Last4    string   `json:"last4,omitempty"`
 	Roles    []string `json:"roles,omitempty"`
 	Archived bool     `json:"archived,omitempty"`
+
+	// Reference is an account kept to explain the organization's own and
+	// not part of its books: counted in no total, and not to be sorted.
+	Reference bool `json:"reference,omitempty"`
 
 	LastStatementEnds string `json:"last_statement_ends,omitempty"`
 	Unsorted          *int   `json:"unsorted,omitempty"`
@@ -529,7 +533,7 @@ func (rd *reader) project(id types.ID) string {
 func (rd *reader) accountOut(a tenancybus.Account, access tenancybus.Access) accountOut {
 	out := accountOut{
 		ID: a.ID.String(), Name: a.Name, Kind: string(a.Kind), Currency: a.Currency, Last4: a.Last4,
-		Archived: !a.ArchivedAt.IsZero(), URL: rd.url("/accounts/" + a.ID.String() + "/transactions"),
+		Archived: !a.ArchivedAt.IsZero(), Reference: a.Reference, URL: rd.url("/accounts/" + a.ID.String() + "/transactions"),
 	}
 
 	for _, r := range access.Roles {

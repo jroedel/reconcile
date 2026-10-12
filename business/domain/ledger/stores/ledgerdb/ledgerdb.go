@@ -1197,7 +1197,7 @@ FROM splits s
 JOIN categories c ON c.id = s.category_id
 JOIN transactions t ON t.id = s.transaction_id
 JOIN accounts a ON a.id = t.account_id
-WHERE `+column+` = ? AND c.kind IN ('transfer', 'passthrough')
+WHERE `+column+` = ? AND c.kind IN ('transfer', 'passthrough') AND a.reference = 0
     -- A transfer explained by what it paid for, in the organization's own
     -- accounts, is met: the card it paid has charges, not a payment.
     AND NOT (c.kind = 'transfer' AND `+settledWhere+`)
@@ -1490,15 +1490,21 @@ func (s *Store) ReplaceSplits(ctx context.Context, transactionID types.ID, split
 // Joined across the tenancy and category tables rather than asked of their
 // domains line by line: a project's book is read whole, and a line knows
 // nothing more about its account than the name and currency.
+//
+// Not an account for reference's: its money is not the organization's, and
+// a part of one put in a project before the mark counts in it no more
+// (docs/plan.md, "Whose books").
 func (s *Store) ProjectLines(ctx context.Context, projectID types.ID) ([]ledgerbus.ProjectLine, error) {
-	return s.lines(ctx, `s.project_id = ?`, projectID.String())
+	return s.lines(ctx, `s.project_id = ? AND a.reference = 0`, projectID.String())
 }
 
 // OrgLines is every part of an organization's accounts posted from from to
 // before to, with the same about each as a project's line: an
 // organization's budget year (budgetbus).
+//
+// Not its accounts for reference, which are not part of its books.
 func (s *Store) OrgLines(ctx context.Context, orgID types.ID, from, to types.Date) ([]ledgerbus.ProjectLine, error) {
-	return s.lines(ctx, `a.org_id = ? AND t.posted_on >= ? AND t.posted_on < ?`, orgID.String(), from.String(), to.String())
+	return s.lines(ctx, `a.org_id = ? AND a.reference = 0 AND t.posted_on >= ? AND t.posted_on < ?`, orgID.String(), from.String(), to.String())
 }
 
 // lines is the parts matching a condition, with their transaction, account

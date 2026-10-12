@@ -84,6 +84,14 @@ func (b *Business) choices(ctx context.Context, s sorter) (sorter, error) {
 		s.categories[c.ID] = c
 	}
 
+	s.projects = map[types.ID]tenancybus.Project{}
+
+	// An account for reference puts nothing in a project, so a rule that
+	// would is one that cannot apply here, and the sort page offers none.
+	if s.account.Reference {
+		return s, nil
+	}
+
 	mine, err := b.accounts.ProjectsFor(ctx, s.actor, tenancybus.Bookkeep)
 	if err != nil {
 		return s, err

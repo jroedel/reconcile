@@ -564,6 +564,10 @@ func (s *Store) YearPayments(ctx context.Context, owner types.Scope, payee types
 		where, args = `payee_id = ?`, []any{payee.String()}
 	}
 
+	// An account for reference's payments are not the organization's to
+	// report, whoever they were paid to (docs/plan.md, "Whose books").
+	where += ` AND account_id NOT IN (SELECT id FROM accounts WHERE reference = 1)`
+
 	txs, err := s.withSplits(ctx, where+` AND coalesce(nullif(check_written_on, ''), posted_on) BETWEEN ? AND ?`,
 		`coalesce(nullif(check_written_on, ''), posted_on), rowid`, append(args, from.String(), to.String())...)
 	if err != nil || len(txs) == 0 {
