@@ -359,13 +359,20 @@ type row struct {
 
 // parseRow reads a line as a row, if it is one.
 func (r *reader) parseRow(s string) (row, bool) {
-	trimmed := strings.TrimLeft(s, " \t")
-	offset := indent(s)
-
-	d, rest, ok := leadingDate(trimmed, r.doc.dayFirst)
+	d, rest, ok := leadingDate(strings.TrimLeft(s, " \t"), r.doc.dayFirst)
 	if !ok {
 		return row{}, false
 	}
+
+	return r.rowFrom(d, s, rest)
+}
+
+// rowFrom reads the line s as a row dated d, from rest, which is what
+// follows the date on s -- or all of s after its indent, when the page left
+// the date alone on the line before.
+func (r *reader) rowFrom(d day, s, rest string) (row, bool) {
+	trimmed := strings.TrimLeft(s, " \t")
+	offset := indent(s)
 
 	// A second date is the posting date beside the date of the sale. The
 	// posting date is the one a bank's CSV and OFX carry, so it is the one
@@ -501,24 +508,33 @@ func (r *reader) line(l line) {
 		return
 	}
 
+	// The rest of a row whose date the page left alone on the line before:
+	// a row broken where a page's column ends, as some banks' statements
+	// break the last row of a section. To the right of where the date was,
+	// so that a summary's line of figures at the margin is never taken for
+	// it, nor the next row, which starts where the date did.
+	//
+	// Before parseRow, because the rest can start with a date of its own:
+	// "01/25 Online Payment ... To ..." under a row of 01/26, the day the
+	// payment was made under the day it left the account. Read as a row,
+	// that took the description's date for the row's, and the payment
+	// landed a day early, in a day whose balance the page had already
+	// stated without it. rowFrom reads the two dates as one line has them.
+	if lone && indent(s) > r.loneCol+3 {
+		if rw, ok := r.rowFrom(r.lonely, s, strings.TrimLeft(s, " \t")); ok {
+			r.row(l, rw)
+
+			return
+		}
+	}
+
 	if rw, ok := r.parseRow(s); ok {
 		r.row(l, rw)
 
 		return
 	}
 
-	if body, figs := figures(s); len(figs) > 0 {
-		// The rest of a row whose date the page left alone on the line
-		// before: a row broken where a page's column ends, as some banks'
-		// statements break the last row of a section. To the right of
-		// where the date was, so that a summary's line of figures at the
-		// margin is never taken for it.
-		if lone && indent(s) > r.loneCol+3 {
-			r.row(l, row{date: r.lonely, middle: cells(body, 0), figures: figs})
-
-			return
-		}
-
+	if _, figs := figures(s); len(figs) > 0 {
 		r.stated(s)
 		r.open = -1
 
