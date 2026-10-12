@@ -1,0 +1,11 @@
+{{/* What a report's spreadsheet says in its first column, one to a line,
+     in the order reportapp's download reads them. */ -}}
+{{t "Income"}}
+{{t "Expenses"}}
+{{t "Total income"}}
+{{t "Total expenses"}}
+{{t "Net"}}
+{{t "Not sorted yet"}}
+{{t "Total"}}
+{{t "Currency"}}
+{{t "Pass-through still owed at the end"}}

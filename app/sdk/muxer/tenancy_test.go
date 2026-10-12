@@ -147,6 +147,10 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		e.org + "/payees", e.ownAccount + "/payees", e.account + "/payees", payee, ownPayee,
 		e.org + "/payees/2026", e.ownAccount + "/payees/2026", e.account + "/payees/2026",
 		e.org + "/payees/2026/download", e.ownAccount + "/payees/2026/download",
+		e.org + "/reports", e.ownAccount + "/reports",
+		e.org + "/reports/income-expenses-by-month", e.ownAccount + "/reports/income-expenses-by-month?period=all",
+		e.org + "/reports/income-expenses-by-month/parts?by=kind&kind=unsorted", e.ownAccount + "/reports/income-expenses-by-month/parts?by=kind",
+		e.org + "/reports/income-expenses-by-month/download", e.ownAccount + "/reports/income-expenses-by-month/download",
 	}
 
 	type write struct {

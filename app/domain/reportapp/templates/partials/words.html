@@ -1,0 +1,38 @@
+{{/*
+  The words the report pages share: each style's name and what it shows,
+  a month as a column's heading, how a month stands, and what went wrong.
+*/}}
+
+{{define "style-name"}}
+{{- if eq . "income-expenses-by-month"}}{{t "Income and expenses by month"}}
+{{- else}}{{.}}{{end}}{{end}}
+
+{{define "style-about"}}
+{{- if eq . "income-expenses-by-month"}}{{t "What came in and what went out, by category, a month to a column. Transfers between your own accounts and money that only passed through are not in it, and what is not sorted yet is shown on a line of its own."}}
+{{- end}}{{end}}
+
+{{/* month is "2026-07" as a column's heading. */}}
+{{define "month"}}{{$m := slice . 5}}
+{{- if eq $m "01"}}{{tc "short month" "Jan"}}{{else if eq $m "02"}}{{tc "short month" "Feb"}}{{else if eq $m "03"}}{{tc "short month" "Mar"}}
+{{- else if eq $m "04"}}{{tc "short month" "Apr"}}{{else if eq $m "05"}}{{tc "short month" "May"}}{{else if eq $m "06"}}{{tc "short month" "Jun"}}
+{{- else if eq $m "07"}}{{tc "short month" "Jul"}}{{else if eq $m "08"}}{{tc "short month" "Aug"}}{{else if eq $m "09"}}{{tc "short month" "Sep"}}
+{{- else if eq $m "10"}}{{tc "short month" "Oct"}}{{else if eq $m "11"}}{{tc "short month" "Nov"}}{{else}}{{tc "short month" "Dec"}}{{end}} {{slice . 0 4}}{{end}}
+
+{{define "mark"}}
+{{- if eq . "reconciled"}}{{tc "a month's mark" "reconciled"}}
+{{- else if eq . "not-yet"}}{{tc "a month's mark" "not yet"}}
+{{- else}}<span aria-label="{{t "nothing in it"}}">–</span>{{end}}{{end}}
+
+{{define "preset"}}
+{{- if eq . "last-month"}}{{t "Last month"}}
+{{- else if eq . "year-to-date"}}{{t "The year so far"}}
+{{- else if eq . "last-12-months"}}{{t "The last twelve months"}}
+{{- else}}{{t "Every month there is"}}{{end}}{{end}}
+
+{{/* figure is an amount on the report, linked to the parts it adds up.
+     Nothing is shown for nothing. */}}
+{{define "figure"}}{{if .Amount}}<a href="{{.Href}}" class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount .Cur}}</a>{{end}}{{end}}
+
+{{define "report-problem"}}{{if .}}<p class="notice" role="alert">
+{{- if eq . "period"}}{{t "That period could not be read, so the year so far is shown. Choose a first and a last month, the first not after the last."}}
+{{- else}}{{t "Something went wrong at our end. Please try again in a few minutes."}}{{end}}</p>{{end}}{{end}}

@@ -1,0 +1,22 @@
+{{define "title"}}{{t "What a figure adds up"}} · {{.Data.Report.Report.Name}}{{end}}
+{{define "content"}}{{$p := .Data}}{{$v := $p.Report}}{{$r := $v.Report}}{{$cur := $p.Key.Currency}}
+<p class="crumbs"><a href="{{$v.Base}}?{{$v.Query}}">{{template "style-name" $v.Style.Key}}</a></p>
+<h1>{{t "What a figure adds up"}}</h1>
+<p>
+{{- if eq $p.Kind "income"}}{{t "Income"}}{{else if eq $p.Kind "expense"}}{{t "Expenses"}}{{else if eq $p.Kind "unsorted"}}{{t "Not sorted yet"}}{{else if $p.Lines}}{{(index $p.Lines 0).CategoryName}}{{end}}
+{{- if $p.Key.Month}} · {{template "month" $p.Key.Month}}{{else if $r.Period.All}} · {{t "Every month there is"}}{{else}} · {{t "{from} to {to}" "from" $r.Period.From "to" $r.Period.To}}{{end}}
+{{- if $p.Lines}} · <strong class="money {{if lt $p.Sum 0}}out{{else}}in{{end}}">{{money $p.Sum $cur}}</strong>{{end}}</p>
+{{if $p.Lines}}
+<div class="scroll">
+<table class="ledger">
+<thead><tr><th scope="col">{{t "Date"}}</th><th scope="col">{{t "Account"}}</th><th scope="col">{{t "Description"}}</th><th scope="col">{{t "Category"}}</th><th scope="col" class="money">{{t "Amount"}}</th></tr></thead>
+<tbody>
+{{range $p.Lines}}<tr><td>{{.PostedOn}}</td><td>{{.AccountName}}</td><td><a href="/transactions/{{.Split.TransactionID}}">{{if .OwnDescription}}{{.OwnDescription}}{{else}}{{.Description}}{{end}}</a>{{with .Split.Memo}} <span class="hint">{{.}}</span>{{end}}</td>
+<td>{{if .CategoryName}}{{.CategoryName}}{{else}}<span class="badge">{{t "not sorted yet"}}</span>{{end}}</td>
+<td class="money {{if lt .Split.Amount 0}}out{{else}}in{{end}}">{{money .Split.Amount .Currency}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{else}}<p>{{t "Nothing adds up to this figure any more. It may have been sorted since the report was opened."}}</p>{{end}}
+<p><a href="{{$v.Base}}?{{$v.Query}}">{{t "Back to the report"}}</a></p>
+{{end}}
