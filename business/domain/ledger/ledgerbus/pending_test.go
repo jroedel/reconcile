@@ -115,6 +115,11 @@ func TestAPendingChargePosts(t *testing.T) {
 		t.Errorf("import: posted %d, added %d, already %d", st.Posted, st.Added, st.Already)
 	}
 
+	// And it is kept, for the statement's page to say afterwards.
+	if kept, _, err := w.ledger.Statement(t.Context(), me, st.ID); err != nil || kept.Posted != 1 {
+		t.Errorf("kept: posted %d, %v", kept.Posted, err)
+	}
+
 	posted, ok := w.find(me, card, "2026-10", "CITY PARKING 0412 SPRINGFIELD")
 	if !ok || posted.Pending || posted.Amount != -1200 || posted.StatementID != st.ID {
 		t.Fatalf("the posted charge: %+v", posted)

@@ -88,7 +88,7 @@ func (a app) keepEndpoints() []Endpoint {
 				{Name: "files", Type: "array of string", Description: "The files to import, by the file id list_inbox gives; every file waiting when left out."},
 				{Name: "accounts", Type: "array of object {file, part, account}", Description: "An account for a file, or for one part of a file, that list_inbox proposed none for, or proposed the wrong one: the file's id, the part as list_inbox gives it (empty for a file of one), and the account. Only an account you keep the books of."},
 			}},
-			Returns: "{imported, files: [{file, name, parts: [{part, account, account_name, outcome: imported|already_imported|waiting, needs, page}]}], imports_url}; or, while the files are still being read or imported, " + workingReturns,
+			Returns: "{imported, files: [{file, name, parts: [{part, account, account_name, outcome: imported|already_imported|waiting, needs, page, mends}]}], imports_url} (mends as list_inbox says it; for an imported part, what the import did); or, while the files are still being read or imported, " + workingReturns,
 			handler: a.importInbox,
 		},
 		{

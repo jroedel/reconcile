@@ -160,7 +160,8 @@ CREATE TABLE IF NOT EXISTS splits (
 // before a pending charge was cleared rather than written over, it posted
 // as nothing, and the index on that later column is built after it. And a
 // statement from before layouts were kept gains statements.shape, and was
-// in none.
+// in none; from before what an import did to the rows already here was
+// kept, it gains those counts, and did nothing anybody can now say.
 func TestInitGivesOldPartsNoRule(t *testing.T) {
 	db, err := sqldb.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -248,6 +249,11 @@ VALUES (?, ?, ?, 'csv', '2026-07-01', '2026-07-31', 'none', ?, 0)`,
 	var shape string
 	if err := db.QueryRowContext(ctx, `SELECT shape FROM statements WHERE id = ?`, statement.String()).Scan(&shape); err != nil || shape != "" {
 		t.Errorf("the old statement's layout: %q, %v", shape, err)
+	}
+
+	var mended int
+	if err := db.QueryRowContext(ctx, `SELECT posted + completed + superseded + renamed + identified FROM statements WHERE id = ?`, statement.String()).Scan(&mended); err != nil || mended != 0 {
+		t.Errorf("the old statement's counts: %d, %v", mended, err)
 	}
 
 	if err := sqldb.CheckSchema(ctx, db, ledgerdb.Expected); err != nil {

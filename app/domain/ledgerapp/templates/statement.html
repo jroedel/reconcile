@@ -14,6 +14,7 @@
 {{else if eq (printf "%s" $st.Checked) "totals"}}<p>{{t "The opening balance, {opening}, plus everything in the file came to the closing balance, {closing}." "opening" (money $st.Opening $cur) "closing" (money $st.Closing $cur)}}</p>
 {{else}}<p>{{t "There were no balances to check this statement against. Compare its total with the paper statement before you rely on it."}}</p>{{end}}
 <p>{{t "{added} transactions came in with it, and {already} it listed were here already." "added" $st.Added "already" $st.Already}}</p>
+{{template "mended" $st}}
 <p class="hint">{{if $v.ImportedBy}}{{t "Imported by {who} on {date}." "who" $v.ImportedBy "date" ($st.ImportedAt.Format "2006-01-02")}}{{else}}{{t "Imported on {date}." "date" ($st.ImportedAt.Format "2006-01-02")}}{{end}}</p>
 <p><a class="button quiet" href="/statements/{{$st.ID}}/file">{{t "Download {name}" "name" $st.FileName}}</a>
 {{with $v.Export}}<a class="button quiet" href="{{.}}">{{t "Download this period for the accountant"}}</a>{{end}}</p>

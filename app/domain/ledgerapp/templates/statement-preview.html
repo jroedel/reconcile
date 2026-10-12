@@ -206,10 +206,7 @@
 <ul class="list">{{range .}}<li><input type="hidden" name="asked" value="{{.Index}}"><label class="choice"><input type="checkbox" name="include" value="{{.Index}}"{{if .Imported}} checked{{end}}> {{if .OtherHolder}}{{t "Import it: {amount} on {date}, “{this}”, {holder}'s in this file, where the account has “{that}”, {other}'s." "amount" (money .Row.Amount $cur) "date" .Row.PostedOn "this" .Row.Description "holder" .Row.Holder "that" .Twin.Description "other" .Twin.Holder}}{{else}}{{t "Import it anyway: {amount} on {date}, “{this}” in this file, where the account has “{that}”." "amount" (money .Row.Amount $cur) "date" .Row.PostedOn "this" .Row.Description "that" .Twin.Description}}{{end}}</label></li>
 {{end}}</ul>
 {{end}}
-{{if $d.Statement.Posted}}<p class="hint">{{t "{n} of its rows are charges that were pending here and have now posted. Each is the one that counts from now on, and takes how the pending charge was sorted; the pending charge stays in its statement, marked as posted." "n" $d.Statement.Posted}}</p>{{end}}
-{{if $d.Statement.Completed}}<p class="hint">{{t "{n} of the transactions already here will take this file's description of them, which says more." "n" $d.Statement.Completed}}</p>{{end}}
-{{if $d.Statement.Renamed}}<p class="hint">{{t "{n} of the transactions already here name their holder cut short, as a narrow printed column left it. Each will name the whole name, which the rest of the account uses." "n" $d.Statement.Renamed}}</p>{{end}}
-{{if $d.Statement.Superseded}}<p class="hint">{{t "{n} of its rows are pending charges that it also lists as posted. Both are imported, so that the statement is whole, and only the posted ones count." "n" $d.Statement.Superseded}}</p>{{end}}
+{{template "will-mend" $d.Statement}}
 {{if $d.Statement.ByRule}}<p class="hint">{{t "The account's sorting rules will sort {n} of the new ones. They are marked, so you can check them." "n" $d.Statement.ByRule}}</p>{{end}}{{end}}
 {{if $d.Statement.Locked}}<p class="notice" role="alert">{{t "{n} of the new transactions fall in a period that has been reconciled, so this statement cannot be imported. If the bank really changed that period, reopen its statement first, on the month-by-month page." "n" $d.Statement.Locked}} <a href="/accounts/{{$d.Account.ID}}/months">{{t "Month by month"}}</a></p>{{end}}
 </section>
