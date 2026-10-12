@@ -618,6 +618,22 @@ func (b *Business) read(ctx context.Context, d *Draft, data []byte, opts *Option
 		return ErrUnreadable
 	}
 
+	// A card's export with one signed column says which way round it is
+	// only by its rows: some issuers write a purchase as money out and
+	// some as a positive number, as their printouts do (finishPDF). A
+	// guess at the columns guesses that too, from what most of the rows
+	// are -- a card's month is mostly purchases -- and the preview shows
+	// the box that turns the signs round ticked, for a person to untick.
+	// Only a guess: a mapping a person chose or that was remembered says
+	// it already.
+	if opts == nil && !d.Remembered && d.Account.Kind == tenancybus.Card && positiveMostly(d.Mapping, res.Records) {
+		d.Mapping.Invert = true
+
+		for i := range res.Records {
+			res.Records[i].Amount = -res.Records[i].Amount
+		}
+	}
+
 	d.Result = res
 	d.Shape = recognize(CSV, "", d.Inspection.Structure())
 
@@ -762,6 +778,29 @@ func part(d *Draft, res importbus.Result, opts *Options) (importbus.Result, erro
 	d.Part, d.Choose = "", true
 
 	return importbus.Result{}, nil
+}
+
+// positiveMostly reports a CSV read by one signed column, not yet turned
+// round, more of whose rows are positive than negative. Counted rather
+// than summed: a card's month of small purchases and one large payment
+// is still mostly purchases.
+func positiveMostly(m csvsource.Mapping, recs []importbus.Record) bool {
+	if m.Amount == "" || m.Invert {
+		return false
+	}
+
+	balance := 0
+
+	for _, r := range recs {
+		switch {
+		case r.Amount > 0:
+			balance++
+		case r.Amount < 0:
+			balance--
+		}
+	}
+
+	return balance > 0
 }
 
 // mapping chooses the columns for a CSV: the person's, else one remembered

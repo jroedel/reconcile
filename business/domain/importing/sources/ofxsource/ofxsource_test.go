@@ -407,3 +407,27 @@ func TestReadRefusesABalanceWithNoDate(t *testing.T) {
 		t.Error("an undated balance was dropped without a word")
 	}
 }
+
+func TestReadDropsABalanceFromAfterThePeriod(t *testing.T) {
+	// A download of a period long past states the balance of the day it was
+	// made, not of the period's last: last year's rows, and October's
+	// balance. Kept, it would be offered as the closing balance of rows it
+	// does not follow from.
+	later := strings.Replace(sgml, "<DTASOF>20260731", "<DTASOF>20261012", 1)
+
+	got, err := ofxsource.Read([]byte(later))
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+
+	if got.Closing.Known {
+		t.Errorf("a balance dated after the period was kept: %s", got.Closing.Amount.Display())
+	}
+
+	// A day after the period's end is the same moment in another clock.
+	nextDay := strings.Replace(sgml, "<DTASOF>20260731", "<DTASOF>20260801", 1)
+
+	if got, err = ofxsource.Read([]byte(nextDay)); err != nil || !got.Closing.Known {
+		t.Errorf("a balance dated the day after the period was dropped (error %v)", err)
+	}
+}

@@ -85,6 +85,18 @@ func Read(data []byte) (importbus.Result, error) {
 		}
 	}
 
+	// The ledger balance is the account's at the moment of the download,
+	// whatever period was asked for: a download of last year, made in
+	// October, lists last year's rows and states October's balance. That is
+	// no balance at the end of these rows, and checked against them it
+	// would fail, or would be offered on the preview as the closing
+	// balance a person need only add the opening to. A day's grace, because
+	// the two dates are each in their own clock's day: an end at 23:59:59
+	// and a balance at 03:11 are one moment told two ways.
+	if res.Closing.Known && !res.End.IsZero() && res.Closing.AsOf.After(res.End.AddDate(0, 0, 1)) {
+		res.Closing = importbus.Balance{}
+	}
+
 	return res, nil
 }
 
