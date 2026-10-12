@@ -10,6 +10,7 @@
 {{- else if eq . "pdf-scan"}}{{t "That PDF is a picture of a statement, such as a scan, with no text in it to read. Download the statement from your bank's website as CSV or OFX instead."}}
 {{- else if eq . "pdf-password"}}{{t "That PDF is locked with a password. Save it again without one, or download the statement from your bank's website as CSV or OFX."}}
 {{- else if eq . "pdf-unreadable"}}{{t "That PDF could not be opened. It may be damaged, or longer than 50 pages. Download the statement from your bank's website as CSV or OFX instead."}}
+{{- else if eq . "pdf-lists-none"}}{{t "This page lists no transactions, though it says its period had some. It was most likely printed before its list of transactions had loaded. Open the page again, wait until the transactions show, and print it again."}}
 {{- else if eq . "pdf-no-rows"}}{{t "No transactions could be found in that PDF. This reads statements whose rows start with a date and end with an amount; for any other, download the statement from your bank's website as CSV or OFX."}}
 {{- else if eq . "unreadable"}}{{t "That file is not a statement this can read. Statements come from your bank's website as CSV, OFX or QFX."}}
 {{- else if eq . "unmapped"}}{{t "Choose which column holds the date, and which holds the amount or the money in and out."}}

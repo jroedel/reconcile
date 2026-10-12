@@ -118,6 +118,11 @@ type Statement struct {
 	// (ledgerdb's superseded). Counted on import and in the preview; not
 	// kept.
 	Superseded int
+
+	// Renamed is how many rows already here named their holder cut short
+	// and took the whole name, from this file or the account (ledgerdb's
+	// wholeHolders). Counted on import and in the preview; not kept.
+	Renamed int
 }
 
 // OtherHolders reports a doubt that names two holders (Doubt.OtherHolder).

@@ -386,3 +386,18 @@ func TestACreditColumnWrittenNegative(t *testing.T) {
 
 	wantAmounts(t, read(t, data, m), "139.07", "-4.50")
 }
+
+// A card's export of every card names each charge's holder in a column of
+// its own.
+func TestAMemberNameColumnIsTheHolder(t *testing.T) {
+	const data = "Status,Date,Description,Debit,Credit,Member Name\nCleared,12/05/2025,COFFEE CART,4.50,,ANA SANTOS\n"
+
+	m := detect(t, data)
+	if m.Holder != "Member Name" {
+		t.Fatalf("Detect = %+v", m)
+	}
+
+	if r := read(t, data, m).Records[0]; r.Holder != "ANA SANTOS" {
+		t.Errorf("holder = %q", r.Holder)
+	}
+}

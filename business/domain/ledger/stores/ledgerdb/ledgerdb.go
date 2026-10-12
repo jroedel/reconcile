@@ -441,7 +441,13 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		return ledgerbus.Statement{}, fmt.Errorf("storing the statement: %w", err)
 	}
 
-	st.Added, st.Already, st.ByRule, st.Completed, st.Superseded, st.Doubts = 0, 0, 0, 0, 0, nil
+	st.Added, st.Already, st.ByRule, st.Completed, st.Superseded, st.Renamed, st.Doubts = 0, 0, 0, 0, 0, 0, nil
+
+	// The holders' names first, so that every rule below compares one
+	// person's rows under one name.
+	if err := wholeHolders(ctx, tx, &st, txs, on); err != nil {
+		return ledgerbus.Statement{}, err
+	}
 
 	// Each row on its own, in the file's order. Nothing is inserted yet:
 	// the count rule needs the rows of other statements as they were.

@@ -941,6 +941,8 @@ func problemOf(err error, noAccount bool) string {
 		return "The PDF is a picture of a statement, with no text in it to read."
 	case errors.Is(err, ledgerbus.ErrPDFUnavailable):
 		return "PDFs cannot be read on the site just now."
+	case errors.Is(err, ledgerbus.ErrPDFListsNone):
+		return "It lists no transactions, though it says its period had some: it was printed before its list had loaded, and should be printed again."
 	case errors.Is(err, ledgerbus.ErrPDFNoRows), errors.Is(err, ledgerbus.ErrEmpty):
 		return "No transactions could be found in it."
 	case errors.Is(err, ledgerbus.ErrUnbalanced):

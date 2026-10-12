@@ -100,7 +100,7 @@ func (p Proposal) Unattended() bool {
 	d := p.Draft
 
 	return p.Problem == nil && !p.Account.Zero() && !d.Choose && d.Ready() && (d.Check.OK || d.AddsNothing()) && !d.LooksByHolder &&
-		len(d.Statement.Doubts) == 0 && d.Result.Skipped == 0 && !d.Result.Unplaced && d.Unnamed == 0
+		len(d.Statement.Doubts) == 0 && d.Result.Skipped == 0 && !d.Result.Unplaced && (d.Unnamed == 0 || d.Inferred)
 }
 
 // Imported reports whether the proposal's file is in its account already.
@@ -323,10 +323,16 @@ func (b *Business) prepareFor(ctx context.Context, actor, accountID, fileID type
 }
 
 // defaults is the options that read a file as Prepare reads it with none:
-// the columns it chose, a card's PDF turned round, and the part it chose.
-// Opening and closing balances are left to the file, as with none.
+// the columns it chose, a card's PDF turned round, the part it chose, and
+// the holder it took the file's rows for. Opening and closing balances are
+// left to the file, as with none.
 func (d Draft) defaults() Options {
-	return Options{Mapping: d.Mapping, Invert: d.Format == PDF && d.Account.Kind == tenancybus.Card, Part: d.Part}
+	o := Options{Mapping: d.Mapping, Invert: d.Format == PDF && d.Account.Kind == tenancybus.Card, Part: d.Part}
+	if d.Inferred {
+		o.Holder = d.Holder
+	}
+
+	return o
 }
 
 // Expected reports an error that is a file's or a choice's, said to the
