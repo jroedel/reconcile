@@ -23,6 +23,7 @@ import (
 	"github.com/jroedel/reconcile/app/sdk/mid"
 	"github.com/jroedel/reconcile/business/domain/category/categorybus"
 	"github.com/jroedel/reconcile/business/domain/event/eventbus"
+	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/user/userbus"
 	"github.com/jroedel/reconcile/business/types"
@@ -59,6 +60,15 @@ type HolderOption interface {
 	ByHolder(ctx context.Context, actor, accountID types.ID) (bool, error)
 }
 
+// Figurer is the part of ledgerbus this app uses for an organization's
+// lists: beside each account and project, its days, how many transactions
+// and how much money, so that a busy one is told from a quiet one without
+// opening each (issue #106).
+type Figurer interface {
+	AccountFigures(ctx context.Context, actor types.ID, ids []types.ID) (map[types.ID]ledgerbus.Figures, error)
+	ProjectFigures(ctx context.Context, actor types.ID, ids []types.ID) (map[types.ID]ledgerbus.Figures, error)
+}
+
 // Users is the part of userbus this app uses: names for the people lists
 // and the history.
 type Users interface {
@@ -81,6 +91,10 @@ type Config struct {
 	// holder, for the account's settings to say so beside its other
 	// settings. Nil says nothing.
 	Holders HolderOption
+
+	// Figures says how much each account and project in an organization's
+	// lists has held. Nil says nothing.
+	Figures Figurer
 
 	// Mail may be nil: an invitation is then logged as not sent, and the
 	// grant is made all the same -- the person can still sign in.
@@ -449,6 +463,11 @@ type orgView struct {
 	Projects         []tenancybus.Project
 	ArchivedProjects []tenancybus.Project
 
+	// AccountFigures and ProjectFigures are beside each one listed that is
+	// not archived, by id; one missing from them shows no figures.
+	AccountFigures map[types.ID]ledgerbus.Figures
+	ProjectFigures map[types.ID]ledgerbus.Figures
+
 	// Name is what was typed into the rename form, kept when refused.
 	Name string
 }
@@ -491,11 +510,44 @@ func (a app) orgPage(w http.ResponseWriter, r *http.Request, id types.ID, status
 		}
 	}
 
+	a.figures(r, me.ID, &view)
+
 	if edit != nil {
 		edit(&view)
 	}
 
 	a.cfg.Render.Render(w, r, status, "org", view)
+}
+
+// figures adds the lists' figures to the page. Figures that cannot be read
+// are lines missing from the page, not a page that fails: the lists are
+// how a person reaches everything else in the organization.
+func (a app) figures(r *http.Request, me types.ID, view *orgView) {
+	if a.cfg.Figures == nil {
+		return
+	}
+
+	accounts := make([]types.ID, len(view.Accounts))
+	for i, acct := range view.Accounts {
+		accounts[i] = acct.ID
+	}
+
+	projects := make([]types.ID, len(view.Projects))
+	for i, p := range view.Projects {
+		projects[i] = p.ID
+	}
+
+	var err error
+
+	view.AccountFigures, err = a.cfg.Figures.AccountFigures(r.Context(), me, accounts)
+	if err != nil {
+		a.cfg.Log.Error("the accounts' figures could not be read", "request_id", web.RequestIDFrom(r.Context()), "error", err)
+	}
+
+	view.ProjectFigures, err = a.cfg.Figures.ProjectFigures(r.Context(), me, projects)
+	if err != nil {
+		a.cfg.Log.Error("the projects' figures could not be read", "request_id", web.RequestIDFrom(r.Context()), "error", err)
+	}
 }
 
 func (a app) org(w http.ResponseWriter, r *http.Request) {

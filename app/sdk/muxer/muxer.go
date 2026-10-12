@@ -122,7 +122,7 @@ func New(cfg Config) (http.Handler, error) {
 	mux.HandleFunc("GET /static/js/{file}", cfg.Render.Scripts())
 	mux.HandleFunc("GET /static/img/{file}", cfg.Render.Images())
 
-	homeapp.Routes(mux, cfg.Log, cfg.Render, cfg.Tenancy, cfg.Receipts)
+	homeapp.Routes(mux, cfg.Log, cfg.Render, cfg.Tenancy, cfg.Receipts, cfg.Ledger)
 
 	// Everything behind sign-in needs sign-in to exist, so all of it is
 	// mounted only when there is a public address.
@@ -153,6 +153,7 @@ func New(cfg Config) (http.Handler, error) {
 
 			Categories: cfg.Categories,
 			Holders:    cfg.Ledger,
+			Figures:    cfg.Ledger,
 		}, guard)
 
 		ledgerapp.Routes(mux, ledgerapp.Config{

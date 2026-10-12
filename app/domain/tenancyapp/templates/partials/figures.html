@@ -1,0 +1,15 @@
+{{/* Beside each account and project in an organization's lists: its days,
+how many transactions and how much money (issue #106). A project's totals
+are per currency and by kind, as its book says them; an account's are cash,
+and the balance its latest checked statement closed on. homeapp has the same
+for the lists on its own; change both together. */}}
+
+{{define "account-figures"}}{{$f := .F}}{{$cur := .Currency}}
+{{if $f.Count}}{{range $f.Totals}}<p class="hint figures">{{t "From {start} to {end}: {n} transactions, money in {in}, money out {out}." "start" $f.First "end" $f.Last "n" $f.Count "in" (money .In .Currency) "out" (money .Out .Currency)}}</p>{{end}}{{end}}
+{{if $f.HasBalance}}<p class="hint figures">{{t "Balance on {date}: {amount}" "date" $f.BalanceOn "amount" (money $f.Balance $cur)}}</p>{{end}}
+{{end}}
+
+{{define "project-figures"}}{{$f := .}}
+{{if $f.Count}}<p class="hint figures">{{if eq $f.First.String $f.Last.String}}{{$f.First}}{{else}}{{t "{start} to {end}" "start" $f.First "end" $f.Last}}{{end}} · {{t "{n} transactions" "n" $f.Count}}</p>
+{{range $f.Totals}}<p class="figures">{{t "Income"}} <span class="money in">{{money .Income .Currency}}</span> · {{t "Expenses"}} <span class="money out">{{money .Expenses .Currency}}</span> · <strong>{{if lt .Net 0}}{{t "Short by {amount}" "amount" (money .Net.Abs .Currency)}}{{else if gt .Net 0}}{{t "{amount} in hand" "amount" (money .Net .Currency)}}{{else}}{{t "Even"}}{{end}}</strong>{{if .Unsorted}} <span class="badge">{{t "not all sorted yet"}}</span>{{end}}</p>{{end}}{{end}}
+{{end}}
