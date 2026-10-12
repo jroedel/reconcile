@@ -117,6 +117,7 @@
 {{- else if eq .Action "budget.removed"}} {{if .Detail.category}}{{t "took {category} out of the budget" "category" .Detail.category}}{{else if eq .Detail.kind "income"}}{{t "took the total income out of the budget"}}{{else}}{{t "took the total expenses out of the budget"}}{{end}}{{with .Detail.year}} ({{.}}){{end}}
 {{- else if eq .Action "budget.copied"}} {{t "copied the budget for {from} into {year}" "from" .Detail.from "year" .Detail.year}}
 {{- else if eq .Action "org.fiscal"}} {{template "fiscal-line" .Detail.month}}
+{{- else if eq .Action "account.reference"}} {{if eq .Detail.reference "true"}}{{t "marked it for reference: kept to explain the books, and counted in none of their totals"}}{{else}}{{t "took the mark for reference off: it counts in the organization's totals again"}}{{end}}
 {{- else if eq .Action "receipt.added"}} {{t "added {n} receipts" "n" .Detail.count}}
 {{- else if eq .Action "receipt.removed"}} {{t "removed the receipt {what}" "what" .Detail.what}}
 {{- else if eq .Action "receipt.filed"}} {{with .Detail.number}}{{t "filed the image of check {number} here from their own checks" "number" .}}{{else}}{{t "filed the image of a check here from their own checks"}}{{end}}

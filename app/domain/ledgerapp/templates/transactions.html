@@ -2,6 +2,7 @@
 {{define "content"}}{{$v := .Data}}{{$cur := $v.Account.Currency}}
 <p class="crumbs"><a href="{{$v.Path}}">{{$v.Account.Name}}</a></p>
 <h1>{{t "Transactions"}}</h1>
+{{if $v.Account.Reference}}<p class="notice">{{t "This account is for reference. Its money counts in none of the organization's totals, and nothing in it needs sorting."}}</p>{{end}}
 {{template "done" $v.Done}}
 {{template "problem" $v.Problem}}
 
@@ -90,6 +91,7 @@
 {{end}}</ul>
 {{else if .Missing}}<p><strong>{{t "No file yet from {names}" "names" .MissingNames}}</strong></p>{{end}}{{end}}
 {{if or $v.Unsorted $v.ByRule $v.Through}}<p><a href="?month={{.Month}}">{{t "Show all of the month"}}</a></p>
+{{else if $v.Account.Reference}}<p class="hint">{{t "For reference: nothing here needs sorting."}}</p>
 {{else}}<p>{{if .Unsorted}}<a href="?month={{.Month}}&amp;unsorted=1">{{t "{n} not sorted yet" "n" .Unsorted}}</a>{{if $v.CanBookkeep}} · <a href="{{$v.Path}}/sort?month={{.Month}}">{{t "Sort them on one page"}}</a>{{end}}{{else}}<span class="hint">{{t "Every transaction this month is sorted."}}</span>{{end}}
 {{- if .ByRule}} · <a href="?month={{.Month}}&amp;byrule=1">{{t "{n} sorted by rule, to check" "n" .ByRule}}</a>{{end}}
 {{- if .ThroughKey}} · <a href="?month={{.Month}}&amp;through=1">{{t "{n} changed by a program, to check" "n" .ThroughKey}}</a>{{end}}

@@ -138,6 +138,16 @@ type Account struct {
 	Currency string
 	OpenedOn types.Date
 
+	// Reference is an account kept beside an organization's books to
+	// explain them, and not part of them: a national office's checking,
+	// imported by the house whose withdrawals it explains (docs/plan.md,
+	// "Whose books"). It is still read, checked and reconciled, and can
+	// explain the organization's transactions; its parts count in none of
+	// the organization's totals, so that nothing is the house's twice.
+	// Only an account in an organization can be one: an account on its
+	// own is its own books.
+	Reference bool
+
 	CreatedBy  types.ID
 	CreatedAt  time.Time
 	ArchivedAt time.Time
@@ -572,6 +582,38 @@ func (b *Business) EditAccount(ctx context.Context, now time.Time, actor, id typ
 	}
 
 	return a, b.store.UpdateAccount(ctx, a, eventbus.New(now, actor, a.Scope(), eventbus.Edited, map[string]string{"name": a.Name}))
+}
+
+// AccountReference is the line in an account's history when it is put
+// for reference, or taken off.
+const AccountReference eventbus.Action = "account.reference"
+
+// SetAccountReference marks an organization's account for reference, or
+// takes the mark off (Account.Reference). It changes what every one of
+// the organization's totals counts, past periods' too, so it is an
+// owner's, and the history says which way.
+func (b *Business) SetAccountReference(ctx context.Context, now time.Time, actor, id types.ID, reference bool) (Account, error) {
+	if _, err := b.require(ctx, actor, types.AccountScope(id), Manage); err != nil {
+		return Account{}, err
+	}
+
+	a, err := b.store.AccountByID(ctx, id)
+	if err != nil {
+		return Account{}, err
+	}
+
+	if a.OrgID.Zero() {
+		return Account{}, Invalid{Field: "reference", Err: errors.New("only an organization's account can be for reference")}
+	}
+
+	if a.Reference == reference {
+		return a, nil
+	}
+
+	a.Reference = reference
+
+	return a, b.store.UpdateAccount(ctx, a, eventbus.New(now, actor, a.Scope(), AccountReference,
+		map[string]string{"reference": strconv.FormatBool(reference)}))
 }
 
 // SetAccountArchived puts an account away, or brings it back.

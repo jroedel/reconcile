@@ -9,7 +9,7 @@
 <section class="card">
 <h2>{{t "Accounts"}}</h2>
 {{if .Accounts}}<ul class="list">
-{{range .Accounts}}<li><a href="/accounts/{{.ID}}">{{.Name}}</a> <span class="hint">{{template "kind" (printf "%s" .Kind)}}{{if .Last4}} ···{{.Last4}}{{end}} · {{.Currency}}</span>
+{{range .Accounts}}<li><a href="/accounts/{{.ID}}">{{.Name}}</a>{{if .Reference}} <span class="badge">{{t "for reference"}}</span>{{end}} <span class="hint">{{template "kind" (printf "%s" .Kind)}}{{if .Last4}} ···{{.Last4}}{{end}} · {{.Currency}}</span>
 {{template "account-figures" (dict "F" (index $.Data.AccountFigures .ID) "Currency" .Currency)}}</li>
 {{end}}</ul>
 {{else}}<p class="hint">{{t "No accounts yet."}}</p>{{end}}

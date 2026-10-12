@@ -16,6 +16,7 @@
 {{- else if eq . "role"}}{{t "Choose a role from the list."}}
 {{- else if eq . "last-owner"}}{{t "Somebody else must be an owner first. Give another person the owner role, then try again."}}
 {{- else if eq . "already-granted"}}{{t "That person already has a role here. Change it in the list instead."}}
+{{- else if eq . "reference"}}{{t "Only an organization's account can be for reference. An account on its own is its own books."}}
 {{- else}}{{t "Something went wrong at our end. Please try again in a few minutes."}}
 {{- end}}</p>{{end}}{{end}}
 
@@ -24,6 +25,8 @@
 {{- else if eq . "saved"}}{{t "Saved."}}
 {{- else if eq . "archived"}}{{t "Archived. It is off the lists, and nothing in it was deleted."}}
 {{- else if eq . "restored"}}{{t "Brought back."}}
+{{- else if eq . "reference-on"}}{{t "This account is for reference now. Its money counts in none of the organization's totals, past months' included."}}
+{{- else if eq . "reference-off"}}{{t "This account is part of the organization's books now. Its money counts in the totals, past months' included."}}
 {{- else if eq . "granted"}}{{t "Done. We have emailed them to say so."}}
 {{- else if eq . "role-changed"}}{{t "Role changed."}}
 {{- else if eq . "removed"}}{{t "Removed."}}

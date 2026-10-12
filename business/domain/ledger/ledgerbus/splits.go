@@ -165,7 +165,7 @@ func (b *Business) Transaction(ctx context.Context, actor, id types.ID) (Editor,
 		}
 	}
 
-	if e.Projects, err = b.projectChoices(ctx, actor, t, access); err != nil {
+	if e.Projects, err = b.projectChoices(ctx, actor, t, account.Reference, access); err != nil {
 		return Editor{}, err
 	}
 
@@ -185,10 +185,12 @@ func (b *Business) Transaction(ctx context.Context, actor, id types.ID) (Editor,
 
 // projectChoices is the projects a part may be put in, and those parts are
 // in already.
-func (b *Business) projectChoices(ctx context.Context, actor types.ID, t Transaction, access tenancybus.Access) ([]tenancybus.Project, error) {
+func (b *Business) projectChoices(ctx context.Context, actor types.ID, t Transaction, reference bool, access tenancybus.Access) ([]tenancybus.Project, error) {
 	var out []tenancybus.Project
 
-	if access.Can(tenancybus.Bookkeep) {
+	// An account for reference counts in no project (docs/plan.md, "Whose
+	// books"), so none is offered; one a part is in already is still named.
+	if access.Can(tenancybus.Bookkeep) && !reference {
 		mine, err := b.accounts.ProjectsFor(ctx, actor, tenancybus.Bookkeep)
 		if err != nil {
 			return nil, err
@@ -288,6 +290,7 @@ var (
 	errCount    = errors.New("there must be at least one part, and not too many")
 	errCategory = errors.New("that category is not on this account's list")
 	errProject  = errors.New("that project is not one you keep the books of")
+	errForRef   = errors.New("an account for reference puts nothing in a project; its money is not the organization's")
 	errMemo     = errors.New("the memo is too long")
 )
 
@@ -321,6 +324,12 @@ func (b *Business) checkParts(ctx context.Context, actor types.ID, e Editor, par
 
 		if p.ProjectID.Zero() || already[p.ProjectID] {
 			continue
+		}
+
+		// Counted in the project, the national office's charge and the
+		// house's withdrawal that repaid it would be the same flight twice.
+		if e.Account.Reference {
+			return Invalid{Index: i, Field: "project", Err: errForRef}
 		}
 
 		access, err := b.accounts.AccessTo(ctx, actor, types.ProjectScope(p.ProjectID))

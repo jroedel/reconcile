@@ -31,7 +31,7 @@ var _ tenancybus.Storer = (*Store)(nil)
 // Expected is what CheckSchema verifies at startup and on every /healthz.
 var Expected = sqldb.Expected{
 	"orgs":     {"id", "name", "created_by", "created_at", "archived_at", "fiscal_start"},
-	"accounts": {"id", "org_id", "name", "kind", "last4", "currency", "opened_on", "created_by", "created_at", "archived_at"},
+	"accounts": {"id", "org_id", "name", "kind", "last4", "currency", "opened_on", "created_by", "created_at", "archived_at", "reference"},
 	"projects": {"id", "org_id", "name", "starts_on", "ends_on", "note", "created_by", "created_at", "archived_at", "via"},
 	"grants":   {"id", "scope_kind", "scope_id", "user_id", "email", "role", "granted_by", "created_at"},
 }
@@ -123,7 +123,13 @@ CREATE INDEX IF NOT EXISTS grants_waiting ON grants (email) WHERE email IS NOT N
 	// The API key that made or changed a project, until a person saves it
 	// on its page (issue #77): a later column again, and '' for every
 	// project made before it, which people made.
-	return sqldb.AddColumn(ctx, db, "projects", "via", "TEXT NOT NULL DEFAULT ''")
+	if err := sqldb.AddColumn(ctx, db, "projects", "via", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+
+	// An account for reference (docs/plan.md, "Whose books"): every
+	// account made before it is part of its books, which is what it was.
+	return sqldb.AddColumn(ctx, db, "accounts", "reference", "INTEGER NOT NULL DEFAULT 0 CHECK (reference IN (0, 1))")
 }
 
 // --- transactions -----------------------------------------------------------
@@ -229,14 +235,14 @@ func scanOrg(row scanner) (tenancybus.Org, error) {
 
 // --- accounts ---------------------------------------------------------------
 
-const accountColumns = `id, org_id, name, kind, last4, currency, opened_on, created_by, created_at, archived_at`
+const accountColumns = `id, org_id, name, kind, last4, currency, opened_on, created_by, created_at, archived_at, reference`
 
 // CreateAccount inserts an account, and its owner's grant if it has one.
 func (s *Store) CreateAccount(ctx context.Context, a tenancybus.Account, owner *tenancybus.Grant, ev eventbus.Event) error {
 	return s.inTx(ctx, ev, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO accounts (`+accountColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		if _, err := tx.ExecContext(ctx, `INSERT INTO accounts (`+accountColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			a.ID.String(), nullID(a.OrgID), a.Name, string(a.Kind), a.Last4, a.Currency, a.OpenedOn.String(),
-			a.CreatedBy.String(), ms(a.CreatedAt), nullMS(a.ArchivedAt)); err != nil {
+			a.CreatedBy.String(), ms(a.CreatedAt), nullMS(a.ArchivedAt), a.Reference); err != nil {
 			return fmt.Errorf("inserting the account: %w", err)
 		}
 
@@ -253,9 +259,9 @@ func (s *Store) CreateAccount(ctx context.Context, a tenancybus.Account, owner *
 func (s *Store) UpdateAccount(ctx context.Context, a tenancybus.Account, ev eventbus.Event) error {
 	return s.inTx(ctx, ev, func(tx *sql.Tx) error {
 		res, err := tx.ExecContext(ctx, `
-UPDATE accounts SET name = ?, kind = ?, last4 = ?, currency = ?, opened_on = ?, archived_at = ?
+UPDATE accounts SET name = ?, kind = ?, last4 = ?, currency = ?, opened_on = ?, archived_at = ?, reference = ?
 WHERE id = ?`,
-			a.Name, string(a.Kind), a.Last4, a.Currency, a.OpenedOn.String(), nullMS(a.ArchivedAt), a.ID.String())
+			a.Name, string(a.Kind), a.Last4, a.Currency, a.OpenedOn.String(), nullMS(a.ArchivedAt), a.Reference, a.ID.String())
 		if err != nil {
 			return fmt.Errorf("updating the account: %w", err)
 		}
@@ -305,7 +311,7 @@ func scanAccount(row scanner) (tenancybus.Account, error) {
 		archived           sql.NullInt64
 	)
 
-	if err := row.Scan(&id, &org, &a.Name, &kind, &a.Last4, &a.Currency, &open, &by, &made, &archived); err != nil {
+	if err := row.Scan(&id, &org, &a.Name, &kind, &a.Last4, &a.Currency, &open, &by, &made, &archived, &a.Reference); err != nil {
 		return tenancybus.Account{}, notFound(err, "the account")
 	}
 

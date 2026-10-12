@@ -167,6 +167,7 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		{e.org + "/budget?year=2026", url.Values{"currency": {"USD"}, "expense-total": {"100"}}},
 		{e.org + "/budget/copy?year=2027", nil},
 		{e.org + "/budget/year-start", url.Values{"month": {"7"}}},
+		{e.account + "/reference", url.Values{"reference": {"1"}}},
 		{inboxed(t, h, e.owner), nil},
 		{check + "/file", url.Values{"account": {accountID}}},
 		{check + "/remove", url.Values{"removed": {"1"}}},

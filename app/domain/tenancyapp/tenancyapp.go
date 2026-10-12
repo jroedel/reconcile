@@ -134,6 +134,7 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	handle("GET /accounts/{id}", a.account)
 	handle("POST /accounts/{id}/edit", a.editAccount)
 	handle("POST /accounts/{id}/archive", a.archiveAccount)
+	handle("POST /accounts/{id}/reference", a.referenceAccount)
 
 	handle("GET /projects/new", a.newProject)
 	handle("POST /projects", a.createProject)
@@ -832,6 +833,42 @@ func (a app) archiveAccount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	back(w, r, "/accounts/"+id.String(), archivedDone(archived))
+}
+
+// referenceAccount puts an organization's account for reference, or takes
+// it off (docs/plan.md, "Whose books").
+func (a app) referenceAccount(w http.ResponseWriter, r *http.Request) {
+	me, ok := actor(w, r)
+	if !ok || !form(w, r) {
+		return
+	}
+
+	id, ok := a.pathID(w, r, "id")
+	if !ok {
+		return
+	}
+
+	reference := r.PostFormValue("reference") == "1"
+
+	_, err := a.cfg.Tenancy.SetAccountReference(r.Context(), a.cfg.Now(), me.ID, id, reference)
+	if code := problem(err); code != "" {
+		a.accountPage(w, r, id, http.StatusUnprocessableEntity, func(v *accountView) { v.Problem = code })
+
+		return
+	}
+
+	if err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
+	done := "reference-off"
+	if reference {
+		done = "reference-on"
+	}
+
+	back(w, r, "/accounts/"+id.String(), done)
 }
 
 // --- projects ---------------------------------------------------------------

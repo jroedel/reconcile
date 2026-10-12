@@ -9,7 +9,7 @@
 {{range $v.Months}}<li>
 <div class="month"><strong>{{.Month}}</strong> {{template "cover" (printf "%s" .State)}}
 {{if .Count}}<a href="{{$v.Path}}/transactions?month={{.Month}}">{{t "{n} transactions" "n" .Count}}</a>{{end}}
-{{if .Unsorted}}<a href="{{$v.Path}}/transactions?month={{.Month}}&amp;unsorted=1">{{t "{n} not sorted yet" "n" .Unsorted}}</a>{{end}}</div>
+{{if and .Unsorted (not $v.Account.Reference)}}<a href="{{$v.Path}}/transactions?month={{.Month}}&amp;unsorted=1">{{t "{n} not sorted yet" "n" .Unsorted}}</a>{{end}}</div>
 {{if eq (printf "%s" .State) "partial"}}<p>{{t "Not in any statement:"}}
 {{range $i, $g := .Gaps}}{{if $i}}, {{end}}{{if eq $g.From.String $g.To.String}}{{$g.From}}{{else}}{{t "{from} to {to}" "from" $g.From "to" $g.To}}{{end}}{{end}}</p>
 <p class="hint">{{t "If nothing happened on those days, widen the period when you reconcile the statement next to them."}}</p>
