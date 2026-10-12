@@ -163,6 +163,14 @@ func (a app) bulkPage(w http.ResponseWriter, r *http.Request, status int, q url.
 
 // bulkChoices reads the list's files and the accounts chosen for them from
 // its address or its form. What is not an identifier is not one of them.
+//
+// A choice that is the account the page proposed by itself (was-<key>, by
+// the number the file prints or where a file like it went) is left out:
+// the list proposes it again from the files alone. Only a person's own
+// choices travel, so the address stays short. Carrying every one, a batch
+// of 36 statements of five accounts each made an address of 15 KB, and
+// Apache refuses one over 8 KB with "Request-URI Too Long" before the app
+// sees it (2026-10-12).
 func bulkChoices(q url.Values) ([]types.ID, map[string]types.ID) {
 	var files []types.ID
 
@@ -177,6 +185,10 @@ func bulkChoices(q url.Values) ([]types.ID, map[string]types.ID) {
 	for k, vs := range q {
 		key, ok := strings.CutPrefix(k, "to-")
 		if !ok || len(vs) == 0 {
+			continue
+		}
+
+		if vs[0] == q.Get("was-"+key) {
 			continue
 		}
 
@@ -324,6 +336,26 @@ func (a app) bulkImport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, bulkAddress(files, chosen, url.Values{"imported": {strconv.Itoa(n)}}), http.StatusSeeOther)
+}
+
+// bulkCheck is the list's "Check again": the files and the person's own
+// choices, back as the list's address. A post rather than the form's own
+// GET, which would put every account on the list into the address,
+// proposed or chosen, and outgrow what Apache accepts (bulkChoices).
+func (a app) bulkCheck(w http.ResponseWriter, r *http.Request) {
+	if _, ok := actor(w, r); !ok {
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "That form could not be read.", http.StatusBadRequest)
+
+		return
+	}
+
+	files, chosen := bulkChoices(r.PostForm)
+
+	http.Redirect(w, r, bulkAddress(files, chosen, nil), http.StatusSeeOther)
 }
 
 // dismiss puts a file of the person's inbox aside without importing it.
