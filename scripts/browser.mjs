@@ -99,6 +99,18 @@ export async function launch() {
   });
   const tail = () => (said.trim() ? `\nChrome said, at the end:\n${said.trim()}` : "\nChrome said nothing.");
 
+  // A Chrome that never got ready is killed before the error goes up. Left
+  // running, its open pipe kept Node waiting after every test had failed,
+  // and the run sat until CI's timeout ten minutes later -- and the error
+  // saying what Chrome had said, which the reporter prints at the end,
+  // was never printed (2026-10-12).
+  const abandon = (err) => {
+    proc.kill("SIGKILL");
+    proc.stderr.destroy();
+    rmSync(profile, { recursive: true, force: true });
+    throw err;
+  };
+
   const url = await new Promise((done, fail) => {
     const timer = setTimeout(() => fail(new Error(`Chrome did not start in 20 s${tail()}`)), 20_000);
     const ready = () => {
@@ -114,9 +126,9 @@ export async function launch() {
       clearTimeout(timer);
       fail(new Error(`Chrome exited (${code}) before it was ready${tail()}`));
     });
-  });
+  }).catch(abandon);
 
-  const cdp = await connect(url, tail);
+  const cdp = await connect(url, tail).catch(abandon);
   proc.once("exit", (code, signal) => cdp.abort(`Chrome exited (${code ?? signal})`));
 
   return {
