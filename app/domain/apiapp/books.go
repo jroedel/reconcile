@@ -178,7 +178,7 @@ func (a app) bookEndpoints() []Endpoint {
 			Method: http.MethodGet, Path: Prefix + "/inbox", Scope: read, Tool: "list_inbox",
 			Summary: "The statement files waiting in your inbox, sent by your Gmail script, each read for the account proposed for it: its period, how it checked, how many transactions are new, and whether it can be imported with no person looking at it, or what needs a person. " + workingNote,
 			Query:   []Field{jobField("list_inbox")},
-			Returns: "{files: [{inbox_id, file, name, received, source, parts: [{part, account, account_name, by, period, transactions, new, mends, check, ready, imported, needs, capabilities}]}], together, imports_url}. mends, when there is anything, is what the file gives the transactions already here: {pending_posted, descriptions_completed, identifiers_given, holders_completed, own_pending_posted}, counts. capabilities is what a part's file can do, most important first: [{name: balances|identifiers|whole|checks|holders|number, can: yes|no|unknown|na, why}]. together is files of the same days of one account: [{account, account_name, period, files: [{file, name, part}], capabilities (the best of them, the first three), bring: {capability: [file names that bring it]}, missing: [capabilities none has]}]. When a file lacks identifiers or whole descriptions and nothing in together brings them, suggest the person also download the same days in another format their bank offers. While the files are still being read, " + workingReturns,
+			Returns: "{files: [{inbox_id, file, name, received, source, parts: [{part, account, account_name, by, period, transactions, new, mends, check, ready, imported, needs, capabilities}]}], together, imports_url}. mends, when there is anything, is what the file gives the transactions already here: {pending_posted, descriptions_completed, identifiers_given, holders_completed, own_pending_posted}, counts. capabilities is what a part's file can do, most important first: [{name: ends (opening and closing balances)|rows (a balance on every row or day)|identifiers|whole|checks|holders|number, can: yes|no|unknown|na, why, better}], better being for one it lacks the kind of download that usually has it: ofx, csv, or statement (the bank's monthly PDF statement). together is files of the same days of one account: [{account, account_name, period, files: [{file, name, part}], capabilities (the best of them), bring: {capability: [file names that bring it]}, missing: [balances|identifiers|whole, what none has]}]. When a file lacks something and nothing in together brings it, tell the person in one line what better says would bring it, as a general rule about banks, not a promise about theirs. While the files are still being read, " + workingReturns,
 			handler: a.listInbox,
 		},
 		{
@@ -897,11 +897,15 @@ func (a app) listInbox(w http.ResponseWriter, r *http.Request) {
 
 // capabilitiesOut is what a file can do (ledgerbus, capabilities.go;
 // issue #111), as the API says it: each thing in order of importance, yes,
-// no, unknown or na (never in the format), and a word for why.
+// no, unknown or na (never in the format), a word for why, and for what it
+// lacks, the kind of download that usually has it.
 func capabilitiesOut(caps []ledgerbus.Capability) []map[string]string {
 	out := make([]map[string]string, len(caps))
 	for i, c := range caps {
 		out[i] = map[string]string{"name": c.Name, "can": string(c.Can), "why": c.Why}
+		if c.Better != "" {
+			out[i]["better"] = c.Better
+		}
 	}
 
 	return out

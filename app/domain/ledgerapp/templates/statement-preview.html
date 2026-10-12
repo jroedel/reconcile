@@ -4,6 +4,7 @@
 <h1>{{t "Check the statement"}}</h1>
 <p class="hint">{{$d.File.Name}}</p>
 {{template "capabilities" $d.Capabilities}}
+{{template "advice" $d.Capabilities}}
 {{template "problem" $v.Problem}}
 {{template "done" $v.Done}}
 {{if $d.HasEarlier}}<p class="notice">{{t "This file was imported into this account already, on {date}." "date" ($d.Earlier.ImportedAt.Format "2006-01-02")}} <a href="/statements/{{$d.Earlier.ID}}">{{t "See that statement"}}</a></p>{{end}}

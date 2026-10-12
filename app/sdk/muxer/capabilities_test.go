@@ -59,15 +59,20 @@ func TestWhatTheFilesCanDo(t *testing.T) {
 	again := e.owner.post("/imports/check", form).Header().Get("Location")
 
 	wantBody(t, e.owner.get(again),
-		"✓ Bank&#39;s identifiers", "✗ Whole descriptions", "✗ Balances", "✓ Whole descriptions",
+		"✓ Bank&#39;s identifiers", "✗ Whole descriptions", "✗ Opening and closing balances", "✓ Whole descriptions",
 		"A CSV has no identifiers from the bank",
 		"Together: My card, 2025-12-01 to 2025-12-31",
 		"The bank&#39;s identifiers come from december.ofx.",
 		"The whole descriptions come from december.csv.",
 		"None of these files has balances")
 
-	// A file on its own page says the same.
-	wantBody(t, e.owner.get(e.ownAccount+"/imports/"+q["f"][0]), "The bank cut the descriptions short")
+	// A file on its own page says the same, and says plainly what another
+	// download would add: a CSV, the whole descriptions; the statement,
+	// the balances.
+	wantBody(t, e.owner.get(e.ownAccount+"/imports/"+q["f"][0]), "The bank cut the descriptions short",
+		"What another download of the same days would add:",
+		"A CSV download of the same days usually has the descriptions whole.",
+		"The bank&#39;s monthly statement, as a PDF, states the opening and closing balances.")
 }
 
 // list_inbox carries each part's capabilities, and the batch's together.
@@ -100,7 +105,8 @@ func TestTheInboxSaysWhatItsFilesCanDo(t *testing.T) {
 		}
 
 		caps, _ := field(part, "capabilities").([]any)
-		if len(caps) < 3 || field(caps[0], "can") != "yes" || field(caps[1], "name") != "identifiers" || field(caps[1], "can") != "na" {
+		if len(caps) < 3 || field(caps[0], "name") != "ends" || field(caps[0], "can") != "yes" ||
+			field(caps[2], "name") != "identifiers" || field(caps[2], "can") != "na" || field(caps[2], "better") != "ofx" {
 			t.Errorf("the part's capabilities: %v", caps)
 		}
 	}

@@ -296,10 +296,16 @@ the books of are proposed.
   Jobs are kept in memory: a restart forgets one, and the page reads the
   list again and says so.
 - **What each file can do** (issue #111; `ledgerbus/capabilities.go`):
-  balances, the bank's identifiers and whole descriptions as three marks
-  on each row and on a file's own preview, with check numbers, holders (a
-  card with several) and the account number behind a tap, each with its
-  reason. Files of overlapping days in one account get a "Together" box:
+  opening and closing balances, a balance on every row (or day), the
+  bank's identifiers and whole descriptions as four marks on each row and
+  on a file's own preview, with check numbers, holders (a card with
+  several) and the account number behind a tap, each with its reason. For
+  what a file lacks, the kind of download that usually has it -- an OFX
+  the identifiers, a CSV the whole descriptions, the bank's PDF statement
+  the balances -- is said as soon as the file is read: plainly on its
+  preview, behind the tap on the list. It is about formats in general,
+  never the file's own kind, and needs no history of the account. A card's
+  balance on each row is marked only when a file has one. Files of overlapping days in one account get a "Together" box:
   the best of them, which file brings what, and what none has.
   `list_inbox` and `import_from_inbox` carry the same as `capabilities`
   and `together`. It explains what is decided elsewhere and changes
