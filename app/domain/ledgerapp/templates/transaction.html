@@ -5,7 +5,15 @@
 {{if $t.OwnDescription}}<p class="hint">{{if $t.Description}}{{t "The bank calls it {description}." "description" $t.Description}}{{else}}{{t "The bank gave it no description."}}{{end}}</p>{{end}}
 <p>{{$t.PostedOn}}{{with $t.Holder}} · {{.}}{{end}}{{with $t.CheckNumber}} · {{t "Check number {number}" "number" .}}{{end}}{{with $t.Payee}} · {{t "paid to {payee}" "payee" .}}{{end}}{{with $t.CheckMemo}} · {{t "memo: {memo}" "memo" .}}{{end}} · <span class="money {{if lt $t.Amount 0}}out{{else}}in{{end}}">{{money $t.Amount $cur}}</span></p>
 {{if not $t.WrittenOn.Zero}}<p class="hint">{{t "The check was written on {written} and cleared on {date}." "written" $t.WrittenOn "date" $t.PostedOn}}</p>{{end}}
-{{if $t.Pending}}<p class="notice"><span class="badge">{{t "pending"}}</span> {{t "This charge had not posted when its file was read. When a later statement posts it, it takes its final date and amount here, and keeps its parts, receipts and explanation."}}</p>{{end}}
+{{with $e.PostedAs}}<p class="notice"><span class="badge">{{t "pending, since posted"}}</span> {{t "This charge had not posted when its file was read. It posted as the charge below, which is the one that counts; this one stays in its statement, which was checked with it."}}<br>
+<a href="/transactions/{{.ID}}">{{if .Shown}}{{.Shown}}{{else}}{{t "(no description)"}}{{end}}</a> · {{t "posted on {date} at {amount}" "date" .PostedOn "amount" (money .Amount $cur)}}</p>
+{{if $v.CanPair}}<form method="post" action="/transactions/{{$t.ID}}/unclear" class="inline"><button type="submit" class="link">{{t "Not the same charge: count this one again"}}</button></form>{{end}}
+{{else}}{{if $t.Pending}}<p class="notice"><span class="badge">{{t "pending"}}</span> {{t "This charge had not posted when its file was read. When a later file brings its posted form, that is the one that counts, and it takes this one's parts and receipts."}}</p>
+{{with $e.Pairs}}<p>{{t "It may have posted as:"}}</p>
+<ul class="list">{{range .}}<li><a href="/transactions/{{.Posted.ID}}">{{if .Posted.Shown}}{{.Posted.Shown}}{{else}}{{t "(no description)"}}{{end}}</a> · {{t "posted on {date} at {amount}" "date" .Posted.PostedOn "amount" (money .Posted.Amount $cur)}}
+{{if $v.CanPair}}<form method="post" action="/transactions/{{$t.ID}}/posted-as" class="inline"><input type="hidden" name="posted" value="{{.Posted.ID}}"><button type="submit" class="quiet">{{t "The same charge"}}</button></form>{{end}}</li>
+{{end}}</ul>{{end}}{{end}}{{end}}
+{{with $e.Hold}}<p class="hint">{{t "It was pending at {amount} on {date} first:" "amount" (money .Amount $cur) "date" .PostedOn}} <a href="/transactions/{{.ID}}">{{if .Shown}}{{.Shown}}{{else}}{{t "(no description)"}}{{end}}</a></p>{{end}}
 {{template "cleared" (dict "By" $v.ClearedBy "Currency" $cur)}}
 {{if $v.Explained}}<p><a href="/transactions/{{$t.ID}}/explain">{{t "What makes up this amount"}}</a> {{if $v.Settled}}<span class="badge ok">{{t "explained"}}</span>{{else}}<span class="badge">{{t "open"}}</span>{{end}}</p>
 {{else if not $v.ClearedBy}}<p class="hint"><a href="/transactions/{{$t.ID}}/explain">{{t "Explain this amount"}}</a> · {{t "which transactions make it up?"}}</p>{{end}}

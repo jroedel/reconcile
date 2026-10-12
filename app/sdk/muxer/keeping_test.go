@@ -343,6 +343,7 @@ func TestTheAPIsWritesAreTheList(t *testing.T) {
 		"PUT /api/v1/rules/{rule} books:write",
 		"PUT /api/v1/transactions/{transaction}/description books:write",
 		"PUT /api/v1/transactions/{transaction}/payee books:write",
+		"PUT /api/v1/transactions/{transaction}/posted-as books:write",
 		"PUT /api/v1/transactions/{transaction}/splits books:write",
 		"PUT /api/v1/translations translate",
 	}
@@ -407,6 +408,7 @@ func TestNobodyKeepsTheBooksTheyWereNotGiven(t *testing.T) {
 		"join_payees":        map[string]any{"from": []string{other}},
 		"split_payee":        map[string]string{"spelling": "Hilltop Plumbing"},
 		"set_payee":          map[string]string{"name": "Mine now"},
+		"pair_pending":       map[string]string{"posted": grocery},
 	}
 
 	var idx struct {
@@ -457,8 +459,8 @@ func TestNobodyKeepsTheBooksTheyWereNotGiven(t *testing.T) {
 		}
 	}
 
-	if walked != 17 {
-		t.Errorf("%d keeping endpoints were walked, want 17", walked)
+	if walked != 18 {
+		t.Errorf("%d keeping endpoints were walked, want 18", walked)
 	}
 
 	if payees := list(t, s.get(t, "/api/v1/payees?organization="+strings.TrimPrefix(k.e.org, "/orgs/"), k.key), "payees"); len(payees) != 2 {

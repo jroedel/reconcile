@@ -94,9 +94,9 @@ func held(t *testing.T, w *world, me types.ID, parts ...money.Amount) (card type
 	return card, hold
 }
 
-// The posted charge, two days later and with the tip on it, takes the
-// pending one's place and keeps how a person sorted it; the tip goes to
-// the last part.
+// The posted charge, two days later and with the tip on it, clears the
+// pending one, which stays in its statement and counts no more; how a
+// person sorted it goes to the posted charge, the tip to the last part.
 func TestAPendingChargePosts(t *testing.T) {
 	w := newWorld(t)
 	ctx := t.Context()
@@ -106,31 +106,53 @@ func TestAPendingChargePosts(t *testing.T) {
 	october := withStatus("2026-10-01,CITY PARKING 0412 SPRINGFIELD,-12.00,Posted", "2026-10-02,HARDWARE BARN,-4.00,Posted")
 
 	d, _ := w.preview(me, card, "october.csv", october)
-	if d.Statement.Posted != 1 || d.Statement.Added != 1 {
+	if d.Statement.Posted != 1 || d.Statement.Added != 2 {
 		t.Errorf("preview: posted %d, added %d", d.Statement.Posted, d.Statement.Added)
 	}
 
 	st := w.add(me, card, "october.csv", october)
-	if st.Posted != 1 || st.Added != 1 || st.Already != 0 {
+	if st.Posted != 1 || st.Added != 2 || st.Already != 0 {
 		t.Errorf("import: posted %d, added %d, already %d", st.Posted, st.Added, st.Already)
 	}
 
-	if _, ok := w.find(me, card, "2026-09", "CITY PARKING"); ok {
-		t.Error("the pending charge is still there")
-	}
-
 	posted, ok := w.find(me, card, "2026-10", "CITY PARKING 0412 SPRINGFIELD")
-	if !ok || posted.ID != hold.ID || posted.Pending || posted.Amount != -1200 || posted.StatementID != st.ID {
+	if !ok || posted.Pending || posted.Amount != -1200 || posted.StatementID != st.ID {
 		t.Fatalf("the posted charge: %+v", posted)
 	}
 
+	if s := posted.Splits; len(s) != 2 || s[0].Amount != -400 || s[1].Amount != -800 || s[1].Memo != "for the hall" {
+		t.Errorf("its parts: %+v", s)
+	}
+
+	// The pending charge is still in September's statement, cleared.
 	ed, err := w.ledger.Transaction(ctx, me, hold.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if s := ed.Transaction.Splits; len(s) != 2 || s[0].Amount != -400 || s[1].Amount != -800 || s[1].Memo != "for the hall" {
-		t.Errorf("its parts: %+v", s)
+	if h := ed.Transaction; !h.Pending || h.PostedAs != posted.ID || len(h.Splits) != 0 || !h.Sorted() || ed.CanSort() ||
+		ed.PostedAs == nil || ed.PostedAs.ID != posted.ID {
+		t.Errorf("the pending charge: %+v", ed)
+	}
+
+	if _, err := w.ledger.SetSplits(ctx, now, me, hold.ID, []ledgerbus.Part{{Amount: hold.Amount}}); !errors.Is(err, ledgerbus.ErrCleared) {
+		t.Errorf("sorting the pending charge: %v", err)
+	}
+
+	if ed, _ := w.ledger.Transaction(ctx, me, posted.ID); ed.Hold == nil || ed.Hold.ID != hold.ID {
+		t.Errorf("the posted charge's pending form: %+v", ed.Hold)
+	}
+
+	// September spends the bakery only, and nothing waits on it.
+	months, _ := w.ledger.Months(ctx, me, card)
+	for _, m := range months {
+		if m.Month == "2026-09" && (m.Out != -1200 || m.Unsorted != 1) {
+			t.Errorf("September: %+v", m)
+		}
+	}
+
+	if still, _ := w.ledger.StillPending(ctx, me, card); len(still) != 0 {
+		t.Errorf("still pending: %+v", still)
 	}
 
 	if line := w.line(card, ledgerbus.TransactionPosted); line["pending"] != "-7.25" || line["posted"] != "-12.00" || line["resplit"] != "0" || line["parts"] != "2" {
@@ -141,27 +163,184 @@ func TestAPendingChargePosts(t *testing.T) {
 	if again := w.add(me, card, "october-again.csv", append(october, "\n"...)); again.Added != 0 || again.Posted != 0 || again.Already != 2 {
 		t.Errorf("again: %+v", again)
 	}
-}
 
-// A posted amount that would turn the last part round puts the charge
-// back to one part, for a person to split again.
-func TestAPostedAmountThatUndoesTheParts(t *testing.T) {
-	w := newWorld(t)
-	me := w.user("treasurer@example.org")
-	card, hold := held(t, w, me, -700, -25)
-
-	w.add(me, card, "october.csv", withStatus("2026-10-01,CITY PARKING,-5.00,Posted"))
-
-	ed, err := w.ledger.Transaction(t.Context(), me, hold.ID)
-	if err != nil {
+	// Removing October's statement gives the pending charge back its
+	// part: it is all the account has of the charge again.
+	if _, err := w.ledger.RemoveStatement(ctx, now, me, st.ID); err != nil {
 		t.Fatal(err)
 	}
 
-	if s := ed.Transaction.Splits; len(s) != 1 || s[0].Amount != -500 || !s[0].CategoryID.Zero() {
+	if h, _ := w.find(me, card, "2026-09", "CITY PARKING"); h.Cleared() || len(h.Splits) != 1 || h.Splits[0].Amount != -725 {
+		t.Errorf("the pending charge after October went: %+v", h)
+	}
+}
+
+// A posted amount that would turn the last part round leaves the posted
+// charge its one part, for a person to split again.
+func TestAPostedAmountThatUndoesTheParts(t *testing.T) {
+	w := newWorld(t)
+	me := w.user("treasurer@example.org")
+	card, _ := held(t, w, me, -700, -25)
+
+	w.add(me, card, "october.csv", withStatus("2026-10-01,CITY PARKING,-5.00,Posted"))
+
+	posted, ok := w.find(me, card, "2026-10", "CITY PARKING")
+	if !ok {
+		t.Fatal("no posted charge")
+	}
+
+	if s := posted.Splits; len(s) != 1 || s[0].Amount != -500 || !s[0].CategoryID.Zero() || s[0].Memo != "" {
 		t.Errorf("its parts: %+v", s)
 	}
 
 	if line := w.line(card, ledgerbus.TransactionPosted); line["resplit"] != "1" {
+		t.Errorf("the history: %v", line)
+	}
+}
+
+// The issue's case (#104): a printed page's pending charge and the bank's
+// download of its posted form, worded alike only in their first words,
+// with a tip. The pending charge is cleared, the month spends the posted
+// amount, and the page's statement still has every row it was checked
+// with.
+func TestATipAndOtherWords(t *testing.T) {
+	w := newWorld(t)
+	ctx := t.Context()
+	me := w.user("treasurer@example.org")
+	card := w.account(me, "checking")
+
+	page := w.add(me, card, "page.csv", withStatus(
+		"2026-08-31,CAFE EXAMPLE PAL A…,-40.00,Pending",
+		"2026-08-30,BOOK NOOK,-9.00,Posted"))
+
+	bank := w.add(me, card, "bank.csv", withStatus("2026-08-31,CAFE EXAMPLE CITY ST,-50.00,Posted"))
+	if bank.Posted != 1 || bank.Added != 1 {
+		t.Errorf("the bank's file: %+v", bank)
+	}
+
+	hold, _ := w.find(me, card, "2026-08", "CAFE EXAMPLE PAL A…")
+	posted, _ := w.find(me, card, "2026-08", "CAFE EXAMPLE CITY ST")
+
+	if hold.PostedAs != posted.ID || posted.ID.Zero() {
+		t.Errorf("the pending charge: %+v", hold)
+	}
+
+	months, _ := w.ledger.Months(ctx, me, card)
+	if len(months) != 1 || months[0].Out != -5900 {
+		t.Errorf("August: %+v", months)
+	}
+
+	txs, err := w.ledger.Transactions(ctx, me, card, "2026-08")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var sum money.Amount
+	for _, tx := range txs {
+		if tx.StatementID == page.ID {
+			sum += tx.Amount
+		}
+	}
+
+	if sum != -4900 {
+		t.Errorf("the page's rows come to %s, as they did when it was checked: -49.00", sum)
+	}
+}
+
+// Another shop, or less than the hold, is not its posted form: nothing is
+// cleared, and nothing is offered.
+func TestNotTheSameCharge(t *testing.T) {
+	w := newWorld(t)
+	me := w.user("treasurer@example.org")
+	card := w.account(me, "checking")
+
+	w.add(me, card, "page.csv", withStatus("2026-08-31,CAFE EXAMPLE PAL A…,-40.00,Pending"))
+
+	st := w.add(me, card, "bank.csv", withStatus(
+		"2026-09-01,HARDWARE BARN SPRINGFIELD,-90.00,Posted",
+		"2026-09-02,CAFE EXAMPLE CITY ST,-30.00,Posted"))
+	if st.Posted != 0 || st.Added != 2 {
+		t.Errorf("import: %+v", st)
+	}
+
+	if pairs, err := w.ledger.Pairs(t.Context(), me, card); err != nil || len(pairs) != 0 {
+		t.Errorf("pairs: %+v, %v", pairs, err)
+	}
+}
+
+// Two holds at one shop and one charge: which hold it was is not plain,
+// so nothing is cleared, and both pairs are offered for a person to say.
+func TestTwoHoldsAndOneCharge(t *testing.T) {
+	w := newWorld(t)
+	ctx := t.Context()
+	me := w.user("treasurer@example.org")
+	card := w.account(me, "checking")
+
+	w.add(me, card, "page.csv", withStatus(
+		"2026-08-30,CAFE EXAMPLE PAL A…,-40.00,Pending",
+		"2026-08-31,CAFE EXAMPLE PAL A…,-40.00,Pending"))
+
+	if st := w.add(me, card, "bank.csv", withStatus("2026-08-31,CAFE EXAMPLE CITY ST,-50.00,Posted")); st.Posted != 0 || st.Added != 1 {
+		t.Errorf("import: %+v", st)
+	}
+
+	pairs, err := w.ledger.Pairs(ctx, me, card)
+	if err != nil || len(pairs) != 2 || pairs[0].Posted.ID != pairs[1].Posted.ID || pairs[0].Pending.ID == pairs[1].Pending.ID {
+		t.Fatalf("pairs: %+v, %v", pairs, err)
+	}
+
+	first, posted := pairs[0].Pending, pairs[0].Posted
+
+	ed, _ := w.ledger.Transaction(ctx, me, first.ID)
+	if len(ed.Pairs) != 1 || ed.Pairs[0].Posted.ID != posted.ID {
+		t.Errorf("on the pending charge's page: %+v", ed.Pairs)
+	}
+
+	// A viewer cannot say; a stranger cannot see.
+	viewer := w.user("viewer@example.org")
+	w.grant(me, types.AccountScope(card), "viewer@example.org", tenancybus.Viewer)
+
+	if err := w.ledger.ClearPending(ctx, now, viewer, first.ID, posted.ID); !errors.Is(err, ledgerbus.ErrForbidden) {
+		t.Errorf("a viewer: %v", err)
+	}
+
+	if _, err := w.ledger.Pairs(ctx, w.user("stranger@example.org"), card); !errors.Is(err, ledgerbus.ErrNotFound) {
+		t.Errorf("a stranger: %v", err)
+	}
+
+	// The treasurer says it was the first.
+	if err := w.ledger.ClearPending(ctx, now, me, first.ID, posted.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if pairs, _ := w.ledger.Pairs(ctx, me, card); len(pairs) != 0 {
+		t.Errorf("pairs after: %+v", pairs)
+	}
+
+	// The posted charge is the first hold's; the second cannot have it.
+	second := pairs[1].Pending
+	if err := w.ledger.ClearPending(ctx, now, me, second.ID, posted.ID); !errors.Is(err, ledgerbus.ErrNotPosted) {
+		t.Errorf("the same charge twice: %v", err)
+	}
+
+	if err := w.ledger.ClearPending(ctx, now, me, first.ID, posted.ID); !errors.Is(err, ledgerbus.ErrNotPending) {
+		t.Errorf("clearing it again: %v", err)
+	}
+
+	// It was the second after all: undone, and said again.
+	if err := w.ledger.Unclear(ctx, now, me, first.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if h, _ := w.ledger.Transaction(ctx, me, first.ID); h.Transaction.Cleared() || len(h.Transaction.Splits) != 1 {
+		t.Errorf("undone: %+v", h.Transaction)
+	}
+
+	if err := w.ledger.ClearPending(ctx, now, me, second.ID, posted.ID); err != nil {
+		t.Errorf("the second: %v", err)
+	}
+
+	if line := w.line(card, ledgerbus.TransactionUncleared); line["amount"] != "-40.00" {
 		t.Errorf("the history: %v", line)
 	}
 }
@@ -314,7 +493,7 @@ func TestAnotherAmountIsAnotherCharge(t *testing.T) {
 	}
 
 	// With the tip on it, it is the same charge.
-	if st := w.add(me, card, "october-2.csv", withStatus("2026-10-04,SHOP X 123 MAIN ST,-48.00,Posted")); st.Posted != 1 || st.Added != 0 {
+	if st := w.add(me, card, "october-2.csv", withStatus("2026-10-04,SHOP X 123 MAIN ST,-48.00,Posted")); st.Posted != 1 || st.Added != 1 {
 		t.Errorf("with the tip: posted %d, added %d", st.Posted, st.Added)
 	}
 }

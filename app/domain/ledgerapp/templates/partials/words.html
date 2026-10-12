@@ -28,6 +28,8 @@
 {{- else if eq . "explain-months"}}{{t "Choose the months to look in, the first no later than the last."}}
 {{- else if eq . "explain-note"}}{{t "The note is too long. Keep it under 500 characters."}}
 {{- else if eq . "not-pending"}}{{t "That charge has posted, so it is not removed this way. A posted charge goes with its statement."}}
+{{- else if eq . "not-posted"}}{{t "That transaction cannot be what the pending charge became: it is pending itself, another pending charge's posted form already, or the other way round from it."}}
+{{- else if eq . "pair-locked"}}{{t "One of those charges is in a reconciled period, so it cannot change. Reopen the statement that covers it first."}}
 {{- else if eq . "release-locked"}}{{t "That pending charge is in a reconciled period, so it cannot be removed. Reopen the statement that covers it first."}}
 {{- else if eq . "unproven"}}{{t "Nothing in this PDF shows that every row of it was read, so it cannot be imported. Download the statement from your bank's website as CSV or OFX instead, if it offers them."}}
 {{- else if eq . "which-account"}}{{t "This file holds the statements of several accounts. Choose which of them is this account, below."}}
@@ -100,6 +102,8 @@ one. Given a dict of By, a *ledgerbus.Clearer, and Currency. */}}
 {{- else if eq . "entered"}}{{t "Entered. Its document is kept with it."}}
 {{- else if eq . "entered-line"}}{{t "Entered, with its document, and added to the explanation."}}
 {{- else if eq . "released"}}{{t "Removed. The history keeps what it was."}}
+{{- else if eq . "paired"}}{{t "Saved. The posted charge is the one that counts now."}}
+{{- else if eq . "unpaired"}}{{t "Undone. The pending charge counts again, in one part to sort, until its posted charge arrives or it is removed."}}
 {{- else if eq . "split-on"}}{{t "Saved. This account's statements are now kept apart by holder."}}
 {{- else if eq . "split-off"}}{{t "Saved. This account's statements are no longer kept apart by holder."}}
 {{- else if eq . "gathered"}}{{t "The explanation is saved."}}

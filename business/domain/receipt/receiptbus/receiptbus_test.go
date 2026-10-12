@@ -99,7 +99,7 @@ func newWorld(t *testing.T) *world {
 		history:  eventbus.NewBusiness(eventdb.NewStore(db)),
 	}
 
-	ledger.OnImport(w.receipts.MatchChecks)
+	ledger.OnImport(w.receipts.AfterImport)
 
 	w.owner = w.user("treasurer@example.org")
 	w.pilgrim = w.user("pilgrim@example.org")
@@ -487,5 +487,61 @@ func TestATransactionKnowsAReceiptSentAgain(t *testing.T) {
 	// Holding answers with the receipt, as Holds answers yes.
 	if got, held, err := w.receipts.Holding(w.ctx, w.owner, account, w.upload(w.owner, "again.jpg", photo+"till", receiptbus.Accept)); err != nil || !held || got.ID != waiting[0].ID {
 		t.Errorf("the account's inbox: %v %v, %v", got.ID, held, err)
+	}
+}
+
+// A receipt on a pending charge follows it to its posted form (issue
+// #104): the posted charge is the one in the accountant's package, and
+// the pending one counts nowhere.
+func TestAReceiptFollowsAPendingCharge(t *testing.T) {
+	w := newWorld(t)
+
+	importing := func(name, content string) {
+		t.Helper()
+
+		f := w.upload(w.owner, name, content, nil)
+
+		d, err := w.ledger.Prepare(w.ctx, w.owner, w.account, f, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := w.ledger.Import(w.ctx, now, w.owner, w.account, f, ledgerbus.Options{Mapping: d.Mapping}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	importing("page.csv", "Date,Description,Amount,Status\n2026-08-31,CAFE EXAMPLE PAL A…,-40.00,Pending\n")
+
+	txs, _ := w.ledger.Transactions(w.ctx, w.owner, w.account, "2026-08")
+	if len(txs) != 1 || !txs[0].Pending {
+		t.Fatalf("the pending charge: %+v", txs)
+	}
+
+	hold := txs[0]
+
+	added, err := w.receipts.Add(w.ctx, now, w.owner, types.AccountScope(w.account), w.photos(w.owner, 1), false, receiptbus.Details{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := w.receipts.Attach(w.ctx, now, w.owner, added[0].ID, hold.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	importing("bank.csv", "Date,Description,Amount,Status\n2026-08-31,CAFE EXAMPLE CITY ST,-50.00,Posted\n")
+
+	txs, _ = w.ledger.Transactions(w.ctx, w.owner, w.account, "2026-08")
+
+	var posted ledgerbus.Transaction
+	for _, tx := range txs {
+		if !tx.Pending {
+			posted = tx
+		}
+	}
+
+	on, err := w.receipts.OnTransactions(w.ctx, []types.ID{hold.ID, posted.ID})
+	if err != nil || len(on[posted.ID]) != 1 || len(on[hold.ID]) != 0 {
+		t.Errorf("the receipts: %+v, %v", on, err)
 	}
 }

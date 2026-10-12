@@ -70,6 +70,9 @@ type Ledger interface {
 	ImportProposals(ctx context.Context, now time.Time, actor types.ID, props []ledgerbus.Proposal) (int, error)
 	SortMany(ctx context.Context, now time.Time, actor, accountID types.ID, choices []ledgerbus.Choice) (int, map[types.ID]error, error)
 	SetSplits(ctx context.Context, now time.Time, actor, id types.ID, parts []ledgerbus.Part) (ledgerbus.Transaction, error)
+	Pairs(ctx context.Context, actor, accountID types.ID) ([]ledgerbus.Pair, error)
+	StillPending(ctx context.Context, actor, accountID types.ID) ([]ledgerbus.Transaction, error)
+	ClearPending(ctx context.Context, now time.Time, actor, pendingID, postedID types.ID) error
 	Describe(ctx context.Context, now time.Time, actor, id types.ID, description string) (ledgerbus.Transaction, error)
 	SortUnsorted(ctx context.Context, now time.Time, actor, accountID types.ID) (int, error)
 	Gather(ctx context.Context, now time.Time, actor, id types.ID, add, remove, accounts []types.ID, from, to string) error
@@ -181,6 +184,12 @@ func (a app) bookEndpoints() []Endpoint {
 			Summary: "An account month by month: reconciled, imported (every day in a statement), partial (and which days are in none), missing (no statement), or still going; with each month's statements, transactions and how many are not sorted yet. And its checks outstanding: images of checks read, with their number, that no statement has paid yet, and their total.",
 			Returns: "{account, months: [{month, state, gaps: [{from, to}], statements: [{id, name}], transactions, unsorted}], outstanding_checks: {checks: [receipt], total, unpriced}}, months newest first; unpriced is how many checks have no amount yet, which the total leaves out.",
 			handler: a.accountMonths,
+		},
+		{
+			Method: http.MethodGet, Path: Prefix + "/accounts/{account}/pending", Scope: read, Tool: "list_pending",
+			Summary: "An account's pending charges waiting for their posted form. pairs: a pending charge and a posted charge since that may be what it became, where more than one could be, so the import left it for a person to say (pair_pending). still_pending: those its statements should have posted by now -- a hold that was released, or a charge that posted worded too differently for the app to tell. A pending charge that has posted is in neither: it has posted_as, and counts nowhere.",
+			Returns: "{account, pairs: [{pending: transaction, posted: transaction}], still_pending: [transaction], url}",
+			handler: a.listPending,
 		},
 		{
 			Method: http.MethodGet, Path: Prefix + "/accounts/{account}/statements", Scope: read, Tool: "list_statements",
@@ -371,10 +380,14 @@ type txOut struct {
 	Holder    string        `json:"holder,omitempty"`
 	Check     string        `json:"check,omitempty"`
 	Pending   bool          `json:"pending,omitempty"`
-	Sorted    bool          `json:"sorted"`
-	Parts     []partOut     `json:"parts"`
-	Receipts  *int          `json:"receipts,omitempty"`
-	URL       string        `json:"url"`
+
+	// PostedAs is, for a pending charge that has posted, the posted
+	// charge's id: that one counts, and this one is in no total.
+	PostedAs string    `json:"posted_as,omitempty"`
+	Sorted   bool      `json:"sorted"`
+	Parts    []partOut `json:"parts"`
+	Receipts *int      `json:"receipts,omitempty"`
+	URL      string    `json:"url"`
 }
 
 type spanOut struct {
@@ -540,6 +553,10 @@ func (rd *reader) tx(t ledgerbus.Transaction, a tenancybus.Account) txOut {
 		out.PayeeID = t.PayeeID.String()
 	}
 
+	if t.Cleared() {
+		out.PostedAs = t.PostedAs.String()
+	}
+
 	if t.HasBalance {
 		out.Balance = &t.Balance
 	}
@@ -650,6 +667,12 @@ func (a app) bookRefused(w http.ResponseWriter, r *http.Request, err error, what
 		return false
 	case errors.Is(err, ledgerbus.ErrLocked):
 		web.WriteJSON(w, http.StatusConflict, web.Problem("", "That is in a reconciled period, so it cannot change. Reopening the period is its person's, on the statement's page; tell them rather than asking again."))
+	case errors.Is(err, ledgerbus.ErrCleared):
+		web.WriteJSON(w, http.StatusConflict, web.Problem("", "That pending charge has posted, and its posted charge (posted_as) is the one that counts. Sort that one instead."))
+	case errors.Is(err, ledgerbus.ErrNotPending):
+		web.WriteJSON(w, http.StatusConflict, web.Problem("pending", "That transaction is not a pending charge waiting for its posted form: it posted, or was paired already. get_transaction says which."))
+	case errors.Is(err, ledgerbus.ErrNotPosted):
+		web.WriteJSON(w, http.StatusConflict, web.Problem("posted", "That transaction cannot be what the pending charge became: it is another account's, pending itself, another pending charge's posted form already, or the other way round from it. Nothing was changed."))
 	case errors.Is(err, ledgerbus.ErrExplained):
 		web.WriteJSON(w, http.StatusConflict, web.Problem("", "That transaction is part of another explanation, or is not one list_explanation_candidates offers for these accounts and months. Ask for the candidates again and add only those."))
 	case errors.Is(err, rulebus.ErrDuplicate):
@@ -1254,6 +1277,25 @@ func (a app) getTransaction(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// A pending charge's posted charge, or the posted charges it may be;
+	// a posted charge's pending form (ledgerbus/pending.go).
+	if e.PostedAs != nil {
+		out["posted_as"] = rd.named(*e.PostedAs, e.Account)
+	}
+
+	if len(e.Pairs) > 0 {
+		may := make([]any, 0, len(e.Pairs))
+		for _, p := range e.Pairs {
+			may = append(may, rd.named(p.Posted, e.Account))
+		}
+
+		out["may_have_posted_as"] = may
+	}
+
+	if e.Hold != nil {
+		out["pending_form"] = rd.named(*e.Hold, e.Account)
+	}
+
 	rd.done(w, r, out)
 }
 
@@ -1804,4 +1846,42 @@ func (a app) changes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	web.WriteJSON(w, http.StatusOK, map[string]any{"since": since.UTC().Format(time.RFC3339), "changes": out})
+}
+
+// listPending is an account's pending charges that wait: the pairs to
+// confirm and those still pending (ledgerbus/pending.go).
+func (a app) listPending(w http.ResponseWriter, r *http.Request) {
+	id, ok := a.pathID(w, r, "account", "account")
+	if !ok {
+		return
+	}
+
+	rd := a.reader(r)
+
+	pairs, err := a.books.Ledger.Pairs(r.Context(), rd.me, id)
+	if a.bookRefused(w, r, err, "account") {
+		return
+	}
+
+	still, err := a.books.Ledger.StillPending(r.Context(), rd.me, id)
+	if a.bookRefused(w, r, err, "account") {
+		return
+	}
+
+	account := rd.account(id)
+
+	outPairs := make([]map[string]any, 0, len(pairs))
+	for _, p := range pairs {
+		outPairs = append(outPairs, map[string]any{"pending": rd.tx(p.Pending, account), "posted": rd.tx(p.Posted, account)})
+	}
+
+	outStill := make([]txOut, 0, len(still))
+	for _, t := range still {
+		outStill = append(outStill, rd.tx(t, account))
+	}
+
+	rd.done(w, r, map[string]any{
+		"account": id.String(), "pairs": outPairs, "still_pending": outStill,
+		"url": rd.url("/accounts/" + id.String() + "/transactions"),
+	})
 }

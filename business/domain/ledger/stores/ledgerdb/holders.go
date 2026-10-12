@@ -213,7 +213,7 @@ SELECT DISTINCT holder FROM transactions WHERE account_id = ? AND holder <> '' O
 // not including, end, by name; rows that name nobody under "".
 func (s *Store) HolderTotals(ctx context.Context, account types.ID, start, end types.Date) ([]ledgerbus.HolderTotal, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT holder, count(*), sum(amount) FROM transactions
+SELECT holder, count(*), sum(CASE WHEN posted_as IS NULL THEN amount ELSE 0 END) FROM transactions
 WHERE account_id = ? AND posted_on >= ? AND posted_on < ?
 GROUP BY holder ORDER BY holder`, account.String(), start.String(), end.String())
 	if err != nil {

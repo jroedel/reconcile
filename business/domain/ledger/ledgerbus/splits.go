@@ -87,10 +87,21 @@ type Editor struct {
 	// may open the list they are on, and so a payee's page.
 	Payees         []Payee
 	PayeesReadable bool
+
+	// PostedAs is, for a pending charge that has posted, the posted
+	// charge; Hold is, for a posted charge, the pending charge it cleared;
+	// Pairs is, for a pending charge that has not, the posted charges a
+	// person may say it became (pending.go).
+	PostedAs *Transaction
+	Hold     *Transaction
+	Pairs    []Pair
 }
 
-// CanSort reports whether the parts may be changed by this reader now.
-func (e Editor) CanSort() bool { return e.Access.Can(tenancybus.Bookkeep) && !e.Lock.Made() }
+// CanSort reports whether the parts may be changed by this reader now: not
+// a pending charge's that has posted, whose parts are its posted charge's.
+func (e Editor) CanSort() bool {
+	return e.Access.Can(tenancybus.Bookkeep) && !e.Lock.Made() && !e.Transaction.Cleared()
+}
 
 // Grouped is the category choices a kind at a time.
 func (e Editor) Grouped() []categorybus.Group { return categorybus.Grouped(e.Categories) }
@@ -131,6 +142,10 @@ func (b *Business) Transaction(ctx context.Context, actor, id types.ID) (Editor,
 	e := Editor{Transaction: t, Account: account, Access: access}
 
 	if e.Lock, err = b.lock(ctx, t.AccountID, t.PostedOn); err != nil {
+		return Editor{}, err
+	}
+
+	if err := b.pendingOf(ctx, &e); err != nil {
 		return Editor{}, err
 	}
 
@@ -227,6 +242,10 @@ func (b *Business) SetSplits(ctx context.Context, now time.Time, actor, id types
 	}
 
 	t := e.Transaction
+
+	if t.Cleared() {
+		return Transaction{}, ErrCleared
+	}
 
 	if err := b.checkParts(ctx, actor, e, parts); err != nil {
 		return Transaction{}, err

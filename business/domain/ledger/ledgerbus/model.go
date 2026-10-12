@@ -102,9 +102,9 @@ type Statement struct {
 	// option has changed since. Not kept.
 	ByHolder bool
 
-	// Posted is how many of its rows were the posted form of a pending
-	// charge already in the account, which took that charge's place
-	// (pending.go). Counted on import and in the preview; not kept.
+	// Posted is how many pending charges already in the account its rows
+	// were the posted form of, and cleared (pending.go). Counted on
+	// import and in the preview; not kept.
 	Posted int
 
 	// Completed is how many of its rows found a row already here whose
@@ -114,9 +114,8 @@ type Statement struct {
 	Completed int
 
 	// Superseded is how many of its rows were pending charges the same
-	// file also lists as posted, and were left out for the posted ones
-	// (ledgerdb's superseded). Counted on import and in the preview; not
-	// kept.
+	// file also lists as posted, and were cleared by them (ledgerdb's
+	// superseded). Counted on import and in the preview; not kept.
 	Superseded int
 
 	// Renamed is how many rows already here named their holder cut short
@@ -197,15 +196,22 @@ type Transaction struct {
 	OwnVia string
 
 	// Pending is a charge its file listed as not yet posted (pending.go).
-	// The posted charge, when it arrives, takes its place.
 	Pending bool
+
+	// PostedAs is, for a pending charge, the posted charge it became,
+	// once a later row was found to be it or a person said so; zero
+	// until then. A pending charge so cleared stays in its statement,
+	// which was checked with it, and counts nowhere else: it has no parts
+	// (Cleared).
+	PostedAs types.ID
 
 	// Hash and Occurrence are the fallback identity (hash).
 	Hash       string
 	Occurrence int
 
-	// Splits are its parts, at least one, adding up to Amount. Filled in
-	// where a page needs them.
+	// Splits are its parts, at least one, adding up to Amount -- none for
+	// a pending charge that has been cleared (Cleared). Filled in where a
+	// page needs them.
 	Splits []Split
 
 	// Insist is set, on a row of a file being imported, when a person chose
@@ -274,7 +280,8 @@ func (t Transaction) Words() string {
 	return t.Payee + " " + t.Description
 }
 
-// Sorted reports whether every part has a category.
+// Sorted reports whether every part has a category. A cleared pending
+// charge has nothing to sort: what it was is its posted charge's.
 func (t Transaction) Sorted() bool {
 	for _, s := range t.Splits {
 		if s.CategoryID.Zero() {
@@ -282,8 +289,14 @@ func (t Transaction) Sorted() bool {
 		}
 	}
 
-	return len(t.Splits) > 0
+	return len(t.Splits) > 0 || t.Cleared()
 }
+
+// Cleared reports a pending charge whose posted form is in the account
+// (PostedAs). It is the posted charge that counts: money in and out, the
+// totals by kind, a project's book, what is to sort. The pending one is
+// shown, linked to it, and kept in the statement it came in.
+func (t Transaction) Cleared() bool { return !t.PostedAs.Zero() }
 
 // Split is one part of a transaction: how much of it went where.
 //

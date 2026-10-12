@@ -237,6 +237,37 @@ func (s *Store) Unlink(ctx context.Context, receiptID, transactionID types.ID) e
 	return nil
 }
 
+// Follow moves the receipts on each transaction to the one it maps to: a
+// pending charge's to its posted charge. A receipt on both stays once.
+// Only links there are cost anything: the insert and the delete find none
+// for a pending charge with no receipt, by the transaction's index.
+func (s *Store) Follow(ctx context.Context, moves map[types.ID]types.ID) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("starting to move receipts: %w", err)
+	}
+	defer tx.Rollback()
+
+	for from, to := range moves {
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO receipt_links (receipt_id, transaction_id, linked_by, linked_at)
+SELECT receipt_id, ?, linked_by, linked_at FROM receipt_links WHERE transaction_id = ?
+ON CONFLICT (receipt_id, transaction_id) DO NOTHING`, to.String(), from.String()); err != nil {
+			return fmt.Errorf("moving receipts: %w", err)
+		}
+
+		if _, err := tx.ExecContext(ctx, `DELETE FROM receipt_links WHERE transaction_id = ?`, from.String()); err != nil {
+			return fmt.Errorf("moving receipts: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("moving receipts: %w", err)
+	}
+
+	return nil
+}
+
 // Update writes the details and the removed time.
 func (s *Store) Update(ctx context.Context, r receiptbus.Receipt, ev *eventbus.Event) error {
 	var removed any

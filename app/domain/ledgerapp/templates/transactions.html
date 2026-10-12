@@ -39,6 +39,18 @@
 </section>
 {{end}}
 
+{{with $v.Pairs}}
+<section class="card">
+<h2>{{t "Pending charges that may have posted"}}</h2>
+<p class="hint">{{t "Each of these was pending when its file was read, and a charge since may be what it became, but more than one could be. Say which: the posted charge is the one that counts, and takes the pending one's sorting and receipts."}}</p>
+<ul class="list">
+{{range .}}<li><a href="/transactions/{{.Pending.ID}}">{{if .Pending.Shown}}{{.Pending.Shown}}{{else}}{{t "(no description)"}}{{end}}</a> · {{t "pending on {date} at {amount}" "date" .Pending.PostedOn "amount" (money .Pending.Amount $cur)}}<br>
+<a href="/transactions/{{.Posted.ID}}">{{if .Posted.Shown}}{{.Posted.Shown}}{{else}}{{t "(no description)"}}{{end}}</a> · {{t "posted on {date} at {amount}" "date" .Posted.PostedOn "amount" (money .Posted.Amount $cur)}}
+{{if $v.CanBookkeep}}<form method="post" action="/transactions/{{.Pending.ID}}/posted-as" class="inline"><input type="hidden" name="posted" value="{{.Posted.ID}}"><input type="hidden" name="from" value="account"><button type="submit" class="quiet">{{t "The same charge"}}</button></form>{{end}}</li>
+{{end}}</ul>
+</section>
+{{end}}
+
 {{with $v.StillPending}}
 <section class="card">
 <h2>{{t "Still pending"}}</h2>
@@ -89,8 +101,8 @@
 <table class="ledger">
 <thead><tr><th>{{t "Date"}}</th><th>{{t "Description"}}</th><th>{{t "For"}}</th><th class="money">{{t "Amount"}}</th></tr></thead>
 <tbody>
-{{range $v.Shown}}<tr id="t-{{.ID}}"><td>{{.PostedOn}}</td><td><a href="/transactions/{{.ID}}">{{if .Shown}}{{.Shown}}{{else}}{{t "(no description)"}}{{end}}</a>{{if $v.ByHolder}}{{with .Holder}}<br><span class="hint">{{.}}</span>{{end}}{{end}}{{with .CheckUnsaid}}<br><span class="hint">{{t "Check number {number}" "number" .}}</span>{{end}}{{with .Payee}}<br><span class="hint">{{t "Paid to {payee}" "payee" .}}</span>{{end}}{{with .PayeeVia}} <span class="badge">{{t "by {name}" "name" .}}</span>{{end}}{{with .CheckMemo}}<br><span class="hint">{{t "Memo: {memo}" "memo" .}}</span>{{end}}{{if .Pending}} <span class="badge">{{t "pending"}}</span>{{end}}{{with .OwnVia}} <span class="badge">{{t "described by {name}" "name" .}}</span>{{end}}</td>
-<td>{{if gt (len .Splits) 1}}{{t "{n} parts" "n" (len .Splits)}}{{if not .Sorted}} <span class="badge">{{t "not sorted yet"}}</span>{{end}}
+{{range $v.Shown}}<tr id="t-{{.ID}}"><td>{{.PostedOn}}</td><td><a href="/transactions/{{.ID}}">{{if .Shown}}{{.Shown}}{{else}}{{t "(no description)"}}{{end}}</a>{{if $v.ByHolder}}{{with .Holder}}<br><span class="hint">{{.}}</span>{{end}}{{end}}{{with .CheckUnsaid}}<br><span class="hint">{{t "Check number {number}" "number" .}}</span>{{end}}{{with .Payee}}<br><span class="hint">{{t "Paid to {payee}" "payee" .}}</span>{{end}}{{with .PayeeVia}} <span class="badge">{{t "by {name}" "name" .}}</span>{{end}}{{with .CheckMemo}}<br><span class="hint">{{t "Memo: {memo}" "memo" .}}</span>{{end}}{{if .Cleared}} <a href="/transactions/{{.PostedAs}}" class="badge">{{t "pending, since posted"}}</a>{{else if .Pending}} <span class="badge">{{t "pending"}}</span>{{end}}{{with .OwnVia}} <span class="badge">{{t "described by {name}" "name" .}}</span>{{end}}</td>
+<td>{{if .Cleared}}<span class="hint">{{t "counted as its posted charge"}}</span>{{end}}{{if gt (len .Splits) 1}}{{t "{n} parts" "n" (len .Splits)}}{{if not .Sorted}} <span class="badge">{{t "not sorted yet"}}</span>{{end}}
 {{else}}{{range .Splits}}{{with index $v.Categories .CategoryID}}{{.}}{{else}}<span class="badge">{{t "not sorted yet"}}</span>{{end}}{{with index $v.Projects .ProjectID}} · {{.}}{{end}}{{if not .RuleID.Zero}} <span class="badge">{{t "by rule"}}</span>{{else}}{{with .Via}} <span class="badge">{{t "by {name}" "name" .}}</span>{{end}}{{end}}{{end}}{{end}}
 {{- if gt (len .Splits) 1}}{{with .Through}} <span class="badge">{{t "by {name}" "name" .}}</span>{{end}}{{end}}</td>
 <td class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $cur}}{{with index $v.Receipts .ID}}<br><span class="hint">{{t "{n} receipts" "n" .}}</span>{{end}}

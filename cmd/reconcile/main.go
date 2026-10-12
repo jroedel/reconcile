@@ -181,7 +181,7 @@ func run() error {
 	shapes := shapebus.NewBusiness(log, shapedb.NewStore(db))
 	ledger := ledgerbus.NewBusiness(log, ledgerdb.NewStore(db), tenancy, files, categories, rules, shapes)
 	receipts := receiptbus.NewBusiness(log, receiptdb.NewStore(db), tenancy, ledger, files)
-	ledger.OnImport(receipts.MatchChecks)
+	ledger.OnImport(receipts.AfterImport)
 	budgets := budgetbus.NewBusiness(log, budgetdb.NewStore(db), tenancy, ledger, categories)
 	export := exportbus.NewBusiness(log, tenancy, ledger, receipts, categories, files)
 

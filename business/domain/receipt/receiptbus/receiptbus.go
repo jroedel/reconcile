@@ -173,6 +173,7 @@ type Ledger interface {
 	WithCheck(ctx context.Context, account types.ID, number string) ([]ledgerbus.Transaction, error)
 	SetCheckPayee(ctx context.Context, now time.Time, actor, id types.ID, payee string) (ledgerbus.Transaction, error)
 	SetWritten(ctx context.Context, now time.Time, actor, id types.ID, memo string, on types.Date) (ledgerbus.Transaction, error)
+	ClearedHolds(ctx context.Context, actor, accountID types.ID) (map[types.ID]types.ID, error)
 }
 
 // Files is where the receipts' bytes are (filebus).
@@ -202,6 +203,10 @@ type Storer interface {
 	// Link attaches; attaching twice is attaching once.
 	Link(ctx context.Context, receiptID types.ID, l Link) error
 	Unlink(ctx context.Context, receiptID, transactionID types.ID) error
+
+	// Follow moves the receipts on each transaction to the one it maps
+	// to, in one transaction.
+	Follow(ctx context.Context, moves map[types.ID]types.ID) error
 
 	// Update writes the details and the removed time, and the history
 	// when there is a line to write.

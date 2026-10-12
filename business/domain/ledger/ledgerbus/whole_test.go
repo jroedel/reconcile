@@ -215,8 +215,9 @@ func TestTheRowHereTakesTheWordsThatSayMore(t *testing.T) {
 	}
 }
 
-// A pending row the same file lists as posted too is left out for the
-// posted one; a pending row with nothing posted to take its place stays.
+// A pending row the same file lists as posted too is kept, cleared by the
+// posted one, so that the file is all there; a pending row with nothing
+// posted for it waits.
 func TestAPendingRowPostedInTheSameFile(t *testing.T) {
 	w := newWorld(t)
 	me := w.user("treasurer@example.org")
@@ -230,11 +231,33 @@ func TestAPendingRowPostedInTheSameFile(t *testing.T) {
 		"2026-01-18,GOOGLE *GPAY TEMP,-1.00,Pending\n")
 
 	d, _ := w.preview(me, card, "month.csv", month)
-	if d.Statement.Superseded != 2 || d.Statement.Added != 3 {
+	if d.Statement.Superseded != 2 || d.Statement.Added != 5 {
 		t.Fatalf("preview: superseded %d, added %d", d.Statement.Superseded, d.Statement.Added)
 	}
 
 	w.add(me, card, "month.csv", month)
+
+	june, err := w.ledger.Transactions(t.Context(), me, card, "2026-06")
+	if err != nil || len(june) != 2 {
+		t.Fatalf("June: %+v, %v", june, err)
+	}
+
+	hold, posted := june[0], june[1]
+	if !hold.Pending {
+		hold, posted = posted, hold
+	}
+
+	if hold.PostedAs != posted.ID || len(hold.Splits) != 0 || len(posted.Splits) != 1 {
+		t.Errorf("the car hire: hold %+v, posted %+v", hold, posted)
+	}
+
+	// Each month spends its posted charges and the hold that never posted.
+	months, _ := w.ledger.Months(t.Context(), me, card)
+	for _, m := range months {
+		if want := map[string]int64{"2026-01": -1254, "2026-06": -75364}[m.Month]; int64(m.Out) != want {
+			t.Errorf("%s: out %s, want %d", m.Month, m.Out, want)
+		}
+	}
 
 	pending, err := w.ledger.StillPending(t.Context(), me, card)
 	if err != nil || len(pending) != 1 || pending[0].Description != "GOOGLE *GPAY TEMP" {
@@ -242,7 +265,7 @@ func TestAPendingRowPostedInTheSameFile(t *testing.T) {
 	}
 
 	// The same rows again: nothing new, and nothing set aside.
-	if got := counts(w.add(me, card, "month-again.csv", append(month, '\n'))); got != [3]int{0, 3, 0} {
+	if got := counts(w.add(me, card, "month-again.csv", append(month, '\n'))); got != [3]int{0, 5, 0} {
 		t.Errorf("again: %v", got)
 	}
 }

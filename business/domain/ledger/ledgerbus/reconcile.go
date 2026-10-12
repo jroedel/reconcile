@@ -154,6 +154,12 @@ func (b *Business) Review(ctx context.Context, actor, id types.ID) (Review, erro
 	}
 
 	for _, t := range rv.Transactions {
+		// A pending charge that has posted is in the period's list, as its
+		// statement has it, and counts as its posted charge.
+		if t.Cleared() {
+			continue
+		}
+
 		if t.Amount > 0 {
 			rv.In += t.Amount
 		} else {

@@ -239,6 +239,21 @@ type Storer interface {
 	StillPending(ctx context.Context, account types.ID, within int) ([]Transaction, error)
 	Release(ctx context.Context, id types.ID, ev eventbus.Event) error
 
+	// Pairs is the account's pending charges not yet cleared, each with
+	// the posted charges dated within days after it that may be it;
+	// Clear marks p as having posted as t and gives t p's parts, with ev,
+	// refusing either in a reconciled period (ErrLocked) and a t that is
+	// another's posted form already (ErrNotPosted); Unclear undoes it,
+	// giving p one part again, with ev. ClearedHolds is the account's
+	// cleared pending charges, by the posted charge each became.
+	Pairs(ctx context.Context, account types.ID, within int) ([]Pair, error)
+	Clear(ctx context.Context, p, t Transaction, ev eventbus.Event) error
+	Unclear(ctx context.Context, p Transaction, ev eventbus.Event) error
+	ClearedHolds(ctx context.Context, account types.ID) (map[types.ID]types.ID, error)
+
+	// HoldOf is the pending charge a posted charge cleared, if one did.
+	HoldOf(ctx context.Context, posted types.ID) (Transaction, bool, error)
+
 	// WithCheck is the account's transactions with the check number;
 	// SetPayee writes a transaction's payee text, the payee p it is (zero
 	// for none), the key it came through, and ev when there is one, and
@@ -344,10 +359,11 @@ type Business struct {
 	readings readings
 }
 
-// AfterImport is what is done after a statement is imported, by a domain the
+// AfterImport is what is done after a statement is imported, or a pending
+// charge is paired with its posted form by a person, by a domain the
 // ledger knows nothing of: receipts attach the images of checks that were
 // waiting for the transactions it brought (receiptbus.MatchChecks,
-// docs/phone.md, 2). It is a function rather than an interface beside
+// docs/phone.md, 2), and follow a pending charge to its posted one. It is a function rather than an interface beside
 // Rules and Shapes because receipts are made from the ledger, so the
 // ledger cannot be made from them. An error is logged and never undoes
 // the import, which has already happened; what it would have done can be
@@ -992,13 +1008,21 @@ func (b *Business) Import(ctx context.Context, now time.Time, actor, accountID, 
 	b.log.Info("a statement was imported", "account_id", accountID.String(), "statement_id", st.ID.String(),
 		"added", st.Added, "already", st.Already, "by_rule", st.ByRule, "checked", string(st.Checked))
 
-	if b.imported != nil {
-		if err := b.imported(ctx, now, actor, d.Account.ID); err != nil {
-			b.log.Error("what follows an import failed", "account_id", accountID.String(), "statement_id", st.ID.String(), "error", err)
-		}
-	}
+	b.followed(ctx, now, actor, d.Account.ID)
 
 	return st, nil
+}
+
+// followed does what follows a change to an account's transactions
+// (AfterImport). Its error is logged: the change has already happened.
+func (b *Business) followed(ctx context.Context, now time.Time, actor, accountID types.ID) {
+	if b.imported == nil {
+		return
+	}
+
+	if err := b.imported(ctx, now, actor, accountID); err != nil {
+		b.log.Error("what follows a change to the transactions failed", "account_id", accountID.String(), "error", err)
+	}
 }
 
 // insist marks the rows a person chose to import although the count rule
@@ -1026,16 +1050,18 @@ func insist(txs []Transaction, opts *Options) {
 // it in on import, because only the store knows the counts.
 func EventDetail(st Statement) map[string]string {
 	return map[string]string{
-		"name":       st.FileName,
-		"start":      st.Start.String(),
-		"end":        st.End.String(),
-		"added":      strconv.Itoa(st.Added),
-		"already":    strconv.Itoa(st.Already),
-		"byrule":     strconv.Itoa(st.ByRule),
-		"setaside":   strconv.Itoa(st.SetAside()),
-		"posted":     strconv.Itoa(st.Posted),
-		"completed":  strconv.Itoa(st.Completed),
-		"superseded": strconv.Itoa(st.Superseded),
+		"name":      st.FileName,
+		"start":     st.Start.String(),
+		"end":       st.End.String(),
+		"added":     strconv.Itoa(st.Added),
+		"already":   strconv.Itoa(st.Already),
+		"byrule":    strconv.Itoa(st.ByRule),
+		"setaside":  strconv.Itoa(st.SetAside()),
+		"posted":    strconv.Itoa(st.Posted),
+		"completed": strconv.Itoa(st.Completed),
+		// Not "superseded", which an import before issue #104 wrote for
+		// pending rows it left out, and whose line still says so.
+		"postedhere": strconv.Itoa(st.Superseded),
 		"renamed":    strconv.Itoa(st.Renamed),
 	}
 }

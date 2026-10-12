@@ -107,6 +107,14 @@ func (a app) keepEndpoints() []Endpoint {
 			Returns: "{transaction}", handler: a.setSplits,
 		},
 		{
+			Method: http.MethodPut, Path: Prefix + "/transactions/{transaction}/posted-as", Scope: write, Tool: "pair_pending",
+			Summary: "Say that a pending charge posted as another transaction of its account, with the person's yes: one of list_pending's pairs, or one the person names. The pending charge stays in its statement and counts no more; the posted charge takes its parts and receipts. Bookkeepers and owners only; neither in a reconciled period.",
+			Body: &Body{Encoding: "json", Fields: []Field{
+				{Name: "posted", Type: "string", Required: true, Description: "The posted charge's id: not pending itself, not another pending charge's posted form, the same way round."},
+			}},
+			Returns: "{transaction}: the pending charge, with posted_as.", handler: a.pairPending,
+		},
+		{
 			Method: http.MethodPut, Path: Prefix + "/transactions/{transaction}/description", Scope: write, Tool: "set_description",
 			Summary: "Say what a transaction was, in words a person reads in place of the bank's -- \"Summer work\" for \"Check 1322\", from the check's memo line -- or take it away with an empty description. The bank's description is kept, and is still what rules look for. Marked as written through this key until a person saves the transaction on the web. Bookkeepers and owners only; not in a reconciled period.",
 			Body: &Body{Encoding: "json", Fields: []Field{
@@ -871,4 +879,41 @@ func (a app) gatherExplanation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rd.done(w, r, rd.explanation(x))
+}
+
+// pairPending says what a pending charge posted as (ledgerbus.ClearPending).
+func (a app) pairPending(w http.ResponseWriter, r *http.Request) {
+	id, ok := a.pathID(w, r, "transaction", "transaction")
+	if !ok {
+		return
+	}
+
+	var in struct {
+		Posted string `json:"posted"`
+	}
+
+	if !a.body(w, r, &in) {
+		return
+	}
+
+	posted, err := types.ParseID(in.Posted)
+	if err != nil {
+		web.WriteJSON(w, http.StatusUnprocessableEntity, web.Problem("posted", "Give the posted charge's id, as list_pending or get_transaction gives it."))
+
+		return
+	}
+
+	rd := a.reader(r)
+
+	err = a.books.Ledger.ClearPending(r.Context(), time.Now(), rd.me, id, posted)
+	if a.bookRefused(w, r, err, "transaction") {
+		return
+	}
+
+	e, err := a.books.Ledger.Transaction(r.Context(), rd.me, id)
+	if a.bookRefused(w, r, err, "transaction") {
+		return
+	}
+
+	rd.done(w, r, map[string]any{"transaction": rd.named(e.Transaction, e.Account)})
 }

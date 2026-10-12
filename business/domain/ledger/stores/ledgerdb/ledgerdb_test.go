@@ -156,8 +156,11 @@ CREATE TABLE IF NOT EXISTS splits (
 // and paid no check to anybody; from before descriptions of its own, it
 // gains own_description and its mark, and has neither; from before a
 // check's memo and day written, it has neither of those; from before a
-// row's own wording was kept, it has none, and is its description. And a statement
-// from before layouts were kept gains statements.shape, and was in none.
+// row's own wording was kept, it has none, and is its description; from
+// before a pending charge was cleared rather than written over, it posted
+// as nothing, and the index on that later column is built after it. And a
+// statement from before layouts were kept gains statements.shape, and was
+// in none.
 func TestInitGivesOldPartsNoRule(t *testing.T) {
 	db, err := sqldb.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -231,6 +234,15 @@ VALUES (?, ?, ?, 'csv', '2026-07-01', '2026-07-31', 'none', ?, 0)`,
 	var wording string
 	if err := db.QueryRowContext(ctx, `SELECT wording FROM transactions WHERE id = ?`, id.String()).Scan(&wording); err != nil || wording != "" {
 		t.Errorf("the old row's wording: %q, %v", wording, err)
+	}
+
+	if tx.Cleared() {
+		t.Errorf("the old row posted as %s", tx.PostedAs)
+	}
+
+	var index int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type = 'index' AND name = 'transactions_posted_as'`).Scan(&index); err != nil || index != 1 {
+		t.Errorf("the posted charge index: %d, %v", index, err)
 	}
 
 	var shape string
