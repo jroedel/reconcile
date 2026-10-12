@@ -57,10 +57,10 @@ var UploadPatterns = []string{
 	"POST " + CheckInboxPath,
 }
 
-// The limits on one upload. A phone's photo is three to eight megabytes;
-// a scanned PDF can be more.
+// The limits on one upload. A file's is the receipts' own (receiptbus),
+// which the API holds to as well.
 const (
-	MaxFile    = 20 << 20
+	MaxFile    = receiptbus.MaxFile
 	MaxFiles   = 20
 	MaxUpload  = 120 << 20
 	UploadTime = 10 * time.Minute

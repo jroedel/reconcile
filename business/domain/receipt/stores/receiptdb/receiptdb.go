@@ -330,28 +330,27 @@ func (s *Store) OnTransactions(ctx context.Context, ids []types.ID) ([]receiptbu
 	return s.load(ctx, `r.id IN (SELECT receipt_id FROM receipt_links WHERE transaction_id IN (`+marks(len(ids))+`))`, args...)
 }
 
-// HoldsContent reports whether a receipt in the inbox, not removed, has a
-// file with these bytes.
-func (s *Store) HoldsContent(ctx context.Context, inbox types.Scope, sha256 string) (bool, error) {
+// WithContent is a receipt in the inbox, not removed, that has a file with
+// these bytes, and whether there is one: the first added, when the same
+// bytes went in twice before anybody asked.
+func (s *Store) WithContent(ctx context.Context, inbox types.Scope, sha256 string) (receiptbus.Receipt, bool, error) {
 	account, project := home(inbox)
 
-	var one int
-
-	err := s.db.QueryRowContext(ctx, `
-SELECT 1 FROM receipts r
-JOIN receipt_files rf ON rf.receipt_id = r.id
+	rs, err := s.load(ctx, `r.id = (
+SELECT h.id FROM receipts h
+JOIN receipt_files rf ON rf.receipt_id = h.id
 JOIN files f ON f.id = rf.file_id
-WHERE (r.account_id = ? OR r.project_id = ?) AND r.removed_at IS NULL AND f.sha256 = ?
-LIMIT 1`, account, project, sha256).Scan(&one)
-
-	switch {
-	case errors.Is(err, sql.ErrNoRows):
-		return false, nil
-	case err != nil:
-		return false, fmt.Errorf("looking for a receipt's bytes: %w", err)
+WHERE (h.account_id = ? OR h.project_id = ?) AND h.removed_at IS NULL AND f.sha256 = ?
+ORDER BY h.created_at, h.rowid LIMIT 1)`, account, project, sha256)
+	if err != nil {
+		return receiptbus.Receipt{}, false, fmt.Errorf("looking for a receipt's bytes: %w", err)
 	}
 
-	return true, nil
+	if len(rs) == 0 {
+		return receiptbus.Receipt{}, false, nil
+	}
+
+	return rs[0], true, nil
 }
 
 // marks is n placeholders; none is a list that matches nothing.

@@ -266,7 +266,7 @@ func New(cfg Config) (http.Handler, error) {
 	if cfg.BaseURL != "" {
 		apiapp.Routes(api, apiapp.Config{
 			Log: cfg.Log, Translations: cfg.Translations, Inbox: cfg.Ledger, BaseURL: cfg.BaseURL,
-			Books: apiapp.Books{Ledger: cfg.Ledger, Tenancy: cfg.Tenancy, Categories: cfg.Categories, Receipts: cfg.Receipts, History: cfg.History, Rules: cfg.Rules, Pictures: cfg.Files},
+			Books: apiapp.Books{Ledger: cfg.Ledger, Tenancy: cfg.Tenancy, Categories: cfg.Categories, Receipts: cfg.Receipts, History: cfg.History, Rules: cfg.Rules, Pictures: cfg.Files, Uploads: cfg.Files},
 		})
 	}
 
@@ -309,6 +309,12 @@ func New(cfg Config) (http.Handler, error) {
 	// to arrive. Still the API's branch, asked by a key and never a cookie.
 	for _, pattern := range apiapp.InboxPatterns {
 		shape.Handle(pattern, web.Wrap(apiInner, web.Deadline(receiptapp.UploadTime), web.MaxBody(apiapp.MaxInbox)))
+	}
+
+	// So is a receipt a program sends from the person's computer: one
+	// photo or PDF, as big as a receipt's file may be.
+	for _, pattern := range apiapp.ReceiptPatterns {
+		shape.Handle(pattern, web.Wrap(apiInner, web.Deadline(receiptapp.UploadTime), web.MaxBody(apiapp.MaxReceipt)))
 	}
 	for _, pattern := range ledgerapp.UploadPatterns {
 		shape.Handle(pattern, web.Wrap(inner,

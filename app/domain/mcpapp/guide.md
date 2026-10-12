@@ -89,7 +89,11 @@ what the person's role lets them change; the tools you have say which.
    yes, **save_rule**, then **apply_rules** to sort what is waiting.
 5. **list_waiting_receipts**: receipts waiting for a match, each with the
    transactions it may belong to. **attach_receipt** only a suggestion with
-   the same amount, and say which.
+   the same amount, and say which. You cannot send a receipt's file: a file
+   does not pass through a conversation. When the person has one -- in
+   their email, a folder, a photo -- they share it to the site from their
+   phone (`/receipts/share`), or a Claude on their computer, which can
+   read their folders, sends it (`POST /api/v1/receipts`).
 6. **list_changes** since you began, and a summary: what you imported,
    sorted, wrote and attached, what is left for the person, with the links.
    Reconciling the month is theirs, on the statement's page.

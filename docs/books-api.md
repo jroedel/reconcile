@@ -218,6 +218,7 @@ from (`docs/design.md`). Lists take `limit` and a `cursor`.
 | `POST /api/v1/accounts/{account}/rules/apply` | `apply_rules` | `SortUnsorted`: the account's rules over what is not sorted yet |
 | `POST /api/v1/projects` `{organization, name, note, starts, ends}` | `create_project` | **New** (issue #77, `tenancybus.CreateProject`): a project, in an organization or the person's own, as the site's "Add a project" makes one |
 | `PUT /api/v1/projects/{project}` `{name, note, starts, ends}` | `change_project` | **New** (issue #77, `EditProject`): a field left out keeps what the project has |
+| `POST /api/v1/receipts?account=\|project=\|transaction=&name=&spent_on=&amount=&merchant=&note=`, the file as the body | none | **New** (below): a receipt's file from the person's computer, into an inbox (`receiptbus.Add`) or onto a transaction (`AddToTransaction`) |
 | `POST /api/v1/receipts/{receipt}/attach` `{transaction}` | `attach_receipt` | `receiptbus.Attach` |
 | `POST /api/v1/receipts/{receipt}/detach` `{transaction}` | `detach_receipt` | `receiptbus.Detach`, which removes nothing: the receipt goes back to waiting |
 | `POST /api/v1/receipts/{receipt}/check` `{number, amount, payee, date, memo}` | `read_check` | `receiptbus.ReadCheck`: a check image read, attached when the bank's amount for the number is the one read, refused with both when not (`docs/phone.md`, 6); the memo and the day written go on the transaction too (7). For one of the person's own checks, `ReadInboxCheck` with `account_number`: filed under the one account whose last four digits it ends in, then read there; no account, or several, is refused and nothing moves (8) |
@@ -288,6 +289,36 @@ marked itself: the payment is. Every transaction in an answer carries
 `payee_id` beside `payee`, and `payee_through` while a program's is not
 checked. Adding, renaming and archiving a payee, and saying two
 suggested ones are not the same, are a person's on the site.
+
+As built, later: **receipts from a person's computer.** The person who
+keeps the books asked for their Claude to send receipts it finds while
+looking through their files for what justifies each charge. Claude on
+claude.ai cannot: a file does not pass through a conversation, the same
+reason statements come from Gmail through a script. Claude Code on the
+person's computer can, because it has a shell and `curl --data-binary
+@file` sends the bytes from the disk. So it is a route and not a tool,
+`POST /api/v1/receipts` with the file as the body, as the statement inbox
+is, on a branch of the muxer of its own (20 MB, an upload's time). It
+takes `books:write` rather than `upload`: an upload key lives in a script
+somebody else may read, and its whole power stays putting statements in a
+queue. Exactly one of `account`, `project` or `transaction` says where the
+receipt goes: an inbox, to wait for its match with the date, amount and
+shop Claude read off it, which is what the suggestions match on; or the
+charge the person agreed it justifies, attached at once. The details are
+checked before the file is kept, so a refusal keeps nothing. **The same
+bytes again add nothing, and the answer is the receipt they made** (`already_there`,
+`receiptbus.Holding`): for a transaction, one on it already, or one
+waiting in its account's inbox, which Claude then attaches with
+`attach_receipt` rather than sending a second copy. The account's inbox
+is looked in only for somebody who may read it (`HoldingFor`): a
+contributor given a project is told about the receipts on the project's
+charges, never what else the account holds. A receipt sent is in the
+history through the key, like every change; it needs no mark of its own,
+since a receipt in an inbox is waiting for a person anyway, and one on a
+charge is detached on the site with the button beside it.
+`docs/claude.md`, "Receipts from your computer", says how a person sets it
+up, and `claude-skills/reconcile-receipts/` is the recipe their Claude
+Code follows.
 
 What the tools do not do is make a repayment cancel a cost. Money moving
 between an organization's own accounts is a transfer, which a project's
