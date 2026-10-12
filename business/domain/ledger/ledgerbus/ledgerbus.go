@@ -17,6 +17,8 @@ package ledgerbus
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -326,6 +328,9 @@ type Business struct {
 	rules      Rules
 	shapes     Shapes
 	imported   AfterImport
+
+	// readings is the PDFs read lately, each once (readings.go).
+	readings readings
 }
 
 // AfterImport is what is done after a statement is imported, by a domain the
@@ -629,33 +634,26 @@ func (b *Business) read(ctx context.Context, d *Draft, data []byte, opts *Option
 func (b *Business) readPDF(ctx context.Context, d *Draft, data []byte, opts *Options) error {
 	d.Format = PDF
 
-	text, err := pdftext.Extract(ctx, data)
-
-	switch {
-	case errors.Is(err, pdftext.ErrUnavailable):
-		b.log.Error("a PDF statement arrived and pdftotext is not installed")
-
-		return ErrPDFUnavailable
-	case errors.Is(err, pdftext.ErrNoText):
-		return ErrPDFScan
-	case errors.Is(err, pdftext.ErrPassword):
-		return ErrPDFPassword
-	case ctx.Err() != nil:
-		return ctx.Err()
-	case err != nil:
-		b.log.Info("a PDF statement could not be read", "file_id", d.File.ID.String(), "error", err)
-
-		return ErrPDFUnreadable
+	key := d.File.SHA256
+	if key == "" {
+		sum := sha256.Sum256(data)
+		key = hex.EncodeToString(sum[:])
 	}
 
-	// The producer is a help in telling layouts apart, and no more: a PDF
-	// whose metadata cannot be read is read all the same.
-	producer, err := pdftext.Producer(ctx, data)
-	if err != nil && ctx.Err() == nil {
-		b.log.Info("a PDF statement's producer could not be read", "file_id", d.File.ID.String(), "error", err)
+	r, ok := b.readings.get(key)
+	if !ok {
+		var err error
+		if r, err = b.readAnew(ctx, d, data); err != nil {
+			return err
+		}
+
+		if ctx.Err() == nil {
+			b.readings.put(key, r)
+		}
 	}
 
-	res, err := b.readLayout(d, producer, text)
+	d.Shape, d.Declaration = r.shape, r.declaration
+	res, err := own(r.res), r.err
 
 	if err != nil {
 		b.seen(ctx, *d)
@@ -669,6 +667,48 @@ func (b *Business) readPDF(ctx context.Context, d *Draft, data []byte, opts *Opt
 		}
 	}
 
+	return b.finishPDF(d, res, opts)
+}
+
+// readAnew reads a PDF that has not been read lately: its text, its
+// producer, and the rows its layout finds.
+func (b *Business) readAnew(ctx context.Context, d *Draft, data []byte) (reading, error) {
+	text, err := pdftext.Extract(ctx, data)
+
+	switch {
+	case errors.Is(err, pdftext.ErrUnavailable):
+		b.log.Error("a PDF statement arrived and pdftotext is not installed")
+
+		return reading{}, ErrPDFUnavailable
+	case errors.Is(err, pdftext.ErrNoText):
+		return reading{}, ErrPDFScan
+	case errors.Is(err, pdftext.ErrPassword):
+		return reading{}, ErrPDFPassword
+	case ctx.Err() != nil:
+		return reading{}, ctx.Err()
+	case err != nil:
+		b.log.Info("a PDF statement could not be read", "file_id", d.File.ID.String(), "error", err)
+
+		return reading{}, ErrPDFUnreadable
+	}
+
+	// The producer is a help in telling layouts apart, and no more: a PDF
+	// whose metadata cannot be read is read all the same.
+	producer, err := pdftext.Producer(ctx, data)
+	if err != nil && ctx.Err() == nil {
+		b.log.Info("a PDF statement's producer could not be read", "file_id", d.File.ID.String(), "error", err)
+	}
+
+	r := reading{text: text, producer: producer}
+	r.res, r.err = b.readLayout(d, producer, text)
+	r.shape, r.declaration = d.Shape, d.Declaration
+
+	return r, nil
+}
+
+// finishPDF fills the draft from the rows of its part: which way round its
+// amounts are, and the balances it is checked by.
+func (b *Business) finishPDF(d *Draft, res importbus.Result, opts *Options) error {
 	d.Invert = d.Account.Kind == tenancybus.Card
 	d.Opening, d.Closing = res.Opening, res.Closing
 
