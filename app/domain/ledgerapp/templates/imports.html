@@ -13,7 +13,7 @@
 {{else}}
 
 {{if $v.Rows}}
-<form method="get" action="/imports">
+<form method="post" action="/imports/check">
 {{range $v.Files}}<input type="hidden" name="f" value="{{.}}">{{end}}
 <section class="card">
 <h2>{{t "The files"}}</h2>
@@ -31,6 +31,7 @@
       {{range $v.Accounts}}<option value="{{.ID}}"{{if eq .ID.String $row.Account.String}} selected{{end}}>{{.Name}}{{with .Last4}} ···{{.}}{{end}}</option>
       {{end}}
     </select>
+    {{if or (eq (printf "%s" .By) "number") (eq (printf "%s" .By) "remembered")}}<input type="hidden" name="was-{{.Key}}" value="{{.Account}}">{{end}}
     {{if eq (printf "%s" .By) "number"}}<p class="hint">{{t "Found by the number it prints."}}</p>
     {{else if eq (printf "%s" .By) "remembered"}}<p class="hint">{{t "Where a file like it went before."}}</p>
     {{else if .Account.Zero}}<p class="hint">{{t "No account could be told from the file. Choose one, then check again."}}</p>{{end}}

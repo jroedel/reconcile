@@ -93,6 +93,30 @@ func TestABulkImportOfSeveralFiles(t *testing.T) {
 		t.Fatal("the CSV's row has no choice of account")
 	}
 
+	// "Check again" carries only what a person chose. The statement's part
+	// found by its number is proposed again from the file, so its choice,
+	// the same as the proposal, is left out of the address; the CSV's is a
+	// person's own and stays. Every choice carried made an address Apache
+	// refused for a batch of 36 statements.
+	pdf := ""
+	for _, f := range q["f"] {
+		if f != csv {
+			pdf = f
+		}
+	}
+
+	firstID := strings.TrimPrefix(first, "/accounts/")
+	partKey := pdf + "-" + pdfsourcetest.First
+	wantBody(t, page, `name="was-`+partKey+`" value="`+firstID+`"`)
+
+	rec = e.owner.post("/imports/check", url.Values{"f": q["f"],
+		"to-" + partKey: {firstID}, "was-" + partKey: {firstID}, "to-" + csv: {firstID}})
+
+	again := rec.Header().Get("Location")
+	if rec.Code != http.StatusSeeOther || strings.Contains(again, partKey) || !strings.Contains(again, "to-"+csv+"="+firstID) {
+		t.Errorf("check again: %d to %q", rec.Code, again)
+	}
+
 	// A stranger with the address: nothing on it, and nothing imported.
 	stranger := signUp(t, h, sent, "stranger@example.org")
 
