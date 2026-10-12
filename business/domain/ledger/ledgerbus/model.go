@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jroedel/reconcile/business/domain/importing/importbus"
 	"github.com/jroedel/reconcile/business/types"
@@ -111,6 +112,17 @@ type Statement struct {
 	// (ledgerdb's complete). Counted on import and in the preview; not
 	// kept.
 	Completed int
+
+	// Superseded is how many of its rows were pending charges the same
+	// file also lists as posted, and were left out for the posted ones
+	// (ledgerdb's superseded). Counted on import and in the preview; not
+	// kept.
+	Superseded int
+
+	// Renamed is how many rows already here named their holder cut short
+	// and took the whole name, from this file or the account (ledgerdb's
+	// wholeHolders). Counted on import and in the preview; not kept.
+	Renamed int
 }
 
 // OtherHolders reports a doubt that names two holders (Doubt.OtherHolder).
@@ -454,6 +466,20 @@ func CutShort(s string) bool {
 	s = strings.TrimSpace(s)
 
 	return strings.HasSuffix(s, "…") || strings.HasSuffix(s, "...")
+}
+
+// SaysMore reports whether description a says more of a charge than b,
+// which is taken for the same one: b is cut short and a is not, or a is
+// the longer. Longer is the measure because a bank's own line is what a
+// printed page tidies -- "THE HOME DEPOT #6531 BEE CAVES TX" against
+// "Home Depot", "AMAZON MKTPL*BG74R64R0 SEATTLE WA" against "Amazon
+// Marketplace" -- and the store and the order are in the longer one.
+func SaysMore(a, b string) bool {
+	if a == "" || CutShort(a) {
+		return false
+	}
+
+	return CutShort(b) || utf8.RuneCountInString(normalizeDescription(a)) > utf8.RuneCountInString(normalizeDescription(b))
 }
 
 // Truncated reports whether one description is the other cut short: it

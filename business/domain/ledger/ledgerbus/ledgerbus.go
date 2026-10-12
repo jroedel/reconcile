@@ -34,6 +34,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/importing/shapes"
 	"github.com/jroedel/reconcile/business/domain/importing/sources/csvsource"
 	"github.com/jroedel/reconcile/business/domain/importing/sources/ofxsource"
+	"github.com/jroedel/reconcile/business/domain/importing/sources/pdfsource"
 	"github.com/jroedel/reconcile/business/domain/rule/rulebus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/types"
@@ -55,6 +56,11 @@ var (
 	ErrPDFPassword    = errors.New("the PDF is locked with a password")
 	ErrPDFUnreadable  = errors.New("the PDF could not be opened")
 	ErrPDFNoRows      = errors.New("no transactions could be found in the PDF")
+
+	// ErrPDFListsNone is a page that lists no transactions and states
+	// that its period had some (pdfsource.ErrListsNone): printed before
+	// its list had loaded. It is ErrPDFNoRows too.
+	ErrPDFListsNone = fmt.Errorf("%w: the page states activity and lists none", ErrPDFNoRows)
 
 	// ErrWhichAccount is a document that holds several accounts, imported
 	// before a person said which of them is this one.
@@ -214,6 +220,11 @@ type Storer interface {
 	// from start up to end.
 	Holders(ctx context.Context, account types.ID) ([]string, error)
 	HoldersBetween(ctx context.Context, account types.ID, from, to types.Date) ([]string, error)
+
+	// NamedBetween is the account's rows dated from one day to another,
+	// both included, that name a holder: their day, amount and holder
+	// only, for telling whose a file that names nobody is (holders.go).
+	NamedBetween(ctx context.Context, account types.ID, from, to types.Date) ([]Transaction, error)
 	HolderTotals(ctx context.Context, account types.ID, start, end types.Date) ([]HolderTotal, error)
 
 	// NamedInParts is the account's transactions that name a holder and
@@ -439,6 +450,13 @@ type Draft struct {
 	Unnamed  int
 	Holder   string
 
+	// Inferred is a Holder nobody said, read from the file's rows: Matched
+	// of them are charges of that holder's already here, and practically
+	// none anybody else's (inferHolder). The preview says so, and offers
+	// to change it.
+	Inferred bool
+	Matched  int
+
 	// LooksByHolder is a file whose rows all name one holder, FileHolder,
 	// for an account without the option, which already holds charges
 	// other holders made in the file's days, OtherHolders: what an
@@ -535,6 +553,10 @@ func (b *Business) Prepare(ctx context.Context, actor, accountID, fileID types.I
 
 	if d.Unmapped {
 		return d, nil
+	}
+
+	if err := b.fullHolders(ctx, &d); err != nil {
+		return Draft{}, err
 	}
 
 	if err := b.holders(ctx, &d, opts); err != nil {
@@ -688,6 +710,10 @@ func (b *Business) readPDF(ctx context.Context, d *Draft, data []byte, opts *Opt
 
 	if err != nil {
 		b.seen(ctx, *d)
+
+		if errors.Is(err, pdfsource.ErrListsNone) {
+			return ErrPDFListsNone
+		}
 
 		return ErrPDFNoRows
 	}
@@ -1000,15 +1026,17 @@ func insist(txs []Transaction, opts *Options) {
 // it in on import, because only the store knows the counts.
 func EventDetail(st Statement) map[string]string {
 	return map[string]string{
-		"name":      st.FileName,
-		"start":     st.Start.String(),
-		"end":       st.End.String(),
-		"added":     strconv.Itoa(st.Added),
-		"already":   strconv.Itoa(st.Already),
-		"byrule":    strconv.Itoa(st.ByRule),
-		"setaside":  strconv.Itoa(st.SetAside()),
-		"posted":    strconv.Itoa(st.Posted),
-		"completed": strconv.Itoa(st.Completed),
+		"name":       st.FileName,
+		"start":      st.Start.String(),
+		"end":        st.End.String(),
+		"added":      strconv.Itoa(st.Added),
+		"already":    strconv.Itoa(st.Already),
+		"byrule":     strconv.Itoa(st.ByRule),
+		"setaside":   strconv.Itoa(st.SetAside()),
+		"posted":     strconv.Itoa(st.Posted),
+		"completed":  strconv.Itoa(st.Completed),
+		"superseded": strconv.Itoa(st.Superseded),
+		"renamed":    strconv.Itoa(st.Renamed),
 	}
 }
 

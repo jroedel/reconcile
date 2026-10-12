@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/jroedel/reconcile/business/domain/event/eventbus"
+	"github.com/jroedel/reconcile/business/domain/importing/importbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/types"
 	"github.com/jroedel/reconcile/business/types/money"
@@ -65,6 +66,8 @@ func (b *Business) holders(ctx context.Context, d *Draft, opts *Options) error {
 		if h := strings.Join(strings.Fields(opts.Holder), " "); utf8.RuneCountInString(h) <= MaxHolder {
 			d.Holder = h
 		}
+	} else if err := b.inferHolder(ctx, d); err != nil {
+		return err
 	}
 
 	for i, r := range d.Result.Records {
@@ -80,6 +83,167 @@ func (b *Business) holders(ctx context.Context, d *Draft, opts *Options) error {
 	}
 
 	return nil
+}
+
+// inferHolder tells whose a file that names nobody is, on an account kept
+// apart by holder, by the charges already here: a bank's download of one
+// card, after the holders' printed months, is mostly charges one holder's
+// month already brought in. When at least inferMin of its rows are, and
+// for each row that is somebody else's charge at least inferRatio are
+// that holder's, the file is taken for theirs, under the name it has
+// here. Only on the first reading (opts nil): a person's answer, even
+// "the whole account", is theirs to give, and a bulk import carries this
+// one in its options (defaults).
+//
+// A file of a new period, with nothing here yet to recognize, is asked
+// about as before; so is one that is everybody's -- a download of the
+// whole card, whose rows are several holders' charges.
+func (b *Business) inferHolder(ctx context.Context, d *Draft) error {
+	var from, to types.Date
+
+	for _, r := range d.Result.Records {
+		if r.Holder != "" {
+			continue
+		}
+
+		day := types.DateOf(r.Date)
+		if from.Zero() || day.Before(from) {
+			from = day
+		}
+
+		if to.Zero() || to.Before(day) {
+			to = day
+		}
+	}
+
+	if from.Zero() {
+		return nil
+	}
+
+	named, err := b.store.NamedBetween(ctx, d.Account.ID, from, to)
+	if err != nil {
+		return err
+	}
+
+	type key struct {
+		day    string
+		amount money.Amount
+	}
+
+	whose := map[key]map[string]string{}
+
+	for _, t := range named {
+		k := key{t.PostedOn.String(), t.Amount}
+		if whose[k] == nil {
+			whose[k] = map[string]string{}
+		}
+
+		whose[k][HolderKey(t.Holder)] = t.Holder
+	}
+
+	count := map[string]int{}
+	names := map[string]string{}
+
+	for _, r := range d.Result.Records {
+		if r.Holder != "" {
+			continue
+		}
+
+		// A row that is a charge of two holders' says nothing.
+		if hs := whose[key{types.DateOf(r.Date).String(), r.Amount}]; len(hs) == 1 {
+			for k, name := range hs {
+				count[k]++
+				names[k] = name
+			}
+		}
+	}
+
+	best, others := "", 0
+	for k, n := range count {
+		if best == "" || n > count[best] || n == count[best] && k < best {
+			best = k
+		}
+	}
+
+	for k, n := range count {
+		if k != best {
+			others += n
+		}
+	}
+
+	if best == "" || count[best] < inferMin || others*inferRatio > count[best] {
+		return nil
+	}
+
+	d.Holder, d.Inferred, d.Matched = names[best], true, count[best]
+
+	return nil
+}
+
+// inferMin is the fewest charges already here a file must share with one
+// holder to be taken for theirs, and inferRatio how many of them it must
+// share for each it shares with somebody else: a coffee two people both
+// bought on one day for one price is a coincidence a year's download
+// meets, and should not stop it.
+const (
+	inferMin   = 3
+	inferRatio = 20
+)
+
+// fullHolders gives a row whose holder is a name cut short -- a printed
+// page whose column was too narrow for it, "GONZALO VILLA…" -- the whole
+// name it begins, when exactly one holder of the account, or of the file's
+// other rows, has one that does (Truncated). Cut short, it is somebody
+// else to every rule that compares holders, and a holder's month read
+// from two printings would be two people's charges.
+func (b *Business) fullHolders(ctx context.Context, d *Draft) error {
+	if !slices.ContainsFunc(d.Result.Records, func(r importbus.Record) bool { return CutShort(r.Holder) }) {
+		return nil
+	}
+
+	known, err := b.store.Holders(ctx, d.Account.ID)
+	if err != nil {
+		return err
+	}
+
+	for _, r := range d.Result.Records {
+		known = append(known, r.Holder)
+	}
+
+	for i, r := range d.Result.Records {
+		if full, ok := WholeName(r.Holder, known); ok {
+			d.Result.Records[i].Holder = full
+		}
+	}
+
+	return nil
+}
+
+// WholeName is the one name among names that cut is cut short from, when
+// cut is cut short and exactly one is -- told apart ignoring case and
+// spacing, so that one name printed two ways is one.
+func WholeName(cut string, names []string) (string, bool) {
+	if !CutShort(cut) {
+		return "", false
+	}
+
+	var found []string
+
+	for _, n := range names {
+		if n == "" || CutShort(n) || !Truncated(cut, n) {
+			continue
+		}
+
+		if !slices.ContainsFunc(found, func(f string) bool { return HolderKey(f) == HolderKey(n) }) {
+			found = append(found, n)
+		}
+	}
+
+	if len(found) != 1 {
+		return "", false
+	}
+
+	return found[0], true
 }
 
 // looksByHolder notices a file that looks like one holder's month on an

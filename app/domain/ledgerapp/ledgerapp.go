@@ -189,6 +189,8 @@ func problem(err error) string {
 		return "pdf-password"
 	case errors.Is(err, ledgerbus.ErrPDFUnreadable):
 		return "pdf-unreadable"
+	case errors.Is(err, ledgerbus.ErrPDFListsNone):
+		return "pdf-lists-none"
 	case errors.Is(err, ledgerbus.ErrPDFNoRows):
 		return "pdf-no-rows"
 	case errors.Is(err, ledgerbus.ErrUnreadable):

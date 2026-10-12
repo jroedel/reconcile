@@ -149,3 +149,100 @@ VALUES (?, ?, '2025-12-01', '2025-12-31', ?, 0)`, st.ID.String(), card.String(),
 		}
 	}
 }
+
+// A printed page's tidy name and the bank's own line for one charge: the
+// count rule sets the second aside, and the row here takes the line that
+// says more, whichever came first, and keeps it through the holder
+// option's changes.
+func TestTheRowHereTakesTheWordsThatSayMore(t *testing.T) {
+	w := newWorld(t)
+	me := w.user("treasurer@example.org")
+	card := w.account(me, "card")
+
+	page := csvOf("2026-01-29,Home Depot,-4.56", "2026-01-30,Coffee Cart,-3.50")
+	bank := []byte("Status,Date,Description,Debit,Credit\nCleared,01/29/2026,THE HOME DEPOT #6531 BEE CAVES TX,4.56,\nCleared,01/30/2026,SQ *COFFEE CART 0902 SEATTLE WA,3.50,\n")
+
+	w.add(me, card, "page.csv", page)
+
+	if st := w.add(me, card, "bank.csv", bank); counts(st) != [3]int{0, 2, 2} || st.Completed != 2 {
+		t.Fatalf("the bank's file: %v, completed %d", counts(st), st.Completed)
+	}
+
+	descriptions := func() []string {
+		txs, err := w.ledger.Transactions(t.Context(), me, card, "2026-01")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var out []string
+		for _, tx := range txs {
+			out = append(out, tx.Description)
+		}
+
+		slices.Sort(out)
+
+		return out
+	}
+
+	want := []string{"SQ *COFFEE CART 0902 SEATTLE WA", "THE HOME DEPOT #6531 BEE CAVES TX"}
+	if got := descriptions(); !slices.Equal(got, want) {
+		t.Fatalf("descriptions %q", got)
+	}
+
+	// Each file again matches exactly, with the option changed between.
+	for _, on := range []bool{true, false} {
+		if err := w.ledger.SetByHolder(t.Context(), now, me, card, on); err != nil {
+			t.Fatal(err)
+		}
+
+		if got := counts(w.add(me, card, "page-again.csv", append(page, '\n'))); got != [3]int{0, 2, 0} {
+			t.Errorf("the page again, option %v: %v", on, got)
+		}
+
+		if got := counts(w.add(me, card, "bank-again.csv", append(bank, '\n'))); got != [3]int{0, 2, 0} {
+			t.Errorf("the bank's file again, option %v: %v", on, got)
+		}
+
+		page, bank = append(page, '\n'), append(bank, '\n')
+	}
+
+	// The other way round, the bank's line stays.
+	other := w.account(me, "card")
+	w.add(me, other, "bank.csv", bank)
+
+	if st := w.add(me, other, "page.csv", page); counts(st) != [3]int{0, 2, 2} || st.Completed != 0 {
+		t.Errorf("the page after the bank's file: %v, completed %d", counts(st), st.Completed)
+	}
+}
+
+// A pending row the same file lists as posted too is left out for the
+// posted one; a pending row with nothing posted to take its place stays.
+func TestAPendingRowPostedInTheSameFile(t *testing.T) {
+	w := newWorld(t)
+	me := w.user("treasurer@example.org")
+	card := w.account(me, "card")
+
+	month := []byte("Date,Description,Amount,Status\n" +
+		"2026-01-28,TST* THE PIZZA PRESS - AUSTIN,-11.54,Pending\n" +
+		"2026-01-29,TST* THE PIZZA PRESS - AUSTIN,-11.54,Posted\n" +
+		"2026-06-11,CAR HIRE CHANIA,-925.92,Pending\n" +
+		"2026-06-11,CAR HIRE CHANIA,-753.64,Posted\n" +
+		"2026-01-18,GOOGLE *GPAY TEMP,-1.00,Pending\n")
+
+	d, _ := w.preview(me, card, "month.csv", month)
+	if d.Statement.Superseded != 2 || d.Statement.Added != 3 {
+		t.Fatalf("preview: superseded %d, added %d", d.Statement.Superseded, d.Statement.Added)
+	}
+
+	w.add(me, card, "month.csv", month)
+
+	pending, err := w.ledger.StillPending(t.Context(), me, card)
+	if err != nil || len(pending) != 1 || pending[0].Description != "GOOGLE *GPAY TEMP" {
+		t.Errorf("still pending: %+v, %v", pending, err)
+	}
+
+	// The same rows again: nothing new, and nothing set aside.
+	if got := counts(w.add(me, card, "month-again.csv", append(month, '\n'))); got != [3]int{0, 3, 0} {
+		t.Errorf("again: %v", got)
+	}
+}

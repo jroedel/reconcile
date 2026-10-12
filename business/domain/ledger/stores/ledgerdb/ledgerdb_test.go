@@ -155,7 +155,8 @@ CREATE TABLE IF NOT EXISTS splits (
 // pending, check_number and payee, and the row names nobody, has posted,
 // and paid no check to anybody; from before descriptions of its own, it
 // gains own_description and its mark, and has neither; from before a
-// check's memo and day written, it has neither of those. And a statement
+// check's memo and day written, it has neither of those; from before a
+// row's own wording was kept, it has none, and is its description. And a statement
 // from before layouts were kept gains statements.shape, and was in none.
 func TestInitGivesOldPartsNoRule(t *testing.T) {
 	db, err := sqldb.Open(filepath.Join(t.TempDir(), "test.db"))
@@ -225,6 +226,11 @@ VALUES (?, ?, ?, 'csv', '2026-07-01', '2026-07-31', 'none', ?, 0)`,
 	if tx.Holder != "" || tx.Hash != id.String() || tx.Pending || tx.CheckNumber != "" || tx.Payee != "" || tx.OwnDescription != "" || tx.OwnVia != "" ||
 		tx.CheckMemo != "" || !tx.WrittenOn.Zero() {
 		t.Errorf("the old row: holder %q, hash %q, pending %v, check %q, payee %q", tx.Holder, tx.Hash, tx.Pending, tx.CheckNumber, tx.Payee)
+	}
+
+	var wording string
+	if err := db.QueryRowContext(ctx, `SELECT wording FROM transactions WHERE id = ?`, id.String()).Scan(&wording); err != nil || wording != "" {
+		t.Errorf("the old row's wording: %q, %v", wording, err)
 	}
 
 	var shape string

@@ -122,6 +122,7 @@
 <section class="card">
 <h2>{{t "Whose statement is this?"}}</h2>
 <p class="hint">{{t "This account's statements arrive one file per holder, and this file does not say whose it is. Say whose, so that two holders' identical charges are kept as two. Leave it unsaid for a file of the whole account: it is then compared with every holder's."}}</p>
+{{if $d.Inferred}}<p>{{t "{count} of its transactions are charges of {holder}'s already here, and almost none anybody else's, so it is taken as {holder}'s. Choose otherwise below if that is wrong." "count" $d.Matched "holder" $d.Holder}}</p>{{end}}
 <div class="field">
   <label for="holder">{{t "Holder"}}</label>
   <select id="holder" name="holder">
@@ -206,7 +207,9 @@
 {{end}}</ul>
 {{end}}
 {{if $d.Statement.Posted}}<p class="hint">{{t "{n} of its rows are charges that were pending here and have now posted. Each takes the pending charge's place, with its final date and amount, and keeps how it was sorted." "n" $d.Statement.Posted}}</p>{{end}}
-{{if $d.Statement.Completed}}<p class="hint">{{t "{n} of its rows are here already, from a file that cut their descriptions short. Each takes this file's whole description." "n" $d.Statement.Completed}}</p>{{end}}
+{{if $d.Statement.Completed}}<p class="hint">{{t "{n} of the transactions already here will take this file's description of them, which says more." "n" $d.Statement.Completed}}</p>{{end}}
+{{if $d.Statement.Renamed}}<p class="hint">{{t "{n} of the transactions already here name their holder cut short, as a narrow printed column left it. Each will name the whole name, which the rest of the account uses." "n" $d.Statement.Renamed}}</p>{{end}}
+{{if $d.Statement.Superseded}}<p class="hint">{{t "{n} of its rows are pending charges that it also lists as posted. Only the posted ones are imported." "n" $d.Statement.Superseded}}</p>{{end}}
 {{if $d.Statement.ByRule}}<p class="hint">{{t "The account's sorting rules will sort {n} of the new ones. They are marked, so you can check them." "n" $d.Statement.ByRule}}</p>{{end}}{{end}}
 {{if $d.Statement.Locked}}<p class="notice" role="alert">{{t "{n} of the new transactions fall in a period that has been reconciled, so this statement cannot be imported. If the bank really changed that period, reopen its statement first, on the month-by-month page." "n" $d.Statement.Locked}} <a href="/accounts/{{$d.Account.ID}}/months">{{t "Month by month"}}</a></p>{{end}}
 </section>
