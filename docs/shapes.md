@@ -295,6 +295,16 @@ the books of are proposed.
   far and refreshes itself, with the job in its address, until it is.
   Jobs are kept in memory: a restart forgets one, and the page reads the
   list again and says so.
+- **What each file can do** (issue #111; `ledgerbus/capabilities.go`):
+  balances, the bank's identifiers and whole descriptions as three marks
+  on each row and on a file's own preview, with check numbers, holders (a
+  card with several) and the account number behind a tap, each with its
+  reason. Files of overlapping days in one account get a "Together" box:
+  the best of them, which file brings what, and what none has.
+  `list_inbox` and `import_from_inbox` carry the same as `capabilities`
+  and `together`. It explains what is decided elsewhere and changes
+  nothing that is imported. The OFX reader keeps the width it found names
+  cut at, and that it left a balance out for its date, for this.
 - **Proposed**, for each file or each account's part of one, among the
   accounts the person keeps the books of (`ledgerbus.Propose`): by the
   last four digits it prints (a PDF's account number, now kept for a file

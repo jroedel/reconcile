@@ -339,3 +339,16 @@ table.ledger { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
 .pages img { max-width: 100%; height: auto; border-radius: var(--radius); }
 .pages figure { margin: 0 0 var(--gap); }
 .button.small { padding: 0.2rem 0.6rem; font-size: 0.85rem; }
+
+/* What a file can do (issue #111): three marks at a glance, the reasons
+ * behind a tap. The mark carries the answer in its sign as well as its
+ * colour, for whoever does not see the colour. */
+.caps { margin: 0.25rem 0; }
+.caps summary { cursor: pointer; list-style: none; }
+.caps summary::-webkit-details-marker { display: none; }
+.caps-list { list-style: none; padding: 0; margin: 0.35rem 0 0; }
+.caps-list li { margin: 0.2rem 0; }
+.cap { white-space: nowrap; font-size: 0.9rem; margin-right: 0.5rem; }
+.cap-yes { color: var(--money-in); }
+.cap-no { color: var(--money-out); }
+.cap-na, .cap-unknown { color: var(--muted); }

@@ -178,7 +178,7 @@ func (a app) bookEndpoints() []Endpoint {
 			Method: http.MethodGet, Path: Prefix + "/inbox", Scope: read, Tool: "list_inbox",
 			Summary: "The statement files waiting in your inbox, sent by your Gmail script, each read for the account proposed for it: its period, how it checked, how many transactions are new, and whether it can be imported with no person looking at it, or what needs a person. " + workingNote,
 			Query:   []Field{jobField("list_inbox")},
-			Returns: "{files: [{inbox_id, file, name, received, source, parts: [{part, account, account_name, by, period, transactions, new, mends, check, ready, imported, needs}]}], imports_url}; mends, when there is anything, is what the file gives the transactions already here: {pending_posted, descriptions_completed, identifiers_given, holders_completed, own_pending_posted}, counts; or, while the files are still being read, " + workingReturns,
+			Returns: "{files: [{inbox_id, file, name, received, source, parts: [{part, account, account_name, by, period, transactions, new, mends, check, ready, imported, needs, capabilities}]}], together, imports_url}. mends, when there is anything, is what the file gives the transactions already here: {pending_posted, descriptions_completed, identifiers_given, holders_completed, own_pending_posted}, counts. capabilities is what a part's file can do, most important first: [{name: balances|identifiers|whole|checks|holders|number, can: yes|no|unknown|na, why}]. together is files of the same days of one account: [{account, account_name, period, files: [{file, name, part}], capabilities (the best of them, the first three), bring: {capability: [file names that bring it]}, missing: [capabilities none has]}]. When a file lacks identifiers or whole descriptions and nothing in together brings them, suggest the person also download the same days in another format their bank offers. While the files are still being read, " + workingReturns,
 			handler: a.listInbox,
 		},
 		{
@@ -892,7 +892,48 @@ func (a app) listInbox(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	rd.done(w, r, map[string]any{"files": out, "imports_url": rd.url("/imports")})
+	rd.done(w, r, map[string]any{"files": out, "together": rd.together(props), "imports_url": rd.url("/imports")})
+}
+
+// capabilitiesOut is what a file can do (ledgerbus, capabilities.go;
+// issue #111), as the API says it: each thing in order of importance, yes,
+// no, unknown or na (never in the format), and a word for why.
+func capabilitiesOut(caps []ledgerbus.Capability) []map[string]string {
+	out := make([]map[string]string, len(caps))
+	for i, c := range caps {
+		out[i] = map[string]string{"name": c.Name, "can": string(c.Can), "why": c.Why}
+	}
+
+	return out
+}
+
+// together is the batch's files that cover the same days of one account,
+// and what they can do between them: what Claude needs to say "add the
+// CSV of the same days" rather than guess.
+func (rd *reader) together(props []ledgerbus.Proposal) []map[string]any {
+	keys := map[string]ledgerbus.Proposal{}
+	for _, p := range props {
+		keys[p.Key()] = p
+	}
+
+	out := []map[string]any{}
+
+	for _, g := range ledgerbus.Togethers(props) {
+		var files []map[string]string
+
+		for _, k := range g.Keys {
+			p := keys[k]
+			files = append(files, map[string]string{"file": p.File.ID.String(), "name": p.File.Name, "part": p.Part})
+		}
+
+		out = append(out, map[string]any{
+			"account": g.Account.String(), "account_name": rd.account(g.Account).Name,
+			"period": spanOut{From: g.Start.String(), To: g.End.String()}, "files": files,
+			"capabilities": capabilitiesOut(g.Capabilities), "bring": g.Bring, "missing": g.Missing(),
+		})
+	}
+
+	return out
 }
 
 // proposal is one file, or one account's part of it, as the inbox lists it.
@@ -913,6 +954,10 @@ func (rd *reader) proposal(p ledgerbus.Proposal) map[string]any {
 
 	if !d.Statement.Start.Zero() {
 		out["period"] = spanOut{From: d.Statement.Start.String(), To: d.Statement.End.String()}
+	}
+
+	if caps := d.Capabilities(); caps != nil {
+		out["capabilities"] = capabilitiesOut(caps)
 	}
 
 	out["transactions"], out["new"] = len(d.Result.Records), d.Statement.Added

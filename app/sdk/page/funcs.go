@@ -33,6 +33,10 @@ var Funcs = template.FuncMap{
 
 	// inc counts a range's index from one, as a person counts.
 	"inc": func(i int) int { return i + 1 },
+
+	// join lists names, such as files', for a placeholder of a sentence
+	// that is translated whole: "{files}", not a sentence built of parts.
+	"join": strings.Join,
 }
 
 // symbols are the currencies whose sign a reader expects in front. Any other

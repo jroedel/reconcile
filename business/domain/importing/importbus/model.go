@@ -189,6 +189,17 @@ type Result struct {
 	// rest above are then empty, and whoever imports it chooses one.
 	Accounts []Account
 
+	// CutAt is the width at which the file's bank cut its names short,
+	// when that can be told from the file (an OFX download's NAME, cut at
+	// 27 or 32 characters); zero when it cannot, which is not proof that
+	// none was. LateBalance is a closing balance the file stated and that
+	// was left out because it was the balance on a day after the file's
+	// period -- an OFX's ledger balance, as of the day it was downloaded.
+	// Both are for saying what a file can do (ledgerbus, capabilities.go,
+	// issue #111); neither changes what is read.
+	CutAt       int
+	LateBalance bool
+
 	// Structure is the words the file used for its layout (shape.go), for
 	// recognizing it. The whole document's, on the Result a reader
 	// returns, and not on each of its Accounts.

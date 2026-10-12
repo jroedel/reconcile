@@ -1,0 +1,54 @@
+{{/*
+  What a file can do (ledgerbus, capabilities.go; issue #111): the first
+  three at a glance as marks, and every one with its reason behind a tap.
+  "capabilities" takes a draft's list; "together" a ledgerbus.Together with
+  the batch's rows, for the files of the same days.
+*/}}
+{{define "capabilities"}}{{if .}}<details class="caps">
+<summary>{{range $i, $c := .}}{{if lt $i 3}}{{template "cap-mark" $c}} {{end}}{{end}}</summary>
+<ul class="caps-list">{{range .}}<li>{{template "cap-mark" .}} {{template "cap-why" .}}</li>{{end}}</ul>
+</details>{{end}}{{end}}
+
+{{define "cap-mark"}}<span class="cap cap-{{.Can}}">{{if eq (printf "%s" .Can) "yes"}}✓{{else if eq (printf "%s" .Can) "no"}}✗{{else if eq (printf "%s" .Can) "na"}}–{{else}}?{{end}} {{template "cap-name" .Name}}</span>{{end}}
+
+{{define "cap-name"}}
+{{- if eq . "balances"}}{{t "Balances"}}
+{{- else if eq . "identifiers"}}{{t "Bank's identifiers"}}
+{{- else if eq . "whole"}}{{t "Whole descriptions"}}
+{{- else if eq . "checks"}}{{t "Check numbers"}}
+{{- else if eq . "holders"}}{{t "Holders"}}
+{{- else if eq . "number"}}{{t "Account number"}}{{end}}
+{{- end}}
+
+{{define "cap-why"}}{{$w := printf "%s %s" .Name .Why}}
+{{- if eq $w "balances every-row"}}{{t "A balance on every row: no transaction can go missing unseen."}}
+{{- else if eq $w "balances stated"}}{{t "Its opening and closing balances: no transaction can go missing unseen."}}
+{{- else if eq $w "balances download-day"}}{{t "Its balance is the one on the day it was downloaded, not at the end of its days, so it cannot be used."}}
+{{- else if eq $w "balances none"}}{{t "No balances, so nothing could be checked against the bank's figures."}}
+{{- else if eq $w "identifiers every-row"}}{{t "The bank's own identifier on every row: importing it again, or another file of the same days, cannot make duplicates."}}
+{{- else if eq $w "identifiers some-missing"}}{{t "Some rows have no identifier from the bank, so another file of the same days has to match them by date, amount and description."}}
+{{- else if eq $w "identifiers csv"}}{{t "A CSV has no identifiers from the bank, so another file of the same days has to match its rows by date, amount and description."}}
+{{- else if eq $w "identifiers pdf"}}{{t "Not in a PDF: its rows are matched by date, amount and description."}}
+{{- else if eq $w "whole whole"}}{{t "Whole descriptions: sorting rules and the list read the full name."}}
+{{- else if eq $w "whole cut"}}{{t "The bank cut the descriptions short, so sorting rules and the list read only their beginning."}}
+{{- else if eq $w "checks numbered"}}{{t "Check numbers: checks can be matched to their images."}}
+{{- else if eq $w "checks none-here"}}{{t "No check numbers in it. That may only be because no check was paid in these days."}}
+{{- else if eq $w "holders named"}}{{t "Every charge names its holder: each is known to be whose."}}
+{{- else if eq $w "holders some-unnamed"}}{{t "Some charges name no holder."}}
+{{- else if eq $w "holders unnamed"}}{{t "No charge names its holder."}}
+{{- else if eq $w "number named"}}{{t "It names its account, so it can be told which account it belongs to."}}
+{{- else if eq $w "number unnamed"}}{{t "It does not name its account, so its account is chosen, or remembered from a file like it."}}
+{{- else}}{{t "Not known from this file."}}{{end}}
+{{- end}}
+
+{{define "together"}}{{$g := .Group}}<section class="card together">
+<h3>{{t "Together: {account}, {start} to {end}" "account" .Account "start" $g.Start "end" $g.End}}</h3>
+<p>{{range $g.Capabilities}}{{template "cap-mark" .}} {{end}}</p>
+{{if $g.Everything}}<p>{{t "Together these files have everything. Import them all: they are matched row by row, and each transaction gets the best of them."}}</p>{{end}}
+{{with index $g.Bring "identifiers"}}<p>{{t "The bank's identifiers come from {files}." "files" (join . ", ")}}</p>{{end}}
+{{with index $g.Bring "whole"}}<p>{{t "The whole descriptions come from {files}." "files" (join . ", ")}}</p>{{end}}
+{{with index $g.Bring "balances"}}<p>{{t "The balances come from {files}." "files" (join . ", ")}}</p>{{end}}
+{{if ne (printf "%s" ($g.Can "balances")) "yes"}}<p class="hint">{{t "None of these files has balances, so these days cannot be checked against the bank's figures. Type the closing balance from your statement on a file's own page, or add the bank's PDF statement of the same days."}}</p>{{end}}
+{{if ne (printf "%s" ($g.Can "identifiers")) "yes"}}<p class="hint">{{t "None of these files has the bank's identifiers, so a later file of the same days is matched by date, amount and description."}}</p>{{end}}
+{{if ne (printf "%s" ($g.Can "whole")) "yes"}}<p class="hint">{{t "None of these files has whole descriptions, so sorting rules read the names as the bank cut them."}}</p>{{end}}
+</section>{{end}}

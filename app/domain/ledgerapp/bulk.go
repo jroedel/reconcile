@@ -86,6 +86,10 @@ type bulkView struct {
 
 	Rows []ledgerbus.Proposal
 
+	// Together is the rows' files that cover the same days of one
+	// account, and what they can do between them (issue #111).
+	Together []bulkTogether
+
 	// Files is the list's files, for its form to send back, and Ready how
 	// many rows can be imported together.
 	Files []types.ID
@@ -111,6 +115,12 @@ type bulkView struct {
 	Dismissed bool
 
 	Problem string
+}
+
+// bulkTogether is files of the same days, with their account's name.
+type bulkTogether struct {
+	Group   ledgerbus.Together
+	Account string
 }
 
 // Max is the most files a list takes.
@@ -185,6 +195,18 @@ func (a app) bulkPage(w http.ResponseWriter, r *http.Request, status int, q url.
 		default:
 			res, _ := st.Result.(bulkResult)
 			v.Rows, v.Done, v.Imported = res.rows, res.imports, res.imported
+		}
+
+		for _, g := range ledgerbus.Togethers(v.Rows) {
+			t := bulkTogether{Group: g}
+
+			for _, acct := range v.Accounts {
+				if acct.ID == g.Account {
+					t.Account = acct.Name
+				}
+			}
+
+			v.Together = append(v.Together, t)
 		}
 
 		seen := map[types.ID]bool{}

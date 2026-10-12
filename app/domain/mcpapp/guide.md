@@ -74,7 +74,12 @@ what the person's role lets them change; the tools you have say which.
    to read than one call lasts: either tool may answer `working` with a
    `job`. The work carries on; call the same tool again with only that
    `job`, a few seconds later, until it answers. Never start it again
-   meanwhile.
+   meanwhile. Each part says what its file can do (`capabilities`:
+   balances, the bank's identifiers, whole descriptions first), and
+   `together` what files of the same days do between them. When something
+   is missing that no file brings, say so in one line, and that
+   downloading the same days in another format the bank offers would bring
+   it; never more than once a conversation.
 2. For each account: **get_account_months** says which months are
    reconciled, imported, partial (and which days are in no statement) or
    missing; **get_statement** says how a statement checked and what in it is

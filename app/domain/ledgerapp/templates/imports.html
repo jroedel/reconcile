@@ -58,6 +58,7 @@
     {{else}}<span class="badge warn">{{t "not checked"}}</span>{{end}}
     {{end}}
   </p>
+  {{template "capabilities" $d.Capabilities}}
   {{template "will-mend" $d.Statement}}
   {{if .Unattended}}<p><span class="badge ok">{{t "Ready to import"}}</span>{{if not $d.Check.OK}} {{t "Every transaction in it is here already, so it needs no balances: importing it adds nothing, and gives the ones here what this file knows of them."}}{{end}}</p>
   {{else}}
@@ -79,6 +80,7 @@
 </li>
 {{end}}
 </ul>
+{{range $v.Together}}{{template "together" .}}{{end}}
 <div class="actions">
   <button type="submit" class="quiet">{{t "Check again"}}</button>
   {{if $v.Ready}}<button type="submit" formmethod="post" formaction="/imports/import">{{t "Import the ready ones: {count}" "count" $v.Ready}}</button>
