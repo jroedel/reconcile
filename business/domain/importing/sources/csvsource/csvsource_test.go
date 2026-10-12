@@ -348,3 +348,41 @@ func TestCSVSuppliesNoExternalIDs(t *testing.T) {
 		}
 	}
 }
+
+// A card's tab-separated export pads its columns with empty ones, before
+// the first and between the rest, writes its amounts with the dollar sign
+// after the minus, and shows a purchase as a positive number.
+func TestATabSeparatedExportWithPaddingColumns(t *testing.T) {
+	const data = "\tStatus\t\tDate\t\t\tDescription\t\t\tAmount\t\r\n" +
+		"\tCleared\t\t12/31/2025\t\tHARDWARE BARN #12 SPRINGFIELD\t\t\t -$ 139.07\t\r\n" +
+		"\tCleared\t\t12/30/2025\t\tCOFFEE CART\t\t\t $ 4.50\t\r\n" +
+		"\tCleared\t\t12/29/2025\t\tBOOK STALL\t\t\t $ 1,204.00\t\r\n"
+
+	m := detect(t, data)
+	if m.Date != "Date" || m.Description != "Description" || m.Amount != "Amount" || m.Status != "Status" || m.Separator != "\t" {
+		t.Fatalf("Detect = %+v", m)
+	}
+
+	res := read(t, data, m)
+	wantAmounts(t, res, "-139.07", "4.50", "1204.00")
+
+	if r := res.Records[0]; r.Description != "HARDWARE BARN #12 SPRINGFIELD" || r.Date.Format("2006-01-02") != "2025-12-31" || r.Pending {
+		t.Errorf("record = %+v", r)
+	}
+}
+
+// The same card's comma-separated export puts a purchase in its debit
+// column as a positive number and a refund in its credit column as a
+// negative one: each is money out or in by its column, whatever its sign.
+func TestACreditColumnWrittenNegative(t *testing.T) {
+	const data = "Status,Date,Description,Debit,Credit\n" +
+		"Cleared,12/31/2025,\"HARDWARE BARN #12 SPRINGFIELD\",,-139.07\n" +
+		"Cleared,12/30/2025,\"COFFEE CART\",4.50,\n"
+
+	m := detect(t, data)
+	if m.Debit != "Debit" || m.Credit != "Credit" || m.Amount != "" {
+		t.Fatalf("Detect = %+v", m)
+	}
+
+	wantAmounts(t, read(t, data, m), "139.07", "-4.50")
+}

@@ -165,10 +165,10 @@ money was, and it is a property of each part (split), through its category:
 **Importing a statement.**
 1. Upload the file to an account.
 2. Sniff the format (OFX header → `ofxsource`; otherwise CSV).
-3. For CSV, look up the header fingerprint in the account's `csv_mappings`. If it is not found, show a **mapping screen** prefilled by `csvsource.Detect` (date, description, amount or debit/credit, balance, date format, invert), with a preview of the first 10 parsed rows. Save the mapping on confirm.
+3. For CSV, look up the header fingerprint in the account's `csv_mappings`. If it is not found, show a **mapping screen** prefilled by `csvsource.Detect` (date, description, amount or debit/credit, balance, date format, invert -- ticked for a card's export with one signed column most of whose rows are positive, since some issuers write a purchase so), with a preview of the first 10 parsed rows. Save the mapping on confirm.
 4. Verify:
    - **With a balance column**, every row's balance must follow from the one before, so a missing row is caught and named. The rows are tried oldest-first and newest-first, and the balance as money held and as money owed; a failure is reported in the reading the dates and the account's kind make likeliest. (eumaeus' idea; its `statement` package was built for PDF tables and was not copied.)
-   - **With opening and closing balances** (OFX `LEDGERBAL`, or typed in by the user), check opening + Σ = closing.
+   - **With opening and closing balances** (OFX `LEDGERBAL`, or typed in by the user), check opening + Σ = closing. A `LEDGERBAL` dated more than a day after the period's end is dropped: a download of a past period states the balance of the day it was made, which does not follow from its rows.
    - **With neither**, the statement is `unverified`, and the UI says so plainly.
 5. Dedupe against existing transactions (FITID, then hash + occurrence), and show "N new, M already here". A failed verification imports nothing and explains which row broke.
 6. Store the original file as a `file` linked to the statement.
