@@ -105,6 +105,12 @@ type Statement struct {
 	// charge already in the account, which took that charge's place
 	// (pending.go). Counted on import and in the preview; not kept.
 	Posted int
+
+	// Completed is how many of its rows found a row already here whose
+	// description was theirs cut short, and gave it the whole of theirs
+	// (ledgerdb's complete). Counted on import and in the preview; not
+	// kept.
+	Completed int
 }
 
 // OtherHolders reports a doubt that names two holders (Doubt.OtherHolder).
@@ -439,6 +445,15 @@ func ContentKey(t Transaction, byHolder bool) string {
 // meaning anything -- case, and runs of spaces -- so the hash survives them.
 func normalizeDescription(s string) string {
 	return strings.ToLower(strings.Join(strings.Fields(s), " "))
+}
+
+// CutShort reports a description that ends in an ellipsis: the beginning
+// of a longer one, as a bank's web page prints it, or as an OFX download
+// whose bank cut its names at one width says it (ofxsource).
+func CutShort(s string) bool {
+	s = strings.TrimSpace(s)
+
+	return strings.HasSuffix(s, "…") || strings.HasSuffix(s, "...")
 }
 
 // Truncated reports whether one description is the other cut short: it

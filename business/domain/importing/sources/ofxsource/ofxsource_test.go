@@ -431,3 +431,55 @@ func TestReadDropsABalanceFromAfterThePeriod(t *testing.T) {
 		t.Errorf("a balance dated the day after the period was dropped (error %v)", err)
 	}
 }
+
+// cutAt12 is a card's download from a bank that cuts every name at twelve
+// characters, one of them just after a space, with nothing in MEMO.
+func cutAt12(names ...string) string {
+	var b strings.Builder
+
+	b.WriteString("OFXHEADER:100\nDATA:OFXSGML\nVERSION:102\n\n<OFX>\n<CREDITCARDMSGSRSV1><CCSTMTTRNRS><TRNUID>1\n<CCSTMTRS>\n<CURDEF>USD\n<BANKTRANLIST>\n<DTSTART>20251201<DTEND>20251231\n")
+
+	for i, n := range names {
+		b.WriteString("<STMTTRN>\n<TRNTYPE>DEBIT\n<DTPOSTED>20251204\n<TRNAMT>-1.00\n<FITID>F" + string(rune('A'+i)) + "\n<NAME>" + n + "\n</STMTTRN>\n")
+	}
+
+	b.WriteString("</BANKTRANLIST>\n</CCSTMTRS></CCSTMTTRNRS></CREDITCARDMSGSRSV1>\n</OFX>\n")
+
+	return b.String()
+}
+
+func TestNamesCutAtTheBanksWidthEndInAnEllipsis(t *testing.T) {
+	got := read(t, cutAt12("HARDWARE BAR", "COFFEE CART ", "BOOK STALL #", "BAKERY", "HARDWARE BAR"))
+
+	want := []string{"HARDWARE BAR…", "COFFEE CART…", "BOOK STALL #…", "BAKERY", "HARDWARE BAR…"}
+	for i, w := range want {
+		if got[i].Description != w {
+			t.Errorf("record %d = %q, want %q", i, got[i].Description, w)
+		}
+	}
+
+	// Two different names tied at the longest is no width anybody cut at.
+	got = read(t, cutAt12("HARDWARE BAR", "COFFEE CART ", "BAKERY"))
+	if got[0].Description != "HARDWARE BAR" || got[1].Description != "COFFEE CART" {
+		t.Errorf("names taken as cut: %+v", got)
+	}
+
+	// Nor is a name a MEMO says more of: the description is the MEMO.
+	if got := read(t, sgml); got[0].Description != "CORNER GROCERY STORE #1182" {
+		t.Errorf("description = %q", got[0].Description)
+	}
+}
+
+func TestEntitiesAreTheCharactersTheyStandFor(t *testing.T) {
+	body := strings.Replace(sgml, "<NAME>PAYROLL DEPOSIT ACME LTD", "<NAME>BEACH &amp; BREW &#39;N&#x27; SMITH&REGAN", 1)
+
+	if got := read(t, body); got[1].Description != "BEACH & BREW 'N' SMITH&REGAN" {
+		t.Errorf("description = %q", got[1].Description)
+	}
+
+	// The width a bank cut at is the width it printed, entities and all.
+	got := read(t, cutAt12("HARD &amp; S", "COFFEE CART ", "BOOK STALL #"))
+	if got[0].Description != "HARD & S…" {
+		t.Errorf("description = %q", got[0].Description)
+	}
+}

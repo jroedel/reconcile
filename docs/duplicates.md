@@ -41,7 +41,15 @@ on a real ledger:
   looked at (`ErrSameFile`).
 - **A description cut short** with an ellipsis matches the whole one on
   the same day for the same amount (`ledgerbus.Truncated`, from the PDF
-  work).
+  work). An OFX download whose bank cuts every name at one width, with
+  nothing in MEMO, says so the same way: `ofxsource` ends a name at the
+  width the file's longest names share -- three different ones at least --
+  with an ellipsis. When the stored row is the one cut short, it takes
+  the whole description of the row that matched it, and that wording's
+  hash is kept as another name for it, so that an OFX and a CSV of the
+  same days end, in either order, with the bank's identifier and all of
+  its words. Outside a reconciled period only; a person's own description
+  and payee are never touched.
 - **The preview is the import, rolled back** (`Storer.Import` with commit
   false), so the counts it shows are the import's by construction. eumaeus
   learned that a preview which disagrees with the import is worse than

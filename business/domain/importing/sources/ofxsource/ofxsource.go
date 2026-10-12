@@ -47,6 +47,8 @@ func Read(data []byte) (importbus.Result, error) {
 	}
 
 	for _, st := range statements {
+		width := cutWidth(st.Transactions)
+
 		// The first statement to state a balance wins: a later account's
 		// balance would be a wrong number rather than a missing one.
 		if !res.Closing.Known && st.LedgerBalance != "" {
@@ -66,7 +68,7 @@ func Read(data []byte) (importbus.Result, error) {
 		}
 
 		for _, t := range st.Transactions {
-			rec, warning := toRecord(t)
+			rec, warning := toRecord(t, width > 0 && t.NameWidth == width)
 			if warning != nil && warning.Problem != importbus.NoFITID {
 				res.Skipped++
 				res.Warn(*warning)
@@ -101,7 +103,7 @@ func Read(data []byte) (importbus.Result, error) {
 }
 
 // toRecord converts one OFX transaction.
-func toRecord(t ofxTransaction) (importbus.Record, *importbus.Warning) {
+func toRecord(t ofxTransaction, cut bool) (importbus.Record, *importbus.Warning) {
 	date, err := parseDate(t.Posted)
 	if err != nil {
 		return importbus.Record{}, &importbus.Warning{Problem: importbus.BadDate, Value: t.Posted}
@@ -114,7 +116,7 @@ func toRecord(t ofxTransaction) (importbus.Record, *importbus.Warning) {
 
 	rec := importbus.Record{
 		Date:        date,
-		Description: describe(t),
+		Description: describe(t, cut),
 		Amount:      amount,
 		ExternalID:  strings.TrimSpace(t.FITID),
 		CheckNumber: importbus.CheckNumber(t.CheckNum),
@@ -125,6 +127,38 @@ func toRecord(t ofxTransaction) (importbus.Record, *importbus.Warning) {
 	}
 
 	return rec, nil
+}
+
+// cutWidth is the width at which a statement's bank cut its names short,
+// or 0 if it shows none.
+//
+// OFX 1 allows a NAME thirty-two characters, and some banks cut every name
+// at fewer, without a mark and with nothing in MEMO: the rest is only in
+// their CSV. A download from such a bank shows it plainly, since a cut is
+// where the longest names end -- one card's year had three quarters of its
+// names at exactly its width and none longer. A file of names written
+// whole has a longest one, and seldom three different ones tied at it, so
+// three is what is asked before any name is called cut. A small file from
+// a bank that cuts may not show it, and its names are then taken as
+// whole: the cost is a CSV of the same days set aside rather than matched.
+func cutWidth(txs []ofxTransaction) int {
+	widest, names := 0, map[string]bool{}
+
+	for _, t := range txs {
+		switch {
+		case t.Name == "" || t.NameWidth < widest:
+		case t.NameWidth > widest:
+			widest, names = t.NameWidth, map[string]bool{t.Name: true}
+		default:
+			names[t.Name] = true
+		}
+	}
+
+	if len(names) < 3 {
+		return 0
+	}
+
+	return widest
 }
 
 // Looks reports whether the bytes look like an OFX document. Banks ship OFX

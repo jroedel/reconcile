@@ -320,7 +320,11 @@ WHERE NOT EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id)`); err !
 //     whose description is this one's cut short, or this one is that one's
 //     (ledgerbus.Truncated): already here, and given to it the identifier
 //     if it has one. A bank's printed page cuts descriptions short, and the
-//     statement that follows it does not.
+//     statement that follows it does not. Nor does a bank's CSV, where its
+//     OFX cuts every name at one width. When the stored row is the one cut
+//     short it takes this row's whole description (complete), so that
+//     whichever file came first, the account ends with the bank's
+//     identifier and all of its words.
 //
 // The hash and the cut short match only a row of the same holder, or one
 // that names nobody (ledgerbus.SameHolder), whatever the account's
@@ -428,11 +432,14 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		return ledgerbus.Statement{}, fmt.Errorf("storing the statement: %w", err)
 	}
 
-	st.Added, st.Already, st.ByRule, st.Doubts = 0, 0, 0, nil
+	st.Added, st.Already, st.ByRule, st.Completed, st.Doubts = 0, 0, 0, 0, nil
 
 	// Each row on its own, in the file's order. Nothing is inserted yet:
 	// the count rule needs the rows of other statements as they were.
-	var fresh []int
+	var (
+		fresh []int
+		whole []completion
+	)
 
 	seen := map[string]bool{}
 
@@ -441,9 +448,17 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		seen[t.ExternalID] = true
 
 		if !known {
-			var err error
-			if known, err = already(ctx, tx, t); err != nil {
+			var (
+				twin int64
+				err  error
+			)
+
+			if known, twin, err = already(ctx, tx, t); err != nil {
 				return ledgerbus.Statement{}, err
+			}
+
+			if twin != 0 {
+				whole = append(whole, completion{row: twin, t: t})
 			}
 		}
 
@@ -462,6 +477,13 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		}
 
 		fresh = append(fresh, i)
+	}
+
+	// After every row has been matched, because a description completed
+	// is no longer cut short, and the next of two charges alike would not
+	// find its twin by it.
+	if err := complete(ctx, tx, &st, whole); err != nil {
+		return ledgerbus.Statement{}, err
 	}
 
 	// A posted charge whose pending form the account already holds takes
@@ -543,8 +565,10 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 	return st, nil
 }
 
-// already applies the rule in Import's comment to one row.
-func already(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction) (bool, error) {
+// already applies the rule in Import's comment to one row. twin is the
+// stored row it was matched to by a description cut short, which may be
+// completed by it (complete).
+func already(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction) (found bool, twin int64, err error) {
 	exists := func(q string, args ...any) (bool, error) {
 		var one int
 
@@ -563,22 +587,28 @@ func already(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction) (bool, er
 
 	if t.ExternalID == "" {
 		if found, err := sameHash(ctx, tx, t); found || err != nil {
-			return found, err
+			return found, 0, err
 		}
 
 		if found, err := exists(`SELECT 1 FROM transaction_aliases WHERE account_id = ? AND hash = ?`, account, t.Hash); found || err != nil {
-			return found, err
+			return found, 0, err
 		}
 
 		// As many cut-short matches as this row's occurrence: two charges
-		// the page printed alike are two, and claim two.
+		// the page printed alike are two, and claim two, the second the
+		// second.
 		rows, err := cutShort(ctx, tx, t, false)
 
-		return len(rows) >= max(t.Occurrence, 1), err
+		n := max(t.Occurrence, 1)
+		if err != nil || len(rows) < n {
+			return false, 0, err
+		}
+
+		return true, rows[n-1], nil
 	}
 
 	if found, err := exists(`SELECT 1 FROM transactions WHERE account_id = ? AND external_id = ?`, account, t.ExternalID); found || err != nil {
-		return found, err
+		return found, 0, err
 	}
 
 	// Adopt: one row, the oldest, so that two identical CSV rows are
@@ -588,11 +618,11 @@ UPDATE transactions SET external_id = ?
 WHERE rowid = (SELECT rowid FROM transactions WHERE account_id = ? AND hash = ? AND external_id = '' ORDER BY rowid LIMIT 1)`,
 		t.ExternalID, account, t.Hash)
 	if err != nil {
-		return false, fmt.Errorf("matching a transaction: %w", err)
+		return false, 0, fmt.Errorf("matching a transaction: %w", err)
 	}
 
 	if n, err := res.RowsAffected(); n == 1 || err != nil {
-		return n == 1, err
+		return n == 1, 0, err
 	}
 
 	// A wording remembered as another name for an unclaimed row: the same.
@@ -601,23 +631,23 @@ UPDATE transactions SET external_id = ?
 WHERE external_id = '' AND id = (SELECT transaction_id FROM transaction_aliases WHERE account_id = ? AND hash = ?)`,
 		t.ExternalID, account, t.Hash)
 	if err != nil {
-		return false, fmt.Errorf("matching a transaction: %w", err)
+		return false, 0, fmt.Errorf("matching a transaction: %w", err)
 	}
 
 	if n, err := res.RowsAffected(); n == 1 || err != nil {
-		return n == 1, err
+		return n == 1, 0, err
 	}
 
 	rows, err := cutShort(ctx, tx, t, true)
 	if err != nil || len(rows) == 0 {
-		return false, err
+		return false, 0, err
 	}
 
 	if _, err := tx.ExecContext(ctx, `UPDATE transactions SET external_id = ? WHERE rowid = ?`, t.ExternalID, rows[0]); err != nil {
-		return false, fmt.Errorf("matching a transaction: %w", err)
+		return false, 0, fmt.Errorf("matching a transaction: %w", err)
 	}
 
-	return true, nil
+	return true, rows[0], nil
 }
 
 // sameHash reports a stored row with t's hash that is t's holder's, or
@@ -685,6 +715,65 @@ func cutShort(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction, unclaime
 	}
 
 	return out, rows.Err()
+}
+
+// completion is a stored row matched by a description cut short, and the
+// row of the new file that matched it.
+type completion struct {
+	row int64
+	t   ledgerbus.Transaction
+}
+
+// complete gives each stored row that is the one cut short the whole
+// description of the row that matched it, and keeps the whole one's hash
+// as another name for it, as a doubt's wording is kept (remember): its
+// own hash was made from the words it had, and the next file worded as
+// this one would otherwise find it by neither. Neither its hash nor
+// anything a person wrote over it (its own description, its payee)
+// changes. Each row once, by the first that matched it.
+//
+// Not in a reconciled period: what was reconciled is left as it was
+// reconciled. The match stands all the same, and the next import finds
+// it again by the cut.
+func complete(ctx context.Context, tx *sql.Tx, st *ledgerbus.Statement, whole []completion) error {
+	done := map[int64]bool{}
+
+	for _, c := range whole {
+		if done[c.row] || c.t.Description == "" || ledgerbus.CutShort(c.t.Description) {
+			continue
+		}
+
+		done[c.row] = true
+
+		var id, desc string
+
+		err := tx.QueryRowContext(ctx, `SELECT t.id, t.description FROM transactions t WHERE t.rowid = ? AND NOT `+lockedWhere, c.row).Scan(&id, &desc)
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			continue
+		case err != nil:
+			return fmt.Errorf("completing a description: %w", err)
+		}
+
+		if !ledgerbus.CutShort(desc) {
+			continue
+		}
+
+		if _, err := tx.ExecContext(ctx, `UPDATE transactions SET description = ? WHERE id = ?`, c.t.Description, id); err != nil {
+			return fmt.Errorf("completing a description: %w", err)
+		}
+
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO transaction_aliases (account_id, hash, transaction_id, created_at) VALUES (?, ?, ?, ?)
+ON CONFLICT (account_id, hash) DO NOTHING`,
+			c.t.AccountID.String(), c.t.Hash, id, st.ImportedAt.UnixMilli()); err != nil {
+			return fmt.Errorf("remembering a wording: %w", err)
+		}
+
+		st.Completed++
+	}
+
+	return nil
 }
 
 // --- statements -------------------------------------------------------------
