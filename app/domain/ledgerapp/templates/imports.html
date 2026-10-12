@@ -7,6 +7,13 @@
 {{else}}{{template "problem" $v.Problem}}{{end}}
 {{if $v.Done}}<p class="notice ok" role="status">{{t "Imported: {count}. Those left need a look on their own page." "count" $v.Imported}}</p>{{end}}
 {{if $v.Dismissed}}<p class="notice ok" role="status">{{t "Put aside. The same file sent again stays aside."}}</p>{{end}}
+{{if $v.Lost}}<p class="notice" role="status">{{t "The site was restarted while it worked on these files, so they were read again. Whatever was imported before shows as imported below."}}</p>{{end}}
+{{if $v.Working}}<section class="card" role="status">
+{{if eq $v.Progress.Stage "importing"}}<p>{{t "Importing the ready ones."}}</p>
+{{else if $v.Progress.Of}}<p>{{t "Reading the files: {done} of {count}." "done" $v.Progress.Done "count" $v.Progress.Of}}</p>
+{{else}}<p>{{t "Reading the files."}}</p>{{end}}
+<p class="hint">{{t "This page refreshes by itself until it is done. You can leave it: the work carries on, and coming back to this page shows how far it has got."}}</p>
+</section>{{end}}
 
 {{if not $v.Accounts}}
 <p class="notice">{{t "You keep the books of no account yet. Statements can be imported once you make an account, or somebody gives you the bookkeeper role on one."}}</p>

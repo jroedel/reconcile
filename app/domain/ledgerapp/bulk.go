@@ -1,11 +1,11 @@
 package ledgerapp
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -13,6 +13,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/types"
+	"github.com/jroedel/reconcile/foundation/jobs"
 )
 
 // Many statements at once (ledgerbus, bulk.go): a page to send them on,
@@ -37,20 +38,47 @@ import (
 // and BulkTime to arrive.
 var BulkPatterns = []string{"POST /imports"}
 
-// SlowPatterns are the routes that read every file of a bulk import, which
-// takes longer than a page is given: a second or so a file. The muxer
-// gives them BulkTime.
-var SlowPatterns = []string{"GET /imports", "POST /imports/import"}
-
 const (
 	// MaxBulkUpload is the most a bulk import's body may be: room for a
 	// batch of statements, most of them far smaller than the largest
 	// one may be.
 	MaxBulkUpload = 100 << 20
 
-	// BulkTime is how long a bulk import's pages may take.
+	// BulkTime is how long a batch of files may take to arrive.
 	BulkTime = 5 * time.Minute
+
+	// bulkWait is how long a request waits on the list's reading or
+	// importing before it answers with a page that asks again: well
+	// inside the fifteen seconds the proxy in front of the server waits,
+	// with room for the rest of the page.
+	bulkWait = 8 * time.Second
+
+	// bulkAgain is how soon a waiting page asks again, in the Refresh
+	// header's seconds.
+	bulkAgain = "2"
 )
+
+// Jobs is the part of jobs.Runner this app uses.
+//
+// Reading every file of a list is a second or so a file the first time,
+// and forty files took longer than the proxy waits, which answered "Bad
+// Gateway" and cancelled the request, stopping an import wherever it had
+// got to (issue #107). So a list's reading and its importing are jobs: the
+// request starts one, waits bulkWait, and shows the list if it is done --
+// a small batch looks no different -- or a page that says how far it has
+// got and refreshes itself until it is.
+type Jobs interface {
+	Start(owner, key string, work jobs.Work) (string, error)
+	Wait(ctx context.Context, owner, id string, d time.Duration) (jobs.Status, bool)
+}
+
+// bulkResult is what a list's job came to: its rows as they were last
+// read, and, when it imported, how many.
+type bulkResult struct {
+	rows     []ledgerbus.Proposal
+	imports  bool
+	imported int
+}
 
 type bulkView struct {
 	// Accounts is those the person keeps the books of, to choose from.
@@ -66,6 +94,14 @@ type bulkView struct {
 	// Imported is how many were, when the list is shown after importing.
 	Imported int
 	Done     bool
+
+	// Working is set while the list's files are read or imported in the
+	// background, and Progress is how far that has got. Lost is a job the
+	// address named that is no longer there -- the site restarted -- so
+	// the list was read again.
+	Working  bool
+	Progress jobs.Progress
+	Lost     bool
 
 	// Inbox is the files waiting in the person's inbox, on the page
 	// before files are chosen, and InboxList the list with them on it.
@@ -89,10 +125,6 @@ func (a app) bulk(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 
 	v := bulkView{Problem: q.Get("problem"), Dismissed: q.Get("done") == "dismissed"}
-	if q.Has("imported") {
-		v.Imported, _ = strconv.Atoi(q.Get("imported"))
-		v.Done = true
-	}
 
 	a.bulkPage(w, r, http.StatusOK, q, v)
 }
@@ -135,18 +167,29 @@ func (a app) bulkPage(w http.ResponseWriter, r *http.Request, status int, q url.
 	}
 
 	if len(files) > 0 {
-		props, err := a.cfg.Ledger.Propose(r.Context(), me.ID, files, chosen)
-		if err != nil {
+		st, err := a.bulkStatus(r, me.ID, q.Get("job"), files, chosen, &v)
+
+		switch {
+		case errors.Is(err, jobs.ErrBusy):
+			v.Problem = "busy"
+		case err != nil:
 			a.failed(w, r, err)
 
 			return
-		}
+		case !st.Finished:
+			v.Working, v.Progress = true, st.Progress
 
-		v.Rows = props
+			// The header rather than a meta element or a script: the page
+			// needs nothing in its head, and works with scripts off.
+			w.Header().Set("Refresh", bulkAgain+"; url="+bulkAddress(files, chosen, url.Values{"job": {st.ID}}))
+		default:
+			res, _ := st.Result.(bulkResult)
+			v.Rows, v.Done, v.Imported = res.rows, res.imports, res.imported
+		}
 
 		seen := map[types.ID]bool{}
 
-		for _, p := range props {
+		for _, p := range v.Rows {
 			if !seen[p.File.ID] {
 				seen[p.File.ID] = true
 				v.Files = append(v.Files, p.File.ID)
@@ -159,6 +202,50 @@ func (a app) bulkPage(w http.ResponseWriter, r *http.Request, status int, q url.
 	}
 
 	a.cfg.Render.Render(w, r, status, "imports", v)
+}
+
+// bulkStatus is the job the list's address names, waited on for bulkWait;
+// or, when it names none, a reading of the list's files started now. A job
+// the person has none by -- the site has restarted since, or it finished
+// long ago -- is started again as a reading, and the page says so: what was
+// imported before shows as imported, since the list is read as it stands.
+//
+// A job that failed is its error, as a request's would have been.
+func (a app) bulkStatus(r *http.Request, me types.ID, id string, files []types.ID, chosen map[string]types.ID, v *bulkView) (jobs.Status, error) {
+	owner := me.String()
+
+	if id != "" {
+		st, ok := a.cfg.Jobs.Wait(r.Context(), owner, id, a.cfg.JobWait)
+		if ok && st.Err == nil {
+			return st, nil
+		}
+
+		if ok {
+			return st, st.Err
+		}
+
+		v.Lost = true
+	}
+
+	id, err := a.cfg.Jobs.Start(owner, "read "+bulkAddress(files, chosen, nil), func(ctx context.Context, report func(jobs.Progress)) (any, error) {
+		rows, err := a.read(ctx, report, me, files, chosen)
+
+		return bulkResult{rows: rows}, err
+	})
+	if err != nil {
+		return jobs.Status{}, err
+	}
+
+	st, _ := a.cfg.Jobs.Wait(r.Context(), owner, id, a.cfg.JobWait)
+
+	return st, st.Err
+}
+
+// read is the list's files read for its rows, saying how many so far.
+func (a app) read(ctx context.Context, report func(jobs.Progress), me types.ID, files []types.ID, chosen map[string]types.ID) ([]ledgerbus.Proposal, error) {
+	return a.cfg.Ledger.ProposeSaying(ctx, me, files, chosen, func(done, of int) {
+		report(jobs.Progress{Stage: "reading", Done: done, Of: of})
+	})
 }
 
 // bulkChoices reads the list's files and the accounts chosen for them from
@@ -320,22 +407,46 @@ func (a app) bulkImport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	files, chosen := bulkChoices(r.PostForm)
+	owner := me.ID.String()
 
-	props, err := a.cfg.Ledger.Propose(r.Context(), me.ID, files, chosen)
-	if err != nil {
+	id, err := a.cfg.Jobs.Start(owner, "import "+bulkAddress(files, chosen, nil), func(ctx context.Context, report func(jobs.Progress)) (any, error) {
+		rows, err := a.read(ctx, report, me.ID, files, chosen)
+		if err != nil {
+			return nil, err
+		}
+
+		report(jobs.Progress{Stage: "importing"})
+
+		n, err := a.cfg.Ledger.ImportProposals(ctx, a.cfg.Now(), me.ID, rows)
+		if err != nil {
+			return nil, err
+		}
+
+		// Read again for the list to show, now that some are in: a row
+		// imported says so, with its statement, only when it is read
+		// after. The files' readings are remembered (ledgerbus,
+		// readings.go), so this is the quick part.
+		rows, err = a.read(ctx, report, me.ID, files, chosen)
+
+		return bulkResult{rows: rows, imports: true, imported: n}, err
+	})
+
+	switch {
+	case errors.Is(err, jobs.ErrBusy):
+		http.Redirect(w, r, bulkAddress(files, chosen, url.Values{"problem": {"busy"}}), http.StatusSeeOther)
+
+		return
+	case err != nil:
 		a.failed(w, r, err)
 
 		return
 	}
 
-	n, err := a.cfg.Ledger.ImportProposals(r.Context(), a.cfg.Now(), me.ID, props)
-	if err != nil {
-		a.failed(w, r, err)
+	// Waited on here too, so that a small batch lands on its list, imported,
+	// without a page in between. The list it lands on is the job's.
+	_, _ = a.cfg.Jobs.Wait(r.Context(), owner, id, a.cfg.JobWait)
 
-		return
-	}
-
-	http.Redirect(w, r, bulkAddress(files, chosen, url.Values{"imported": {strconv.Itoa(n)}}), http.StatusSeeOther)
+	http.Redirect(w, r, bulkAddress(files, chosen, url.Values{"job": {id}}), http.StatusSeeOther)
 }
 
 // bulkCheck is the list's "Check again": the files and the person's own

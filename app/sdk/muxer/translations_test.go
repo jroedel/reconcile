@@ -60,7 +60,7 @@ type translatingSite struct {
 	admin *browser
 }
 
-func newTranslatingSite(t *testing.T) translatingSite {
+func newTranslatingSite(t *testing.T, more ...func(*Config)) translatingSite {
 	t.Helper()
 
 	const secret = "a-setup-secret-that-is-long-enough-to-be-accepted"
@@ -71,6 +71,10 @@ func newTranslatingSite(t *testing.T) translatingSite {
 		c.Bootstrap = secret
 		c.OAuthClients = clients{t}
 		s.users = c.Users
+
+		for _, f := range more {
+			f(c)
+		}
 	})
 
 	s.admin = newBrowser(t, s.h)

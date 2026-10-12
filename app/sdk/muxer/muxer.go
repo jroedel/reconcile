@@ -6,11 +6,13 @@
 package muxer
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/jroedel/reconcile/app/domain/adminapp"
 	"github.com/jroedel/reconcile/app/domain/apiapp"
@@ -42,6 +44,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/translation/translationbus"
 	"github.com/jroedel/reconcile/business/domain/user/userbus"
+	"github.com/jroedel/reconcile/foundation/jobs"
 	"github.com/jroedel/reconcile/foundation/mail"
 	"github.com/jroedel/reconcile/foundation/oauth"
 	"github.com/jroedel/reconcile/foundation/sqldb"
@@ -94,6 +97,17 @@ type Config struct {
 
 	// TrustProxy says whether X-Forwarded-For is the visitor's address.
 	TrustProxy bool
+
+	// Jobs runs what takes longer than a request may: a bulk import's
+	// reading and importing, from a page or the API. Nil makes one that
+	// runs as long as the process, which is what a test wants; main hands
+	// in one that stops with the server.
+	Jobs *jobs.Runner
+
+	// JobWait is how long a request waits on a job before it answers that
+	// the job is still working. Zero is each app's own, a few seconds
+	// inside the proxy's limit; a test makes it short to see the answer.
+	JobWait time.Duration
 }
 
 // maxBody is the most any form here may send. A sign-in form is a few
@@ -112,6 +126,10 @@ func New(cfg Config) (http.Handler, error) {
 		cfg.Files == nil || cfg.Ledger == nil || cfg.Categories == nil || cfg.Rules == nil || cfg.Budgets == nil || cfg.Receipts == nil || cfg.Export == nil ||
 		cfg.Shapes == nil || cfg.Translations == nil {
 		return nil, errors.New("the muxer needs a logger, a database, a renderer, and every domain's business")
+	}
+
+	if cfg.Jobs == nil {
+		cfg.Jobs = jobs.New(context.Background(), cfg.Log)
 	}
 
 	mux := http.NewServeMux()
@@ -167,6 +185,8 @@ func New(cfg Config) (http.Handler, error) {
 			Categories: cfg.Categories,
 			Receipts:   cfg.Receipts,
 			Rules:      cfg.Rules,
+			Jobs:       cfg.Jobs,
+			JobWait:    cfg.JobWait,
 		}, guard)
 
 		budgetapp.Routes(mux, budgetapp.Config{
@@ -266,7 +286,7 @@ func New(cfg Config) (http.Handler, error) {
 	api := http.NewServeMux()
 	if cfg.BaseURL != "" {
 		apiapp.Routes(api, apiapp.Config{
-			Log: cfg.Log, Translations: cfg.Translations, Inbox: cfg.Ledger, BaseURL: cfg.BaseURL,
+			Log: cfg.Log, Translations: cfg.Translations, Inbox: cfg.Ledger, BaseURL: cfg.BaseURL, Jobs: cfg.Jobs, JobWait: cfg.JobWait,
 			Books: apiapp.Books{Ledger: cfg.Ledger, Tenancy: cfg.Tenancy, Categories: cfg.Categories, Receipts: cfg.Receipts, History: cfg.History, Rules: cfg.Rules, Pictures: cfg.Files, Uploads: cfg.Files},
 		})
 	}
@@ -322,16 +342,12 @@ func New(cfg Config) (http.Handler, error) {
 			web.Deadline(receiptapp.UploadTime), web.MaxBody(ledgerapp.MaxUpload), web.MultipartOnly()))
 	}
 
-	// Many statements at once, and the pages that read them all
-	// (ledgerapp, bulk.go): longer to arrive and to answer than a page.
+	// Many statements at once (ledgerapp, bulk.go): longer to arrive than
+	// a page. Reading them is a job's (cfg.Jobs), which no request waits
+	// out.
 	for _, pattern := range ledgerapp.BulkPatterns {
 		shape.Handle(pattern, web.Wrap(inner,
 			web.Deadline(ledgerapp.BulkTime), web.MaxBody(ledgerapp.MaxBulkUpload), web.MultipartOnly()))
-	}
-
-	for _, pattern := range ledgerapp.SlowPatterns {
-		shape.Handle(pattern, web.Wrap(inner,
-			web.Deadline(ledgerapp.BulkTime), web.MaxBody(maxBody), web.FormEncodedOnly()))
 	}
 
 	for _, pattern := range receiptapp.UploadPatterns {

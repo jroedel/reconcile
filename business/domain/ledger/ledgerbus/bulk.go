@@ -151,6 +151,13 @@ func (b *Business) Bookkept(ctx context.Context, actor types.ID) ([]tenancybus.A
 // proposal; one the person does not keep the books of is not chosen. A
 // file that is not the actor's is left out, as if it were not there.
 func (b *Business) Propose(ctx context.Context, actor types.ID, fileIDs []types.ID, chosen map[string]types.ID) ([]Proposal, error) {
+	return b.ProposeSaying(ctx, actor, fileIDs, chosen, nil)
+}
+
+// ProposeSaying is Propose, saying as it goes how many of the files it has
+// read: for a page that waits on a batch read in the background (issue
+// #107) to say how far it has got. read may be nil.
+func (b *Business) ProposeSaying(ctx context.Context, actor types.ID, fileIDs []types.ID, chosen map[string]types.ID, read func(done, of int)) ([]Proposal, error) {
 	accounts, err := b.Bookkept(ctx, actor)
 	if err != nil {
 		return nil, err
@@ -158,7 +165,13 @@ func (b *Business) Propose(ctx context.Context, actor types.ID, fileIDs []types.
 
 	var out []Proposal
 
-	for _, id := range fileIDs[:min(len(fileIDs), MaxBatch)] {
+	fileIDs = fileIDs[:min(len(fileIDs), MaxBatch)]
+
+	for i, id := range fileIDs {
+		if read != nil {
+			read(i, len(fileIDs))
+		}
+
 		f, err := b.files.ByID(ctx, id)
 
 		switch {

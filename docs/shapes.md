@@ -287,6 +287,14 @@ the books of are proposed.
 - **Where**: `/imports`, linked from the front page and from each
   account's "Add a statement". Up to 40 files at once, each as large as a
   statement may be.
+- **In the background** (issue #107): reading the list and importing it
+  are jobs (`foundation/jobs`), because forty files read for the first
+  time take longer than the proxy in front of the server lets a request
+  last. The request waits eight seconds; a list that is ready by then
+  shows as before, and one that is not shows how many files are read so
+  far and refreshes itself, with the job in its address, until it is.
+  Jobs are kept in memory: a restart forgets one, and the page reads the
+  list again and says so.
 - **Proposed**, for each file or each account's part of one, among the
   accounts the person keeps the books of (`ledgerbus.Propose`): by the
   last four digits it prints (a PDF's account number, now kept for a file

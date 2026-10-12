@@ -33,11 +33,13 @@
 package apiapp
 
 import (
+	"cmp"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/jroedel/reconcile/app/sdk/mid"
 	"github.com/jroedel/reconcile/business/domain/translation/translationbus"
@@ -63,6 +65,11 @@ type Config struct {
 	// BaseURL is the public origin, for the links in answers: a program
 	// reading them may be anywhere.
 	BaseURL string
+
+	// Jobs runs list_inbox's and import_from_inbox's reading (jobs.go),
+	// and JobWait is how long a call waits on one; zero is apiWait.
+	Jobs    Jobs
+	JobWait time.Duration
 }
 
 type app struct {
@@ -70,6 +77,8 @@ type app struct {
 	translations *translationbus.Business
 	inbox        Inbox
 	books        Books
+	jobs         Jobs
+	jobWait      time.Duration
 	base         string
 }
 
@@ -77,7 +86,7 @@ type app struct {
 // behind mid.RequireScope with its scope; mid.APIKey, which reads the key,
 // is the muxer's to put around the whole of it.
 func Routes(mux *http.ServeMux, cfg Config) {
-	a := app{log: cfg.Log, translations: cfg.Translations, inbox: cfg.Inbox, books: cfg.Books, base: cfg.BaseURL}
+	a := app{log: cfg.Log, translations: cfg.Translations, inbox: cfg.Inbox, books: cfg.Books, jobs: cfg.Jobs, jobWait: cmp.Or(cfg.JobWait, apiWait), base: cfg.BaseURL}
 
 	for _, e := range a.Endpoints() {
 		h := http.Handler(e.handler)
