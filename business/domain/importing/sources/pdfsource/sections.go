@@ -71,7 +71,7 @@ func (r *reader) nextAccount(last4 string) {
 	r.res, r.cols, r.dirs = importbus.Result{}, nil, nil
 	r.last4 = last4
 	r.dir, r.checks, r.daily, r.check, r.held = 0, false, false, "", false
-	r.open = -1
+	r.open, r.loose = -1, nil
 }
 
 // part is one account's rows, and how to finish them.
@@ -124,7 +124,7 @@ func (r *reader) section(s string) bool {
 		return false
 	}
 
-	r.open, r.check = -1, ""
+	r.open, r.check, r.loose = -1, "", nil
 
 	// What the heading says, in the words the layout matched and no
 	// others: a heading may carry a holder's name beside them.
