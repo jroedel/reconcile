@@ -5,8 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // OFX comes in two dialects and this parser reads both.
@@ -57,6 +60,12 @@ type ofxTransaction struct {
 	Name     string // NAME, historically capped at 32 characters
 	Memo     string // MEMO, often carries the rest of a truncated NAME
 	CheckNum string
+
+	// NameWidth is how many characters NAME was printed in, trailing
+	// spaces and all: a bank that cuts every name at one width cuts some
+	// just after a space, and those, trimmed, would look shorter than the
+	// width they were cut at (cutWidth).
+	NameWidth int
 }
 
 // token is one tag or run of text from the document.
@@ -64,6 +73,7 @@ type token struct {
 	tag     string // upper-cased tag name, "" for text
 	closing bool
 	text    string
+	width   int // the text's characters to the end of its line, trailing spaces kept
 }
 
 // lex splits an OFX body into tags and the text between them.
@@ -114,8 +124,15 @@ func lex(body string) ([]token, error) {
 				next = len(body) - i
 			}
 
-			if text := strings.TrimSpace(body[i : i+next]); text != "" {
-				tokens = append(tokens, token{text: text})
+			raw := body[i : i+next]
+
+			if text := strings.TrimSpace(raw); text != "" {
+				line := strings.TrimLeft(raw, " \t\r\n")
+				if end := strings.IndexAny(line, "\r\n"); end >= 0 {
+					line = line[:end]
+				}
+
+				tokens = append(tokens, token{text: unescape(text), width: utf8.RuneCountInString(line)})
 			}
 
 			i += next
@@ -123,6 +140,53 @@ func lex(body string) ([]token, error) {
 	}
 
 	return tokens, nil
+}
+
+// entity is a character written as SGML and XML write the ones markup
+// uses: by name, or by number.
+var entity = regexp.MustCompile(`&(lt|gt|amp|quot|apos|nbsp|#[0-9]{1,7}|#x[0-9a-fA-F]{1,6});`)
+
+// unescape writes the characters a value's entities stand for: a shop's
+// "BEACH &amp; BREW" is "BEACH & BREW", as the bank's CSV says it. Only the
+// entities OFX's two dialects define, and numbers, and not HTML's whole
+// list (html.UnescapeString): that reads some names with no semicolon,
+// and a payee "SMITH&REGAN" would come out with a registered-trademark
+// sign in it. An ampersand a bank wrote bare is left as it is.
+func unescape(s string) string {
+	if !strings.Contains(s, "&") {
+		return s
+	}
+
+	return entity.ReplaceAllStringFunc(s, func(e string) string {
+		name := e[1 : len(e)-1]
+
+		switch name {
+		case "lt":
+			return "<"
+		case "gt":
+			return ">"
+		case "amp":
+			return "&"
+		case "quot":
+			return `"`
+		case "apos":
+			return "'"
+		case "nbsp":
+			return " "
+		}
+
+		base, digits := 10, name[1:]
+		if strings.HasPrefix(digits, "x") {
+			base, digits = 16, digits[1:]
+		}
+
+		n, err := strconv.ParseInt(digits, base, 32)
+		if err != nil || !utf8.ValidRune(rune(n)) || n == 0 {
+			return e
+		}
+
+		return string(rune(n))
+	})
 }
 
 // parse walks the token stream and pulls out every statement it finds.
@@ -165,7 +229,7 @@ func parse(r io.Reader) ([]statement, error) {
 	for _, t := range tokens {
 		if t.tag == "" {
 			// Text: it belongs to the leaf tag most recently opened.
-			assign(current, txn, pending, t.text, inBalance)
+			assign(current, txn, pending, t, inBalance)
 			pending = ""
 
 			continue
@@ -226,7 +290,9 @@ func parse(r io.Reader) ([]statement, error) {
 }
 
 // assign stores a leaf value against whatever is currently open.
-func assign(st *statement, txn *ofxTransaction, tag, text string, inBalance bool) {
+func assign(st *statement, txn *ofxTransaction, tag string, t token, inBalance bool) {
+	text := t.text
+
 	if tag == "" {
 		return
 	}
@@ -242,7 +308,7 @@ func assign(st *statement, txn *ofxTransaction, tag, text string, inBalance bool
 		case "FITID":
 			txn.FITID = text
 		case "NAME":
-			txn.Name = text
+			txn.Name, txn.NameWidth = text, t.width
 		case "MEMO":
 			txn.Memo = text
 		case "CHECKNUM":
@@ -315,7 +381,13 @@ func parseDate(s string) (time.Time, error) {
 // rest into MEMO, so the two are joined — but only when MEMO adds something.
 // Plenty of banks repeat NAME in MEMO verbatim, or put a useless constant
 // there, and concatenating those would double every payee on the dashboard.
-func describe(t ofxTransaction) string {
+//
+// cut is a NAME the bank cut short at its width (cutWidth). When it is the
+// whole description it ends in an ellipsis, which is what it is: the
+// beginning of a longer one. That is what lets the same charge from the
+// bank's CSV, which has the rest, be found as the one already here, and
+// lend it the rest (ledgerbus.Truncated).
+func describe(t ofxTransaction, cut bool) string {
 	name := strings.Join(strings.Fields(t.Name), " ")
 	memo := strings.Join(strings.Fields(t.Memo), " ")
 
@@ -338,8 +410,8 @@ func describe(t ofxTransaction) string {
 		description = strings.TrimSpace(description + " check " + t.CheckNum)
 	}
 
-	if description == "" {
-		return ""
+	if cut && description == name && name != "" {
+		description += "…"
 	}
 
 	return description
