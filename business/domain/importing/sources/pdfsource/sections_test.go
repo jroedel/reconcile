@@ -12,11 +12,12 @@ import (
 	"github.com/jroedel/reconcile/foundation/pdftext"
 )
 
-// A bank's own statement for two accounts in one document, drawn and read
-// back by the pdftotext the server runs (pdfsourcetest.Consolidated says
-// what is on it). Each account is read on its own, every amount takes its
-// sign from its section, and the daily balances land on the rows they
-// follow.
+// A bank's own statement for three accounts in one document, drawn and
+// read back by the pdftotext the server runs (pdfsourcetest.Consolidated
+// says what is on it). Each account is read on its own, every amount takes
+// its sign from its section, the daily balances land on the rows they
+// follow, and the account with no activity is there, with its balances
+// and no rows.
 func TestAConsolidatedStatement(t *testing.T) {
 	if !pdftext.Available() {
 		t.Skip("pdftotext is not installed here; CI installs it")
@@ -32,13 +33,18 @@ func TestAConsolidatedStatement(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(res.Accounts) != 2 || len(res.Records) != 0 || res.Start.Format("2006-01-02") != "2026-09-01" {
+	if len(res.Accounts) != 3 || len(res.Records) != 0 || res.Start.Format("2006-01-02") != "2026-09-01" {
 		t.Fatalf("read %d accounts and %d loose rows:\n%s", len(res.Accounts), len(res.Records), text)
 	}
 
-	first, second := res.Accounts[0], res.Accounts[1]
-	if first.Last4 != pdfsourcetest.First || second.Last4 != pdfsourcetest.Second {
-		t.Errorf("accounts %q and %q", first.Last4, second.Last4)
+	first, second, third := res.Accounts[0], res.Accounts[1], res.Accounts[2]
+	if first.Last4 != pdfsourcetest.First || second.Last4 != pdfsourcetest.Second || third.Last4 != pdfsourcetest.Third {
+		t.Errorf("accounts %q, %q and %q", first.Last4, second.Last4, third.Last4)
+	}
+
+	balance := money.MustParse(pdfsourcetest.ThirdBalance)
+	if q := third.Result; len(q.Records) != 0 || !q.Opening.Known || q.Opening.Amount != balance || !q.Closing.Known || q.Closing.Amount != balance {
+		t.Errorf("the account with no activity: %d rows, %+v, %+v", len(q.Records), q.Opening, q.Closing)
 	}
 
 	lines := func(r importbus.Result) []string {

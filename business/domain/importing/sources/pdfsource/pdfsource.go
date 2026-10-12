@@ -87,12 +87,21 @@ func read(text string, v *vocabulary) (importbus.Result, error) {
 
 	r.read()
 
-	// Each account's rows on their own, and the parts with none -- a
-	// consolidated statement's cover, before the first account -- dropped.
+	// Each account's rows on their own. A part with none is kept when it
+	// names its account and states its balances: an account of a
+	// consolidated statement that had no activity that month, which the
+	// statement still covers -- without it, its month is one nobody
+	// imported and can never be reconciled (docs/plan.md, Reconcile). Its
+	// balances also say whether nothing really happened: equal, the ledger
+	// imports a statement with no transactions; not, its check fails
+	// rather than the account vanishing from the file. Any other part with
+	// none is a consolidated statement's cover, before the first account,
+	// and is dropped.
 	var accounts []importbus.Account
 
 	for _, p := range append(r.parts, part{last4: r.last4, res: r.res, cols: r.cols, dirs: r.dirs}) {
-		if len(p.res.Records) == 0 {
+		quiet := p.last4 != "" && p.res.Opening.Known && p.res.Closing.Known
+		if len(p.res.Records) == 0 && !quiet {
 			continue
 		}
 

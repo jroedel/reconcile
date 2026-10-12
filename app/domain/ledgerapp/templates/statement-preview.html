@@ -150,6 +150,7 @@
 </table>
 </div>
 {{if $v.More}}<p class="hint">{{t "and {n} more rows" "n" $v.More}}</p>{{end}}
+{{else if $d.Quiet}}<p class="notice ok">{{t "The statement lists no transactions for this account in its period, and its balance stayed at {balance}. Importing it records that, so the month counts as imported and can be reconciled." "balance" (money $d.Result.Opening.Amount $cur)}}</p>
 {{else}}{{template "problem" "empty"}}{{end}}
 
 {{if $d.Result.Skipped}}
@@ -196,7 +197,7 @@
   {{else if $d.Proven}}<p class="hint">{{t "This layout of statement is new to this site, so it was read by the general reader. Its own figures balance, which shows every row was read, so it can be imported."}}</p>
   {{else}}<p class="notice" role="alert">{{t "This layout of statement is new to this site, and it states nothing to check that every row was read: no balance on its rows, no opening and closing balance, no total. So it cannot be imported. The site's administrator can see that a statement laid out like this arrived, though never what is in it, so that the site can be taught to read it. Meanwhile, download the statement from your bank's website as CSV or OFX, if it offers them."}}</p>{{end}}
 {{end}}
-{{if $d.Statement.ID.String}}<p>{{t "{new} new transactions, and {already} that are here already and will be left as they are." "new" $d.Statement.Added "already" $d.Statement.Already}}</p>
+{{if and $d.Statement.ID.String $d.Result.Records}}<p>{{t "{new} new transactions, and {already} that are here already and will be left as they are." "new" $d.Statement.Added "already" $d.Statement.Already}}</p>
 {{with $d.Statement.Doubts}}
 <h3>{{t "Probably here already"}}</h3>
 <p class="hint">{{t "These fall on days the account's earlier statements cover, which already have as many charges of the same amounts. They look like the same charges worded another way, so they are left out. Tick any that is really another charge."}}</p>

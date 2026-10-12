@@ -43,7 +43,7 @@
     {{if $d.Choose}}<span class="badge warn">{{t "This account's number is not in the file"}}</span>
     {{else}}
     {{if not $d.Statement.Start.Zero}}{{t "{start} to {end}" "start" $d.Statement.Start.String "end" $d.Statement.End.String}} · {{end}}
-    {{t "Transactions: {count}, of them new: {added}." "count" (len $d.Result.Records) "added" $d.Statement.Added}}
+    {{if $d.Quiet}}{{t "No activity in this period."}}{{else}}{{t "Transactions: {count}, of them new: {added}." "count" (len $d.Result.Records) "added" $d.Statement.Added}}{{end}}
     {{if $d.Check.OK}}{{template "method" (printf "%s" $d.Check.Method)}}
     {{else if $d.Check.Failed}}<span class="badge warn">{{t "does not balance"}}</span>
     {{else}}<span class="badge warn">{{t "not checked"}}</span>{{end}}

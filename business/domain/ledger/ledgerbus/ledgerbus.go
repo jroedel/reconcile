@@ -457,7 +457,24 @@ type Draft struct {
 
 // Ready reports whether importing would go ahead.
 func (d Draft) Ready() bool {
-	return !d.Unmapped && !d.HasEarlier && !d.Check.Failed() && !d.Unproven() && len(d.Result.Records) > 0 && d.Statement.Locked == 0
+	return !d.Unmapped && !d.HasEarlier && !d.Check.Failed() && !d.Unproven() && (len(d.Result.Records) > 0 || d.Quiet()) &&
+		d.Statement.Locked == 0
+}
+
+// Quiet reports whether the draft is a statement of a period with no
+// activity: no rows, and the document's own opening and closing balance,
+// the same. Such a statement is imported with no transactions, because
+// the period it covers is then one somebody imported, which the month by
+// month page tells apart from one nobody did, and which can be
+// reconciled (docs/plan.md, Reconcile). An account of a consolidated
+// statement that had a quiet month is the usual one.
+//
+// The document's balances, not any typed over them: that nothing happened
+// is the bank's word or nobody's.
+func (d Draft) Quiet() bool {
+	o, c := d.Result.Opening, d.Result.Closing
+
+	return len(d.Result.Records) == 0 && o.Known && c.Known && o.Amount == c.Amount && !d.Result.Start.IsZero() && !d.Result.End.IsZero()
 }
 
 // Prepare reads an uploaded file for an account. With opts nil it uses the
@@ -519,7 +536,7 @@ func (b *Business) Prepare(ctx context.Context, actor, accountID, fileID types.I
 	d.Proven, d.ProvenBy = proof.OK, proof.Method
 	b.seen(ctx, d)
 
-	if len(d.Result.Records) == 0 || d.Check.Failed() {
+	if len(d.Result.Records) == 0 && !d.Quiet() || d.Check.Failed() {
 		return d, nil
 	}
 
@@ -822,7 +839,7 @@ func (b *Business) Import(ctx context.Context, now time.Time, actor, accountID, 
 		return Statement{}, ErrUnreadable
 	case d.HasEarlier:
 		return Statement{}, ErrSameFile
-	case len(d.Result.Records) == 0:
+	case len(d.Result.Records) == 0 && !d.Quiet():
 		return Statement{}, ErrEmpty
 	case d.Check.Failed():
 		return Statement{}, ErrUnbalanced
