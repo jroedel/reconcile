@@ -243,19 +243,64 @@ it is shown beside the year's total and never spread over the months.
 
 ### A project
 
-For a project. The project's book, as a report: income and expenses by
-category over the project's life or a period of it, its net, its budget
-beside it when it has one, what is not sorted yet, and which accounts the
-money came from. No months across the top; a pilgrimage's money arrives
-in lumps, and its question is "are we coming out even", not "how was
-August".
+For a project, and above all for one that works as a clearing account:
+"Spiritual Exercises" in the retreats takes the money of four retreats a
+year, each collected and spent in a few weeks, and the question of each
+retreat is whether it came out even, and if not, by how much. A
+pilgrimage asks the same once. So this report is the project's
+transactions themselves, every one, in date order, with a running balance
+beside them, gathered into the runs of activity they fall in. No months
+across the top: a project's money arrives in lumps, not in months.
+(Decided 2026-10-12.)
+
+- **Every part, from every account** the project draws on, as its book
+  lists them: the day, the account, the description, the category, the
+  amount, and a **running balance**. The balance counts everything sorted
+  into the project -- income, expenses, pass-through and a transfer's leg
+  that arrives in it, as `Total.WithTransfers` does -- because that is what
+  the project has done to the organization's accounts: the clearing
+  account's balance. A part not sorted yet counts too and is marked, since
+  it moved the money all the same.
+- **Episodes.** The parts fall into runs: a new one starts after a quiet
+  gap, a number of days with nothing in the project, 30 unless a saved
+  report says otherwise. An episode is named by its dates ("Oct 3 to Oct
+  29, 2025"), and nobody labels anything while sorting; a retreat whose
+  deposits trickle in for six weeks wants a longer gap, and that is the
+  saved report's choice, not the counter volunteer's.
+- **Each episode's line** says what came in and went out of it apart:
+  income and expenses, and their net; pass-through in and out, and their
+  net; transfers; what is not sorted yet; what the episode came to on its
+  own; and the running balance at its last part. So a retreat that was all
+  pass-through says so, and one that is $40 short shows the $40 and
+  whether it was real money or a repayment not yet in.
+- **At the foot**, the same figures for the period, and whether the
+  project comes back to zero. Every figure opens the parts it adds up, as
+  in the first style.
+- A period is optional: the project's life by default. A period that
+  starts after the project did opens with the balance brought forward,
+  the running balance of everything before it, on a line of its own.
+- Budget and groups: its budget beside the foot when it has one; groups
+  are not offered, since a project's lines are its transactions.
 
 | Choice | Values | Default |
 |---|---|---|
-| Detail | each category, or each group | each category |
+| Quiet gap | a number of days, 1 to 365 | 30 |
 | Show accounts | yes or no | yes |
 | Compare with | nothing, the budget | the budget, when it has one |
 | Period | the project's life, a period of it | the project's life |
+
+### Pass-through at a glance
+
+The lists of projects (an organization's page, and the front page for
+those on their own) say each project's income, expenses and net. A
+project that only passes money on -- a collection forwarded, personal
+charges repaid -- has none, and read "Even", which says nothing. So the
+lists keep pass-through's in and out apart (`Total.PassThroughIn` and
+`PassThroughOut`, besides its net) and say, of a project that moved any:
+"Pass-through: $4,200.00 in, $4,200.00 out", and "settled", or what is
+still to come back, or still to pass on. A project with pass-through and
+no income or expenses shows that line alone. The project's book says the
+same.
 
 Building the second style is what proves the engine general: if it needs
 a question the engine cannot ask, the engine changes, not the style.
@@ -375,7 +420,7 @@ lines can be read as ten.
 
 ## Build order
 
-Four pull requests:
+Six pull requests:
 
 1. **The engine and the first style, unsaved.** `reportbus` with its
    dimensions; "Income and expenses by month" run from an organization's
@@ -387,8 +432,12 @@ Four pull requests:
    or a choice no longer known.
 3. **Category groups.** `category_groups`, `categories.group_id`, the
    categories page, and the "each group" detail.
-4. **The project style and the comparisons.** "A project", and the
-   first style's "compare with" for the year before and the budget.
+4. **Pass-through at a glance.** In and out kept apart in a project's
+   totals; the lists of projects and the project's book say them.
+5. **The project style.** "A project": every part with its running
+   balance, the episodes, the foot, the quiet gap as a choice.
+6. **The comparisons.** The first style's "compare with" for the year
+   before and the budget, and the project style's budget.
 
 ## Verification
 
@@ -411,6 +460,13 @@ Four pull requests:
 - `categorydb`: the unique group per list; the old-schema test for
   `categories.group_id`; changing a category's kind takes it out of its
   group.
+- Projects: a project of pass-through only lists its in and out and
+  "settled", not "Even"; one still owed says how much. The project style:
+  two runs a quiet gap apart are two episodes and one shorter is one; the
+  running balance at each episode's end, with the balance brought forward
+  when the period starts later; an episode of income and expenses, one of
+  pass-through only, and a transfer arriving; the foot equals the
+  project's book.
 - Through the site: run "Income and expenses by month" for an
   organization with an archived card and see its old months; save it
   as "P&L" with a description, groups and pass-through as one total;

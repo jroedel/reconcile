@@ -202,6 +202,11 @@ ORDER BY 1, 2`, args...)
 		t.Out += money.Amount(outs)
 		t.Add(categorybus.Kind(kind), money.Amount(ins+outs))
 
+		if categorybus.Kind(kind) == categorybus.PassThrough {
+			t.PassThroughIn += money.Amount(ins)
+			t.PassThroughOut += money.Amount(outs)
+		}
+
 		out[key] = f
 	}
 

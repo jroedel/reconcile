@@ -431,7 +431,22 @@ type Total struct {
 	In, Out  money.Amount
 
 	Operations
+
+	// PassThroughIn and PassThroughOut are pass-through's two sides, which
+	// Operations.PassThrough nets. A project that only passes money on has
+	// no income or expenses, and its net alone says nothing about whether
+	// $4,200 went through it or nothing did; these say both, and the net
+	// says whether it is settled (docs/reports.md, "Pass-through at a
+	// glance").
+	PassThroughIn, PassThroughOut money.Amount
 }
+
+// PassedThrough reports whether any pass-through moved.
+func (t Total) PassedThrough() bool { return t.PassThroughIn != 0 || t.PassThroughOut != 0 }
+
+// Operated reports whether any income or expenses moved: whether the
+// income, expenses and net line has anything to say.
+func (t Total) Operated() bool { return t.Income != 0 || t.Expenses != 0 }
 
 // Net is what the operations did: whether the project came out even.
 // Transfers and pass-through are not in it, however much moved.
@@ -550,6 +565,14 @@ func totals(lines []ProjectLine, key func(ProjectLine) string) []Total {
 		}
 
 		out[i].Add(kind, l.Split.Amount)
+
+		if kind == categorybus.PassThrough {
+			if l.Split.Amount > 0 {
+				out[i].PassThroughIn += l.Split.Amount
+			} else {
+				out[i].PassThroughOut += l.Split.Amount
+			}
+		}
 	}
 
 	slices.SortStableFunc(out, func(a, b Total) int {

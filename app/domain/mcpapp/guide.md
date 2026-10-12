@@ -183,7 +183,10 @@ account will repay together":
    what is still to be repaid (negative) or repaid beyond the costs
    (positive). Never sort a real cost as pass-through to make a project
    come out even: pass-through is for money that was never the
-   organization's, and the accountant reads the kinds.
+   organization's, and the accountant reads the kinds. A project that
+   only passes money on has no income or expenses; its `pass_through_in`
+   and `pass_through_out` say how much went through, and `pass_through`,
+   their net, is what is still to come back or to pass on.
 
 ### Payees
 

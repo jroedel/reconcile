@@ -3,6 +3,7 @@ package ledgerbus_test
 import (
 	"testing"
 
+	"github.com/jroedel/reconcile/business/domain/category/categorybus"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/types"
@@ -24,8 +25,22 @@ func TestListFigures(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Pass-through on both sides: collected in the deposit, and a coffee
+	// paid on somebody's behalf.
+	collected, err := w.cats.Create(ctx, now, e.owner, types.OrgScope(e.org), "Collected for the diocese", categorybus.PassThrough)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	if _, err := w.ledger.SetSplits(ctx, now, e.owner, e.deposit.ID, []ledgerbus.Part{
-		{Amount: money.MustParse("1000.00"), ProjectID: e.project},
+		{Amount: money.MustParse("990.00"), ProjectID: e.project},
+		{Amount: money.MustParse("10.00"), CategoryID: collected.ID, ProjectID: e.project},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := w.ledger.SetSplits(ctx, now, e.owner, e.coffee.ID, []ledgerbus.Part{
+		{Amount: e.coffee.Amount, CategoryID: collected.ID, ProjectID: e.project},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -52,8 +67,8 @@ func TestListFigures(t *testing.T) {
 		t.Errorf("the account's balance: %s on %s, want 1089.01 on %s", a.Balance, a.BalanceOn, st.End)
 	}
 
-	// Two transactions, one with two parts of which one is in the project:
-	// counted once each, and added up as the book adds them.
+	// Three transactions, two with two parts of which one is in the
+	// project: counted once each, and added up as the book adds them.
 	projects, err := w.ledger.ProjectFigures(ctx, e.owner, []types.ID{e.project})
 	if err != nil {
 		t.Fatal(err)
@@ -65,12 +80,17 @@ func TestListFigures(t *testing.T) {
 	}
 
 	p := projects[e.project]
-	if p.Count != 2 || p.First.String() != "2026-07-01" || p.Last.String() != "2026-07-03" || p.HasBalance() {
+	if p.Count != 3 || p.First.String() != "2026-07-01" || p.Last.String() != "2026-07-03" || p.HasBalance() {
 		t.Errorf("the project's days and count: %+v", p)
 	}
 
 	if len(p.Totals) != 1 || len(book.Totals) != 1 || p.Totals[0] != book.Totals[0] {
 		t.Errorf("the project's totals %+v, its book's %+v", p.Totals, book.Totals)
+	}
+
+	if pt := p.Totals[0]; pt.PassThroughIn != money.MustParse("10.00") || pt.PassThroughOut != e.coffee.Amount ||
+		pt.PassThrough != pt.PassThroughIn+pt.PassThroughOut || !pt.PassedThrough() || !pt.Operated() {
+		t.Errorf("the project's pass-through: %+v", pt)
 	}
 
 	// A pilgrim given the project has its figures and not the account's; a
