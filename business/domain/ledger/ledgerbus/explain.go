@@ -333,7 +333,9 @@ func (b *Business) Candidates(ctx context.Context, actor, id types.ID, accounts 
 		}
 
 		for _, t := range txs {
-			if t.ID != id {
+			// A pending charge that has posted is its posted charge, which
+			// is offered in its place.
+			if t.ID != id && !t.Cleared() {
 				out = append(out, Line{Transaction: t, Account: a})
 				ids = append(ids, t.ID)
 			}

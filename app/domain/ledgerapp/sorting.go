@@ -31,7 +31,11 @@ type transactionView struct {
 	Editor      ledgerbus.Editor
 	CanSort     bool
 	CanReceipts bool
-	Back        string
+
+	// CanPair is whether the reader may say what a pending charge posted
+	// as, or that it did not: a bookkeeper's, outside a reconciled period.
+	CanPair bool
+	Back    string
 
 	// Receipts is those on it; Waiting is those it might be given, the
 	// ones for its amount first.
@@ -158,6 +162,7 @@ func (a app) transactionPage(w http.ResponseWriter, r *http.Request, status int,
 		Editor:      e,
 		CanSort:     e.CanSort(),
 		CanReceipts: e.Access.Can(tenancybus.Receipts),
+		CanPair:     e.Access.Can(tenancybus.Bookkeep) && !e.Lock.Made(),
 		Back:        monthOf(e.Transaction),
 		sortForm:    f,
 		Done:        r.URL.Query().Get("done"),

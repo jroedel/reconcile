@@ -121,6 +121,8 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	handle("POST /statements/{id}/reopen", a.reopen)
 	handle("POST /accounts/{id}/holders", a.setByHolder)
 	handle("POST /transactions/{id}/release", a.release)
+	handle("POST /transactions/{id}/posted-as", a.pair)
+	handle("POST /transactions/{id}/unclear", a.unclear)
 	handle("GET /accounts/{id}/months", a.months)
 	handle("GET /accounts/{id}/sort", a.sortMonth)
 	handle("POST /accounts/{id}/sort", a.saveMonth)
@@ -279,6 +281,10 @@ type transactionsView struct {
 	// have posted by now (ledgerbus.StillPending).
 	StillPending []ledgerbus.Transaction
 
+	// Pairs is the account's pending charges and the posted charges each
+	// may have become, for a person to say (ledgerbus.Pairs).
+	Pairs []ledgerbus.Pair
+
 	Problem string
 	Done    string
 }
@@ -287,7 +293,7 @@ func (a app) transactions(w http.ResponseWriter, r *http.Request) {
 	// The problems a redirect back here may name: a removal of a pending
 	// charge that could not be made, from the charge's own route.
 	problem := r.URL.Query().Get("problem")
-	if problem != "not-pending" && problem != "release-locked" {
+	if !slices.Contains([]string{"not-pending", "release-locked", "not-posted", "pair-locked"}, problem) {
 		problem = ""
 	}
 
@@ -362,6 +368,12 @@ func (a app) transactionsPage(w http.ResponseWriter, r *http.Request, status int
 	}
 
 	if view.StillPending, err = a.cfg.Ledger.StillPending(ctx, me.ID, id); err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
+	if view.Pairs, err = a.cfg.Ledger.Pairs(ctx, me.ID, id); err != nil {
 		a.failed(w, r, err)
 
 		return

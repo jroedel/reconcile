@@ -271,6 +271,29 @@ func (b *Business) NumberCheck(ctx context.Context, now time.Time, actor, id typ
 	return b.saveCheck(ctx, now, actor, r, paid, nil)
 }
 
+// AfterImport is what follows a change to an account's transactions
+// (ledgerbus.AfterImport): waiting check images find their transactions
+// (MatchChecks), and a pending charge's receipts follow it to the posted
+// charge it became (ledgerbus.ClearPending). The posted charge is the one
+// that counts, in the accountant's package and in what has a receipt; the
+// pending one keeps none.
+func (b *Business) AfterImport(ctx context.Context, now time.Time, actor, accountID types.ID) error {
+	if err := b.MatchChecks(ctx, now, actor, accountID); err != nil {
+		return err
+	}
+
+	if ok, err := b.can(ctx, actor, types.AccountScope(accountID), tenancybus.Receipts); err != nil || !ok {
+		return err
+	}
+
+	holds, err := b.ledger.ClearedHolds(ctx, actor, accountID)
+	if err != nil || len(holds) == 0 {
+		return err
+	}
+
+	return b.store.Follow(ctx, holds)
+}
+
 // MatchChecks attaches the account's waiting check images whose number
 // now has exactly one transaction. It is what follows an import
 // (ledgerbus.AfterImport), so that a check photographed before it cleared

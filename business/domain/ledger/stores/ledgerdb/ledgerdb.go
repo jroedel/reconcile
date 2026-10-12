@@ -38,7 +38,7 @@ var Expected = sqldb.Expected{
 		"checked", "added", "already", "imported_by", "imported_at", "shape"},
 	"transactions": {"id", "account_id", "statement_id", "posted_on", "description", "amount", "balance",
 		"external_id", "hash", "occurrence", "holder", "pending", "check_number", "payee",
-		"own_description", "own_description_via", "check_memo", "check_written_on", "payee_id", "payee_via", "wording"},
+		"own_description", "own_description_via", "check_memo", "check_written_on", "payee_id", "payee_via", "wording", "posted_as"},
 	"csv_mappings":        {"account_id", "fingerprint", "mapping", "updated_by", "updated_at"},
 	"splits":              {"id", "transaction_id", "position", "amount", "category_id", "project_id", "memo", "rule_id", "via"},
 	"transaction_aliases": {"account_id", "hash", "transaction_id", "created_at"},
@@ -182,11 +182,28 @@ CREATE TABLE IF NOT EXISTS csv_mappings (
 		return err
 	}
 
+	// The posted charge a pending charge became (ledgerbus/pending.go,
+	// issue #104), a later column; NULL for every row from before it,
+	// whose pending charges were written over by their posted form. A
+	// reference so that the posted charge cannot go without the pending
+	// one hearing of it; Store.RemoveStatement says so first, and gives
+	// the pending charge its part back (unclearAll).
+	if err := sqldb.AddColumn(ctx, db, "transactions", "posted_as", "TEXT REFERENCES transactions (id) ON DELETE SET NULL"); err != nil {
+		return err
+	}
+
 	// A check's image is matched by its number within its account. After
 	// the AddColumn, since an index on a later column built in the CREATE
 	// block fails on every database from before it.
 	if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS transactions_check ON transactions (account_id, check_number) WHERE check_number <> ''`); err != nil {
 		return fmt.Errorf("creating the check number index: %w", err)
+	}
+
+	// A posted charge is the posted form of one pending charge at most,
+	// which two imports at once cannot get round; after the AddColumn
+	// too.
+	if _, err := db.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS transactions_posted_as ON transactions (posted_as) WHERE posted_as IS NOT NULL`); err != nil {
+		return fmt.Errorf("creating the posted charge index: %w", err)
 	}
 
 	if err := initSplits(ctx, db); err != nil {
@@ -292,8 +309,18 @@ CREATE INDEX IF NOT EXISTS splits_category ON splits (category_id) WHERE categor
 	if _, err := db.ExecContext(ctx, `
 INSERT INTO splits (id, transaction_id, position, amount)
 SELECT lower(hex(randomblob(16))), t.id, 0, t.amount FROM transactions t
-WHERE NOT EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id)`); err != nil {
+WHERE t.posted_as IS NULL AND NOT EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id)`); err != nil {
 		return fmt.Errorf("giving every transaction its part: %w", err)
+	}
+
+	// And none to a pending charge that has posted, whose parts are its
+	// posted charge's (ledgerbus/pending.go). A release from before it,
+	// rolled back to, ignores posted_as and gives such a charge a part as
+	// it starts; without this, that part would stay when this one returns,
+	// and the charge would count beside its posted form for good.
+	if _, err := db.ExecContext(ctx, `
+DELETE FROM splits WHERE transaction_id IN (SELECT id FROM transactions WHERE posted_as IS NOT NULL)`); err != nil {
+		return fmt.Errorf("taking the parts off pending charges that have posted: %w", err)
 	}
 
 	// The sorting rule that sorted a part (docs/sorting.md), a later
@@ -458,17 +485,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 
 	seen := map[string]bool{}
 
-	// A pending row whose posted form the same file lists is not a charge
-	// of its own (superseded).
-	over := superseded(txs)
-
 	for i, t := range txs {
-		if over[i] {
-			st.Superseded++
-
-			continue
-		}
-
 		known := t.ExternalID != "" && seen[t.ExternalID]
 		seen[t.ExternalID] = true
 
@@ -511,9 +528,10 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		return ledgerbus.Statement{}, err
 	}
 
-	// A posted charge whose pending form the account already holds takes
-	// its place (pending.go), and is new to nothing after.
-	if fresh, err = post(ctx, tx, &st, txs, fresh); err != nil {
+	// The pending charges the file's posted rows clear (pending.go),
+	// found before the count rule: the rows it sets aside clear nothing.
+	posts, err := postings(ctx, tx, st, txs, fresh)
+	if err != nil {
 		return ledgerbus.Statement{}, err
 	}
 
@@ -526,6 +544,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 	for _, d := range doubts {
 		aside[d.Index] = !d.Imported
 	}
+
+	inserted := map[types.ID]bool{}
 
 	for _, i := range fresh {
 		t := txs[i]
@@ -559,6 +579,29 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		}
 
 		st.Added++
+		inserted[t.ID] = true
+	}
+
+	// Each pending charge cleared by its posted form, once both are in.
+	for _, p := range posts {
+		if !inserted[p.posted.ID] || !p.stored && !inserted[p.hold.ID] {
+			continue
+		}
+
+		ev, err := postedEvent(ctx, tx, st, p.hold, p.posted)
+		if err != nil {
+			return ledgerbus.Statement{}, err
+		}
+
+		if err := clearHold(ctx, tx, p.hold, p.posted, ev); err != nil {
+			return ledgerbus.Statement{}, err
+		}
+
+		if p.stored {
+			st.Posted++
+		} else {
+			st.Superseded++
+		}
 	}
 
 	// What was set aside is remembered as another name for the row it was
@@ -935,6 +978,22 @@ func (s *Store) RemoveStatement(ctx context.Context, st ledgerbus.Statement, ev 
 		return 0, ledgerbus.ErrLocked
 	}
 
+	// A pending charge its rows cleared counts again once they are gone,
+	// so one in a reconciled period holds them too.
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM transactions t
+WHERE t.posted_as IN (SELECT id FROM transactions WHERE statement_id = ?) AND `+lockedWhere,
+		st.ID.String()).Scan(&locked); err != nil {
+		return 0, fmt.Errorf("checking the reconciled periods: %w", err)
+	}
+
+	if locked > 0 {
+		return 0, ledgerbus.ErrLocked
+	}
+
+	if err := unclearAll(ctx, tx, st.ID); err != nil {
+		return 0, err
+	}
+
 	res, err := tx.ExecContext(ctx, `DELETE FROM transactions WHERE statement_id = ?`, st.ID.String())
 	if err != nil {
 		return 0, fmt.Errorf("removing the statement's transactions: %w", err)
@@ -1020,8 +1079,8 @@ func scanStatement(row scanner) (ledgerbus.Statement, error) {
 func (s *Store) Months(ctx context.Context, account types.ID) ([]ledgerbus.Month, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT substr(posted_on, 1, 7), count(*),
-       coalesce(sum(CASE WHEN amount > 0 THEN amount END), 0),
-       coalesce(sum(CASE WHEN amount < 0 THEN amount END), 0),
+       coalesce(sum(CASE WHEN amount > 0 AND posted_as IS NULL THEN amount END), 0),
+       coalesce(sum(CASE WHEN amount < 0 AND posted_as IS NULL THEN amount END), 0),
        min(posted_on),
        sum(EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id AND s.category_id IS NULL)),
        sum(EXISTS (SELECT 1 FROM splits s WHERE s.transaction_id = t.id AND s.rule_id IS NOT NULL)),
@@ -1207,7 +1266,9 @@ func (s *Store) Matching(ctx context.Context, accounts []types.ID, amount money.
 	in, args := inList(accounts)
 	args = append(args, int64(amount), -int64(amount), from.String(), to.String())
 
-	return s.withSplits(ctx, `account_id IN (`+in+`) AND amount IN (?, ?) AND posted_on >= ? AND posted_on <= ?`, `posted_on, rowid`, args...)
+	// Not a pending charge that has posted: a receipt is its posted
+	// charge's.
+	return s.withSplits(ctx, `account_id IN (`+in+`) AND amount IN (?, ?) AND posted_on >= ? AND posted_on <= ? AND posted_as IS NULL`, `posted_on, rowid`, args...)
 }
 
 // withSplits reads the transactions matching a condition, and their parts.
@@ -1240,7 +1301,7 @@ func inList(ids []types.ID) (string, []any) {
 	return strings.Join(marks, ", "), args
 }
 
-const transactionColumns = `id, account_id, statement_id, posted_on, description, amount, balance, external_id, hash, occurrence, holder, pending, check_number, payee, own_description, own_description_via, check_memo, check_written_on, coalesce(payee_id, ''), payee_via`
+const transactionColumns = `id, account_id, statement_id, posted_on, description, amount, balance, external_id, hash, occurrence, holder, pending, check_number, payee, own_description, own_description_via, check_memo, check_written_on, coalesce(payee_id, ''), payee_via, coalesce(posted_as, '')`
 
 func (s *Store) transactions(ctx context.Context, q string, args ...any) ([]ledgerbus.Transaction, error) {
 	rows, err := s.db.QueryContext(ctx, q, args...)
@@ -1255,16 +1316,16 @@ func (s *Store) transactions(ctx context.Context, q string, args ...any) ([]ledg
 		var (
 			t                      ledgerbus.Transaction
 			id, acct, stmt, posted string
-			written, payee         string
+			written, payee, as     string
 			amount                 int64
 			balance                sql.NullInt64
 		)
 
-		if err := rows.Scan(&id, &acct, &stmt, &posted, &t.Description, &amount, &balance, &t.ExternalID, &t.Hash, &t.Occurrence, &t.Holder, &t.Pending, &t.CheckNumber, &t.Payee, &t.OwnDescription, &t.OwnVia, &t.CheckMemo, &written, &payee, &t.PayeeVia); err != nil {
+		if err := rows.Scan(&id, &acct, &stmt, &posted, &t.Description, &amount, &balance, &t.ExternalID, &t.Hash, &t.Occurrence, &t.Holder, &t.Pending, &t.CheckNumber, &t.Payee, &t.OwnDescription, &t.OwnVia, &t.CheckMemo, &written, &payee, &t.PayeeVia, &as); err != nil {
 			return nil, fmt.Errorf("reading the transactions: %w", err)
 		}
 
-		var e [6]error
+		var e [7]error
 		t.ID, e[0] = types.ParseID(id)
 		t.AccountID, e[1] = types.ParseID(acct)
 		t.StatementID, e[2] = types.ParseID(stmt)
@@ -1273,6 +1334,10 @@ func (s *Store) transactions(ctx context.Context, q string, args ...any) ([]ledg
 
 		if payee != "" {
 			t.PayeeID, e[5] = types.ParseID(payee)
+		}
+
+		if as != "" {
+			t.PostedAs, e[6] = types.ParseID(as)
 		}
 
 		if err := errors.Join(e[:]...); err != nil {

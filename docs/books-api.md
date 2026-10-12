@@ -185,6 +185,7 @@ from (`docs/design.md`). Lists take `limit` and a `cursor`.
 | `GET /api/v1/overview` | `get_overview` | `tenancybus.Overview`: organizations, accounts and projects, with each account's role, currency, last four, and (from the ledger and receipts) its last statement's end, unsorted count and receipts waiting |
 | `GET /api/v1/inbox` | `list_inbox` | The waiting files, each with its proposal: shape, account or accounts, period, how it checked, new transactions, and what needs a person, if anything |
 | `GET /api/v1/accounts/{account}/months` | `get_account_months` | `Coverage`: each month reconciled, imported, partial (which days), missing or still going, with its unsorted count; and the account's checks outstanding (`receiptbus.OutstandingChecks`, `docs/phone.md`, 7) |
+| `GET /api/v1/accounts/{account}/pending` | `list_pending` | **New** (issue #104, `Pairs`, `StillPending`): pending charges and the posted charges each may have become, where the import could not tell which, and those still pending. A transaction's `posted_as` is the posted charge of a pending one that has posted; `get_transaction` adds `posted_as`, `may_have_posted_as` and, for a posted charge, `pending_form` |
 | `GET /api/v1/accounts/{account}/statements` | `list_statements` | `Statements` |
 | `GET /api/v1/statements/{statement}` | `get_statement` | `Review`: how it checked, the balances and where each was read, its transactions in and out, the unsorted, receipts that may belong |
 | `GET /api/v1/accounts/{account}/transactions?month=&show=` | `list_transactions` | `Transactions`, `show` one of `all`, `unsorted`, `by_rule`, `by_api`, `no_receipt` |
@@ -211,6 +212,7 @@ from (`docs/design.md`). Lists take `limit` and a `cursor`.
 | `POST /api/v1/inbox/import` `{files, accounts}` | `import_from_inbox` | `Propose` and `ImportProposals`, for the files named. `accounts` answers a proposal that asked which account. **Only what needs no person is imported**: what checks by the file's own figures and has nothing set aside, the bulk import's rule. The rest stays waiting, and the answer says why each did and gives `/imports` |
 | `POST /api/v1/accounts/{account}/sort` `{choices}` | `sort_transactions` | `SortMany`: for each transaction a category, a project, or both |
 | `PUT /api/v1/transactions/{transaction}/splits` `{parts}` | `set_splits` | `SetSplits`: one charge across categories and projects |
+| `PUT /api/v1/transactions/{transaction}/posted-as` `{posted}` | `pair_pending` | **New** (issue #104, `ClearPending`): a pending charge posted as another transaction, one of `list_pending`'s pairs or one the person names; the pending charge counts no more, and its parts and receipts go to the posted one |
 | `PUT /api/v1/transactions/{transaction}/description` `{description}` | `set_description` | **New** (`Describe`): what a transaction was, in a person's words, shown in place of the bank's description; empty takes it away |
 | `POST /api/v1/accounts/{account}/rules` | `save_rule` | `rulebus.Save` |
 | `PUT /api/v1/rules/{rule}` | `change_rule` | `rulebus.Change` |

@@ -72,7 +72,10 @@ what the person's role lets them change; the tools you have say which.
 2. For each account: **get_account_months** says which months are
    reconciled, imported, partial (and which days are in no statement) or
    missing; **get_statement** says how a statement checked and what in it is
-   not sorted yet.
+   not sorted yet. **list_pending** says which pending charges may have
+   posted as which charges, where more than one could be: propose which,
+   and with the person's yes, **pair_pending**. A pending charge with
+   `posted_as` has posted and counts nowhere; sort its posted charge.
 3. **get_month_to_sort**: what is not sorted, with the app's suggestion for
    each, and the categories and projects there are to choose from. Propose
    sortings; with the person's yes, **sort_transactions**. A charge that is

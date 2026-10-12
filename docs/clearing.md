@@ -37,7 +37,7 @@ several programmes. So it is built once, for any transaction.
 | The need | **General.** Nothing here names a bank, a card or a household; another treasurer, in another country, uses the same pages |
 | Explaining | **One tool for any transaction**: "Explain this amount" gathers the transactions and lines that make it up, and says the difference |
 | Holders | **An option on an account**: its statements arrive one file per holder, a person or card on the account. Without it, nothing changes. (Called "cardholders" when decided; renamed "holder" on 2026-10-09, since nothing in it is about cards, and "segment" or "sub-account" is what an accountant calls part of a chart of accounts) |
-| Pending | **Read from the document**, marked, and replaced by the posted charge when it arrives |
+| Pending | **Read from the document**, marked, and cleared by the posted charge when it arrives: kept in its statement, counted nowhere (changed from "replaced" on 2026-10-12, issue #104) |
 
 ## 1. Entries by hand
 
@@ -179,28 +179,55 @@ them.
 - **Stored marked pending**, shown as such on the month, the transaction
   and the preview, counted in the document's total check as the document
   counts them, and in the accountant's package in a column of its own.
-- **Replaced when posted.** A later row of the same account (and
-  holder) within ten days after it, not pending, whose description is
-  alike (`ledgerdb.alike`, eumaeus' containment first), and whose amount
-  the pending one may have become (5, below), takes the pending
-  row's place: its date, amount and description change to the posted
-  ones, and it keeps its sorting, receipts and explanation. A one-part
-  transaction's part follows the amount; with several parts the
-  difference goes to the last part -- the tip is the last thing added to
-  a charge -- unless that would leave it nothing or turn it round, when
-  the transaction goes back to one part, unsorted, to be split anew. The
-  history says "pending at 7.25, posted at 12.00", and when the parts were
-  undone. A posted row worded, dated and priced as its pending one was is
-  the same row (the ledger's duplicate check finds it) and only stops
-  being pending. A pending charge in a reconciled period is never
-  replaced.
+- **Cleared when posted** (issue #104). A row of the same account (and
+  holder), dated on the pending one's day or up to ten days after, not
+  pending, that fits it (`ledgerdb.fit`), **clears** it: the pending row
+  stays in its statement, marked as having posted as the new row
+  (`transactions.posted_as`), and from then on only the posted charge
+  counts -- in money in and out, the totals by kind, a project's book, the
+  review of a reconciliation and what is to sort. The pending row keeps no
+  parts; a person's sorting of it (a category, a project or a memo, not a
+  rule's) goes to the posted charge, whose last part takes the tip unless
+  that would leave it nothing or turn it round; its place in an
+  explanation goes too, and its receipts follow it on their side
+  (`receiptbus.AfterImport`). Each page links one to the other. The
+  history says "pending at 7.25, posted at 12.00". A posted row worded,
+  dated and priced as its pending one was is the same row (the ledger's
+  duplicate check finds it) and only stops being pending. A pending
+  charge in a reconciled period is never cleared.
+
+  It used to be **replaced**: the posted row took the pending row's
+  place, its date, amount and description written over. That kept one
+  row, but a statement checked by its sum with the pending amount in it
+  stopped adding up, and a printed page's hold could not be told from
+  what it became. Rows replaced before the change stay as they are.
+- **What fits** (`ledgerdb.fit`), best first: the same wording, any
+  amount the same way round (a fuel hold of 1.00 posts at 48.20); one
+  wording inside the other, or cut short, within a third or 5.00 (5,
+  below); only the first two words alike after a payment processor's
+  prefix (`ledgerbus.SameMerchant`: a printed page's "CAFE EXAMPLE PAL
+  A…" and the download's "CAFE EXAMPLE CITY ST"), the same amount or more
+  by a tip of up to a third (`ledgerbus.Tipped`).
+- **Only when it is plain** (`ledgerdb.pair`). A pending row and a posted
+  row are paired at import when each fits the other better than anything
+  else fits either. Two holds at one shop and one charge, or one hold and
+  two charges, fit equally, and nothing is cleared: the account's page
+  lists them under "Pending charges that may have posted", and so does the
+  pending charge's page, for a bookkeeper to say "the same charge"
+  (`ledgerbus.ClearPending`), and Claude through `list_pending` and
+  `pair_pending`, with the person's yes. A bookkeeper may pair any posted
+  charge the same way round with a pending one, and undo a pairing that
+  was wrong ("Not the same charge"), which gives the pending charge one
+  part again. Removing the posted charge's statement does that too.
 - **Posted in the same file.** A bank's page goes on listing an
   authorization for days after its charge has posted, so one printed
   month can hold both: a coffee pending on the 28th and posted on the
-  29th, a car hire's hold beside its charge. A pending row whose posted
-  form the same file lists, by the rule above, is left out at import,
-  and the preview counts it (`Statement.Superseded`). Before this, both
-  were imported and the pending one waited on "still pending".
+  29th, a car hire's hold beside its charge. Both are imported, so that
+  the statement is whole, and the pending row is cleared by the posted
+  one by the same rule, which pairs the file's pending rows with its
+  posted rows and the account's pending charges together. The preview
+  counts them (`Statement.Superseded`). For a few hours before this, such
+  a pending row was left out instead.
 - **Never posted.** A pending row older than ten days past the latest
   statement of its account is listed on the account's page, "still
   pending", with a way for a bookkeeper to remove it (a hold that was

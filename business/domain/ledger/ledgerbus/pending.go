@@ -3,7 +3,9 @@ package ledgerbus
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/jroedel/reconcile/business/domain/event/eventbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
@@ -20,14 +22,29 @@ import (
 // even the count rule sees them.
 //
 // So a row the document says is pending is stored marked so, and the
-// posted charge, when a later file brings it, takes its place rather than
-// joining it: a row of the same account (and holder) dated on the
-// pending one's day or up to PostWithin after, not pending itself, whose
-// description is the pending one's or contains it. Its date, amount and
-// description become the posted ones; what a person did to it -- its
-// sorting, its receipts, the explanation it is part of -- stays, because
-// it is the same charge. The store does it, inside the import
-// (ledgerdb/pending.go), so that the preview's counts are the import's.
+// posted charge, when a file brings it, clears it (issue #104): the
+// pending row stays where it is, in the statement that was checked with
+// it, and is marked as having posted as the new row (PostedAs). From then
+// on only the posted charge counts. What a person did to the pending one
+// -- its sorting, its receipts, the explanation it is part of -- goes to
+// the posted one, because it is the same charge.
+//
+// It used to be the other way round: the posted row took the pending
+// one's place, its date, amount and description written over the
+// pending ones. That kept one row, but the statement the pending charge
+// came in, checked by its sum with the pending amount in it, stopped
+// adding up, and a printed page's hold could not be told from the
+// charge it became.
+//
+// A pending charge is cleared at import only when its posted form is
+// plain: a row of the same account (and holder) dated on the pending
+// one's day or up to PostWithin after, not pending itself, that fits it
+// better than any other row fits it and better than it fits any other
+// pending charge (ledgerdb's fit and pair). Two holds at one shop and one
+// charge, or one hold and two charges, are left for a person to pair
+// (Pairs, ClearPending), as receipts' matches are. The store does it,
+// inside the import (ledgerdb/pending.go), so that the preview's counts
+// are the import's.
 
 // PostWithin is how many days after a pending charge its posted form may
 // be dated and still be taken for it, and how many days before the end of
@@ -77,15 +94,70 @@ func PostsAs(pending, posted money.Amount, sameWording bool) bool {
 	return (posted - pending).Abs() <= max(pending.Abs()/3, PostSlack)
 }
 
+// Tipped reports whether a posted amount may be a pending one with a tip:
+// the same way round, the same or more, and by no more than a third or
+// PostSlack (PostsAs).
+//
+// It is the amount rule for wording that shares only its first words --
+// "CAFE EXAMPLE PAL A…" on a printed page, "CAFE EXAMPLE CITY ST" in the
+// bank's download (SameMerchant) -- which is the weakest likeness there is
+// between a pending charge and its posted one, so the amount must say the
+// rest: the same, or more by what a tip adds, never less. A hold that
+// settles lower (a hotel, a fuel pump) is worded the same when pending
+// and posted, in the files read so far, and PostsAs takes it.
+func Tipped(pending, posted money.Amount) bool {
+	return PostsAs(pending, posted, false) && posted.Abs() >= pending.Abs()
+}
+
+// SameMerchant reports whether two descriptions begin with the same two
+// words, letters and digits only and ignoring case, after a payment
+// processor's prefix ("SQ *", "TST* ", "PAYPAL *": whatever comes before
+// a star near the start). Two words, because one is too often a chain's
+// or a city's.
+func SameMerchant(a, b string) bool {
+	wa, wb := merchantWords(a), merchantWords(b)
+
+	return len(wa) >= 2 && len(wb) >= 2 && wa[0] == wb[0] && wa[1] == wb[1]
+}
+
+func merchantWords(s string) []string {
+	if i := strings.IndexByte(s, '*'); i >= 0 && i <= 10 {
+		s = s[i+1:]
+	}
+
+	return strings.FieldsFunc(strings.ToUpper(s), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+}
+
+// Pair is a pending charge and a posted charge that may be what it
+// became, for a person to say whether it is (Pairs).
+type Pair struct {
+	Pending, Posted Transaction
+}
+
 // The history lines of a pending charge.
 const (
-	TransactionPosted   eventbus.Action = "transaction.posted"
-	TransactionReleased eventbus.Action = "transaction.released"
+	TransactionPosted    eventbus.Action = "transaction.posted"
+	TransactionReleased  eventbus.Action = "transaction.released"
+	TransactionUncleared eventbus.Action = "transaction.uncleared"
 )
 
-// ErrNotPending is a removal of a transaction that is not pending: only a
-// hold that never posted may go without its statement.
-var ErrNotPending = errors.New("only a pending charge can be removed this way")
+var (
+	// ErrNotPending is a removal of a transaction that is not pending, or
+	// one already cleared: only a hold that never posted may go without
+	// its statement.
+	ErrNotPending = errors.New("only a pending charge that has not posted can be removed this way")
+
+	// ErrNotPosted is a pairing of a pending charge with a transaction
+	// that cannot be what it became: another account's, pending itself,
+	// the posted form of another, or the other way round from it.
+	ErrNotPosted = errors.New("that transaction cannot be the posted form of this pending charge")
+
+	// ErrCleared is a change to the parts of a pending charge that has
+	// posted: they are its posted charge's to change.
+	ErrCleared = errors.New("this pending charge has posted; sort its posted charge instead")
+)
 
 // StillPending is the account's pending charges that the account's
 // statements should have posted by now: older by PostWithin than the end of
@@ -118,7 +190,7 @@ func (b *Business) Release(ctx context.Context, now time.Time, actor, id types.I
 		return ErrForbidden
 	}
 
-	if !t.Pending {
+	if !t.Pending || t.Cleared() {
 		return ErrNotPending
 	}
 
@@ -130,4 +202,155 @@ func (b *Business) Release(ctx context.Context, now time.Time, actor, id types.I
 	})
 
 	return b.store.Release(ctx, id, ev)
+}
+
+// Pairs is the account's pending charges that have not posted and the
+// posted charges each may have become, by the rule an import clears one
+// by, but where it could not tell which: two holds at one shop and one
+// charge. A person says which is which (ClearPending), or that none is;
+// a pending charge with no pair here waits on StillPending.
+func (b *Business) Pairs(ctx context.Context, actor, accountID types.ID) ([]Pair, error) {
+	if _, _, err := b.accounts.Account(ctx, actor, accountID); err != nil {
+		return nil, err
+	}
+
+	return b.store.Pairs(ctx, accountID, PostWithin)
+}
+
+// ClearPending says that a pending charge posted as another transaction
+// of its account: a person's answer to Pairs, or to a hold whose posted
+// form is worded too differently for any rule. The posted charge may be
+// any not pending, not already another's posted form, the same way
+// round, of the same holder or one that names nobody. Bookkeep on the
+// account, and neither in a reconciled period: the pending charge stops
+// counting, and its parts become the posted charge's.
+func (b *Business) ClearPending(ctx context.Context, now time.Time, actor, pendingID, postedID types.ID) error {
+	p, err := b.store.TransactionByID(ctx, pendingID)
+	if err != nil {
+		return err
+	}
+
+	account, access, err := b.accounts.Account(ctx, actor, p.AccountID)
+	if err != nil {
+		return err
+	}
+
+	if !access.Can(tenancybus.Bookkeep) {
+		return ErrForbidden
+	}
+
+	if !p.Pending || p.Cleared() {
+		return ErrNotPending
+	}
+
+	t, err := b.store.TransactionByID(ctx, postedID)
+	if errors.Is(err, ErrNotFound) || err == nil && (t.AccountID != p.AccountID || t.Pending ||
+		(t.Amount < 0) != (p.Amount < 0) || !SameHolder(p.Holder, t.Holder)) {
+		return ErrNotPosted
+	}
+
+	if err != nil {
+		return err
+	}
+
+	if err := b.store.Clear(ctx, p, t, PostedEvent(now, actor, account, p, t)); err != nil {
+		return err
+	}
+
+	b.followed(ctx, now, actor, account.ID)
+
+	return nil
+}
+
+// PostedEvent is the history line of a pending charge cleared by its
+// posted form, by a person or an import.
+func PostedEvent(now time.Time, actor types.ID, account tenancybus.Account, p, t Transaction) eventbus.Event {
+	return eventbus.New(now, actor, account.Scope(), TransactionPosted, map[string]string{
+		"description": t.Description,
+		"date":        t.PostedOn.String(),
+		"pending":     p.Amount.String(),
+		"posted":      t.Amount.String(),
+		"currency":    account.Currency,
+	})
+}
+
+// Unclear undoes a clearing that was wrong: the pending charge counts
+// again, with one part for its whole amount, unsorted, and waits for its
+// posted form or to be released. The posted charge keeps the parts it
+// was given, which a person may have changed since. Bookkeep, outside a
+// reconciled period.
+func (b *Business) Unclear(ctx context.Context, now time.Time, actor, pendingID types.ID) error {
+	p, err := b.store.TransactionByID(ctx, pendingID)
+	if err != nil {
+		return err
+	}
+
+	account, access, err := b.accounts.Account(ctx, actor, p.AccountID)
+	if err != nil {
+		return err
+	}
+
+	if !access.Can(tenancybus.Bookkeep) {
+		return ErrForbidden
+	}
+
+	if !p.Cleared() {
+		return ErrNotPending
+	}
+
+	return b.store.Unclear(ctx, p, eventbus.New(now, actor, account.Scope(), TransactionUncleared, map[string]string{
+		"description": p.Description,
+		"amount":      p.Amount.String(),
+		"currency":    account.Currency,
+		"date":        p.PostedOn.String(),
+	}))
+}
+
+// ClearedHolds is the account's pending charges that have posted, by the
+// posted charge each became: for what follows them there, such as their
+// receipts.
+func (b *Business) ClearedHolds(ctx context.Context, actor, accountID types.ID) (map[types.ID]types.ID, error) {
+	if _, _, err := b.accounts.Account(ctx, actor, accountID); err != nil {
+		return nil, err
+	}
+
+	return b.store.ClearedHolds(ctx, accountID)
+}
+
+// pendingOf fills in an editor's pending charge and posted charge, each
+// the other's, or the pairs a pending charge that has not posted may be.
+func (b *Business) pendingOf(ctx context.Context, e *Editor) error {
+	t := e.Transaction
+
+	switch {
+	case t.Cleared():
+		posted, err := b.store.TransactionByID(ctx, t.PostedAs)
+		if err != nil {
+			return err
+		}
+
+		e.PostedAs = &posted
+	case t.Pending:
+		pairs, err := b.store.Pairs(ctx, t.AccountID, PostWithin)
+		if err != nil {
+			return err
+		}
+
+		for _, p := range pairs {
+			if p.Pending.ID == t.ID {
+				e.Pairs = append(e.Pairs, p)
+			}
+		}
+	default:
+		hold, ok, err := b.store.HoldOf(ctx, t.ID)
+		if err != nil {
+			return err
+		}
+
+		if ok {
+			e.Hold = &hold
+		}
+	}
+
+	return nil
 }

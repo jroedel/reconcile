@@ -156,8 +156,11 @@ CREATE TABLE IF NOT EXISTS splits (
 // and paid no check to anybody; from before descriptions of its own, it
 // gains own_description and its mark, and has neither; from before a
 // check's memo and day written, it has neither of those; from before a
-// row's own wording was kept, it has none, and is its description. And a statement
-// from before layouts were kept gains statements.shape, and was in none.
+// row's own wording was kept, it has none, and is its description; from
+// before a pending charge was cleared rather than written over, it posted
+// as nothing, and the index on that later column is built after it. And a
+// statement from before layouts were kept gains statements.shape, and was
+// in none.
 func TestInitGivesOldPartsNoRule(t *testing.T) {
 	db, err := sqldb.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
@@ -233,6 +236,15 @@ VALUES (?, ?, ?, 'csv', '2026-07-01', '2026-07-31', 'none', ?, 0)`,
 		t.Errorf("the old row's wording: %q, %v", wording, err)
 	}
 
+	if tx.Cleared() {
+		t.Errorf("the old row posted as %s", tx.PostedAs)
+	}
+
+	var index int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type = 'index' AND name = 'transactions_posted_as'`).Scan(&index); err != nil || index != 1 {
+		t.Errorf("the posted charge index: %d, %v", index, err)
+	}
+
 	var shape string
 	if err := db.QueryRowContext(ctx, `SELECT shape FROM statements WHERE id = ?`, statement.String()).Scan(&shape); err != nil || shape != "" {
 		t.Errorf("the old statement's layout: %q, %v", shape, err)
@@ -240,5 +252,67 @@ VALUES (?, ?, ?, 'csv', '2026-07-01', '2026-07-31', 'none', ?, 0)`,
 
 	if err := sqldb.CheckSchema(ctx, db, ledgerdb.Expected); err != nil {
 		t.Errorf("the schema after Init: %v", err)
+	}
+}
+
+// A pending charge that has posted has no parts. A release from before
+// posted_as, rolled back to, gives it one as it starts; the next start of
+// this one takes it off again, and leaves the posted charge's alone.
+func TestInitTakesThePartsOffAPostedPendingCharge(t *testing.T) {
+	db, err := sqldb.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() { db.Close() })
+
+	ctx := t.Context()
+
+	for _, init := range []func(context.Context, *sql.DB) error{userdb.Init, eventdb.Init, tenancydb.Init, filedb.Init, categorydb.Init, ledgerdb.Init} {
+		if err := init(ctx, db); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
+		t.Fatal(err)
+	}
+
+	account, hold, posted := types.NewID(), types.NewID(), types.NewID()
+
+	for _, row := range []struct {
+		id     types.ID
+		amount int
+		as     any
+	}{{posted, -5000, nil}, {hold, -4000, posted.String()}} {
+		if _, err := db.ExecContext(ctx, `
+INSERT INTO transactions (id, account_id, statement_id, posted_on, description, amount, hash, occurrence, pending, posted_as)
+VALUES (?, ?, ?, '2026-08-31', 'CAFE EXAMPLE', ?, ?, 1, ?, ?)`,
+			row.id.String(), account.String(), types.NewID().String(), row.amount, row.id.String(), row.as != nil, row.as); err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := db.ExecContext(ctx, `INSERT INTO splits (id, transaction_id, position, amount) VALUES (?, ?, 0, ?)`,
+			types.NewID().String(), row.id.String(), row.amount); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys = ON`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ledgerdb.Init(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+
+	store := ledgerdb.NewStore(db)
+
+	if h, err := store.TransactionByID(ctx, hold); err != nil || len(h.Splits) != 0 || h.PostedAs != posted {
+		t.Errorf("the pending charge: %+v, %v", h, err)
+	}
+
+	if p, err := store.TransactionByID(ctx, posted); err != nil || len(p.Splits) != 1 {
+		t.Errorf("the posted charge: %+v, %v", p, err)
 	}
 }
