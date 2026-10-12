@@ -27,6 +27,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/stores/receiptdb"
 	"github.com/jroedel/reconcile/business/domain/report/reportbus"
+	"github.com/jroedel/reconcile/business/domain/report/stores/reportdb"
 	"github.com/jroedel/reconcile/business/domain/rule/rulebus"
 	"github.com/jroedel/reconcile/business/domain/rule/stores/ruledb"
 	"github.com/jroedel/reconcile/business/domain/shape/shapebus"
@@ -70,7 +71,7 @@ func newSite(t *testing.T, want sqldb.Expected, configure func(*Config)) (http.H
 	}
 
 	for _, init := range []func(context.Context, *sql.DB) error{
-		translationdb.Init, userdb.Init, eventdb.Init, tenancydb.Init, filedb.Init, categorydb.Init, ruledb.Init, ledgerdb.Init, receiptdb.Init, budgetdb.Init, shapedb.Init,
+		translationdb.Init, userdb.Init, eventdb.Init, tenancydb.Init, filedb.Init, categorydb.Init, ruledb.Init, ledgerdb.Init, receiptdb.Init, budgetdb.Init, shapedb.Init, reportdb.Init,
 	} {
 		if err := init(t.Context(), db); err != nil {
 			t.Fatal(err)
@@ -120,7 +121,7 @@ func newSite(t *testing.T, want sqldb.Expected, configure func(*Config)) (http.H
 		Categories: categories,
 		Rules:      rules,
 		Budgets:    budgetbus.NewBusiness(log, budgetdb.NewStore(db), tenancy, ledger, categories),
-		Reports:    reportbus.NewBusiness(tenancy, ledger),
+		Reports:    reportbus.NewBusiness(tenancy, ledger, reportdb.NewStore(db)),
 		Receipts:   receipts,
 		Export:     exportbus.NewBusiness(log, tenancy, ledger, receipts, categories, files),
 		BaseURL:    base,

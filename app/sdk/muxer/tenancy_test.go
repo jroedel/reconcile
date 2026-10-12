@@ -129,6 +129,8 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		payment = tx
 	}
 
+	report := saveReport(t, e.owner, e.org, url.Values{"style": {"income-expenses-by-month"}, "title": {"P&L"}})
+
 	gets := []string{
 		e.org, e.account, e.project, e.ownAccount, e.ownProject,
 		"/accounts/new?org=" + orgID, "/projects/new?org=" + orgID,
@@ -151,6 +153,7 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		e.org + "/reports/income-expenses-by-month", e.ownAccount + "/reports/income-expenses-by-month?period=all",
 		e.org + "/reports/income-expenses-by-month/parts?by=kind&kind=unsorted", e.ownAccount + "/reports/income-expenses-by-month/parts?by=kind",
 		e.org + "/reports/income-expenses-by-month/download", e.ownAccount + "/reports/income-expenses-by-month/download",
+		report, report + "?period=all", report + "/edit", report + "/parts?by=kind", report + "/download",
 	}
 
 	type write struct {
@@ -172,6 +175,11 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		{e.org + "/budget/copy?year=2027", nil},
 		{e.org + "/budget/year-start", url.Values{"month": {"7"}}},
 		{e.account + "/reference", url.Values{"reference": {"1"}}},
+		{e.org + "/reports", url.Values{"style": {"income-expenses-by-month"}, "title": {"Mine now"}}},
+		{e.ownAccount + "/reports", url.Values{"style": {"income-expenses-by-month"}, "title": {"Mine now"}}},
+		{report + "/edit", url.Values{"title": {"Mine now"}}},
+		{report + "/note", url.Values{"from": {"2026-07"}, "to": {"2026-07"}, "note": {"Mine now"}}},
+		{report + "/remove", nil},
 		{inboxed(t, h, e.owner), nil},
 		{check + "/file", url.Values{"account": {accountID}}},
 		{check + "/remove", url.Values{"removed": {"1"}}},

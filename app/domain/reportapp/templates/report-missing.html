@@ -3,6 +3,9 @@
 {{if eq (printf "%v" .Data) "server"}}
 <h1>{{t "Something went wrong"}}</h1>
 {{template "report-problem" "server"}}
+{{else if eq (printf "%v" .Data) "refused"}}
+<h1>{{t "Not allowed"}}</h1>
+<p>{{t "A saved report is kept by those who keep the books. A bookkeeper or an owner can give you that role."}}</p>
 {{else}}
 <h1>{{t "Not found"}}</h1>
 <p>{{t "There is nothing here, or nothing you have been given a role on. If somebody meant to share it with you, ask them to check which email address they used."}}</p>

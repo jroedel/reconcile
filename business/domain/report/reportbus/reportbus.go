@@ -55,11 +55,12 @@ type Ledger interface {
 type Business struct {
 	access Access
 	ledger Ledger
+	store  Storer
 }
 
 // NewBusiness constructs one.
-func NewBusiness(access Access, ledger Ledger) *Business {
-	return &Business{access: access, ledger: ledger}
+func NewBusiness(access Access, ledger Ledger, store Storer) *Business {
+	return &Business{access: access, ledger: ledger, store: store}
 }
 
 // --- the books a report is of ---------------------------------------------------

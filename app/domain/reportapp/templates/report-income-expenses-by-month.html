@@ -1,15 +1,26 @@
-{{define "title"}}{{template "style-name" .Data.Style.Key}} · {{.Data.Report.Name}}{{end}}
+{{define "title"}}{{with .Data.Saved}}{{.Saved.Title}}{{else}}{{template "style-name" .Data.Style.Key}}{{end}} · {{.Data.Report.Name}}{{end}}
 {{define "content"}}{{$v := .Data}}{{$r := $v.Report}}{{$cols := inc (inc (len $r.Months))}}
 <div class="report-page">
 <p class="crumbs no-print"><a href="{{$v.Path}}">{{$r.Name}}</a> · <a href="{{$v.Path}}/reports">{{t "Reports"}}</a></p>
 
 <div class="report-head">
-<h1>{{template "style-name" $v.Style.Key}}</h1>
+{{with $v.Saved}}<h1>{{.Saved.Title}}</h1>
+<p class="hint">{{template "style-name" $v.Style.Key}}</p>
+{{with .Saved.Description}}<p class="description">{{.}}</p>{{end}}
+{{else}}<h1>{{template "style-name" $v.Style.Key}}</h1>{{end}}
 <p><strong>{{$r.Name}}</strong> ·
 {{if $r.Period.All}}{{t "Every month there is"}}{{else if eq $r.Period.From $r.Period.To}}{{template "month" $r.Period.From}}{{else}}{{t "{from} to {to}" "from" $r.Period.From "to" $r.Period.To}}{{end}}</p>
 <p class="printed hint">{{t "As it stood on {date}." "date" $v.Today}}</p>
 {{if $r.Partial}}<p class="hint">{{t "Only these accounts: {names}." "names" (join $v.ChosenNames ", ")}}</p>{{end}}
+{{with $v.Saved}}{{range .LeftOut}}<p class="hint">{{t "{account} was in this report when it was saved, and is for reference now, so it is left out." "account" .Name}}</p>{{end}}
+{{if .Missing}}<p class="hint">{{t "{n} accounts this report was saved with no longer exist, and are left out." "n" .Missing}}</p>{{end}}
+{{if .HasNote}}<div class="note" id="note">
+<p class="description">{{.Note.Text}}</p>
+<p class="hint">{{if $v.NoteBy}}{{t "Written by {name} on {date}." "name" $v.NoteBy "date" $v.NoteDate}}{{else}}{{t "Written on {date}." "date" $v.NoteDate}}{{end}}</p>
+{{if .Changed}}<p class="notice">{{t "The figures have changed since this note was written: something in these months was sorted, imported or removed since."}}</p>{{end}}
+</div>{{end}}{{end}}
 </div>
+{{template "report-done" $v.Done}}
 {{template "report-problem" $v.Problem}}
 
 <nav class="no-print" aria-label="{{t "Which months"}}">
@@ -67,7 +78,7 @@
     <input id="to" name="to" type="month" value="{{if not $r.Period.All}}{{$r.Period.To}}{{end}}" placeholder="2026-07">
     <p class="hint">{{t "As year and month, such as 2026-07, where the browser asks for text."}}</p>
   </div>
-  {{if gt (len $r.Accounts) 1}}<fieldset class="field">
+  {{if not $v.Saved}}{{if gt (len $r.Accounts) 1}}<fieldset class="field">
     <legend>{{t "Accounts"}}</legend>
     {{range $r.Accounts}}<label class="choice"><input type="checkbox" name="account" value="{{.ID}}"{{if $v.Chosen .ID}} checked{{end}}> {{.Name}}{{if .Archived}} <span class="badge">{{t "archived"}}</span>{{end}}</label>
     {{end}}
@@ -76,10 +87,49 @@
     <legend>{{t "Pass-through"}}</legend>
     <label class="choice"><input type="radio" name="passthrough" value="total"{{if ne (printf "%s" $r.Choices.PassThrough) "each"}} checked{{end}}> {{t "One total"}}</label>
     <label class="choice"><input type="radio" name="passthrough" value="each"{{if eq (printf "%s" $r.Choices.PassThrough) "each"}} checked{{end}}> {{t "Each category"}}</label>
-  </fieldset>
+  </fieldset>{{end}}
   <button type="submit">{{t "Show"}}</button>
 </form>
+{{if and $v.Saved $v.CanKeep}}<p><a href="{{$v.Base}}/edit">{{t "Change its title, description, accounts or pass-through"}}</a></p>{{end}}
 </section>
+
+{{if and $v.Saved $v.CanKeep}}
+<section class="card no-print">
+<h2>{{t "A note for these months"}}</h2>
+<form method="post" action="{{$v.Base}}/note">
+  {{range $k, $vals := $v.PeriodFields}}{{range $vals}}<input type="hidden" name="{{$k}}" value="{{.}}">{{end}}{{end}}
+  <div class="field">
+    <label for="note-text">{{t "What the house should know about these months"}}</label>
+    <textarea id="note-text" name="note" rows="4" maxlength="4000">{{$v.Saved.Note.Text}}</textarea>
+    <p class="hint">{{t "Shown under the title on this period's report, and printed with it. Empty it to remove it."}}</p>
+  </div>
+  <button type="submit" class="quiet">{{t "Save the note"}}</button>
+</form>
+</section>
+{{end}}
+
+{{if and (not $v.Saved) $v.CanKeep}}
+<section class="card no-print">
+<h2>{{t "Save this report"}}</h2>
+<p class="hint">{{t "Keep it under a title of your own, with what it shows now, to run it again every month and write a note for each."}}</p>
+<form method="post" action="{{$v.Path}}/reports">
+  <input type="hidden" name="style" value="{{$v.Style.Key}}">
+  <input type="hidden" name="query" value="{{$v.Query}}">
+  <input type="hidden" name="default" value="{{$v.Preset}}">
+  {{if $r.Partial}}{{range $r.Chosen}}<input type="hidden" name="account" value="{{.ID}}">{{end}}{{end}}
+  <input type="hidden" name="passthrough" value="{{$r.Choices.PassThrough}}">
+  <div class="field">
+    <label for="title">{{t "Title"}}</label>
+    <input id="title" name="title" maxlength="100" required value="{{$v.Typed.Title}}" placeholder="{{t "Profit and loss"}}">
+  </div>
+  <div class="field">
+    <label for="description">{{t "What it is, for whoever reads it"}}</label>
+    <textarea id="description" name="description" rows="3" maxlength="2000">{{$v.Typed.Description}}</textarea>
+  </div>
+  <button type="submit">{{t "Save this report"}}</button>
+</form>
+</section>
+{{end}}
 
 <p class="no-print"><a class="button quiet" href="{{$v.Base}}/download?{{$v.Query}}">{{t "Download as a spreadsheet"}}</a></p>
 <p class="hint no-print">{{t "To hand it out, print this page, or save it as a PDF from the browser's print window."}}</p>

@@ -1,0 +1,44 @@
+{{define "title"}}{{t "Change the report"}} · {{.Data.Report.Saved.Saved.Title}}{{end}}
+{{define "content"}}{{$e := .Data}}{{$v := $e.Report}}{{$r := $v.Report}}{{$f := $e.Typed}}
+<p class="crumbs"><a href="{{$v.Base}}">{{$v.Saved.Saved.Title}}</a></p>
+<h1>{{t "Change the report"}}</h1>
+<p class="hint">{{template "style-name" $v.Style.Key}}</p>
+{{template "report-problem" $e.Problem}}
+<section class="card">
+<form method="post" action="{{$v.Base}}/edit">
+  <div class="field">
+    <label for="title">{{t "Title"}}</label>
+    <input id="title" name="title" maxlength="100" required value="{{$f.Title}}">
+    <p class="hint">{{t "Your own words, such as P&L. They are not translated, and the layout's name is shown beneath them."}}</p>
+  </div>
+  <div class="field">
+    <label for="description">{{t "What it is, for whoever reads it"}}</label>
+    <textarea id="description" name="description" rows="4" maxlength="2000">{{$f.Description}}</textarea>
+    <p class="hint">{{t "Shown under the title every time it is run, and printed with it."}}</p>
+  </div>
+  <div class="field">
+    <label for="default">{{t "Months shown when none are chosen"}}</label>
+    <select id="default" name="default">
+      {{range $r.Presets}}<option value="{{.Key}}"{{if eq .Key $f.Period}} selected{{end}}>{{template "preset" .Key}}</option>{{end}}
+    </select>
+  </div>
+  {{if gt (len $r.Accounts) 1}}<fieldset class="field">
+    <legend>{{t "Accounts"}}</legend>
+    {{range $r.Accounts}}<label class="choice"><input type="checkbox" name="account" value="{{.ID}}"{{if $e.Chosen .ID}} checked{{end}}> {{.Name}}{{if .Archived}} <span class="badge">{{t "archived"}}</span>{{end}}</label>
+    {{end}}
+    <p class="hint">{{t "Every account is in it when all are ticked, or none."}}</p>
+  </fieldset>{{end}}
+  <fieldset class="field">
+    <legend>{{t "Pass-through"}}</legend>
+    <label class="choice"><input type="radio" name="passthrough" value="total"{{if ne (printf "%s" $f.Choices.PassThrough) "each"}} checked{{end}}> {{t "One total"}}</label>
+    <label class="choice"><input type="radio" name="passthrough" value="each"{{if eq (printf "%s" $f.Choices.PassThrough) "each"}} checked{{end}}> {{t "Each category"}}</label>
+  </fieldset>
+  <button type="submit">{{t "Save"}}</button>
+</form>
+</section>
+<section class="card">
+<h2>{{t "Remove it"}}</h2>
+<p class="hint">{{t "It leaves the list of reports. Its notes are kept in the history."}}</p>
+<form method="post" action="{{$v.Base}}/remove"><button type="submit" class="quiet">{{t "Remove this report"}}</button></form>
+</section>
+{{end}}

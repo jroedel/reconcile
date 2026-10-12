@@ -12,6 +12,7 @@ package reportapp
 
 import (
 	"bytes"
+	"context"
 	"embed"
 	"encoding/csv"
 	"errors"
@@ -48,10 +49,16 @@ type Renderer interface {
 	Text(lang types.Lang, name string, data any) (string, error)
 }
 
+// Users names who wrote a note.
+type Users interface {
+	ByID(ctx context.Context, id types.ID) (userbus.User, error)
+}
+
 // Config is what this app needs.
 type Config struct {
 	Log     *slog.Logger
 	Reports *reportbus.Business
+	Users   Users
 	Render  Renderer
 
 	// Now is the clock; nil means time.Now.
@@ -77,10 +84,19 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 		kind   types.ScopeKind
 	}{{"/orgs", types.ScopeOrg}, {"/accounts", types.ScopeAccount}} {
 		handle("GET "+s.prefix+"/{id}/reports", a.list(s.kind))
+		handle("POST "+s.prefix+"/{id}/reports", a.save(s.kind))
 		handle("GET "+s.prefix+"/{id}/reports/{style}", a.run(s.kind))
-		handle("GET "+s.prefix+"/{id}/reports/{style}/parts", a.parts(s.kind))
-		handle("GET "+s.prefix+"/{id}/reports/{style}/download", a.download(s.kind))
+		handle("GET "+s.prefix+"/{id}/reports/{style}/parts", a.parts(a.unsaved(s.kind)))
+		handle("GET "+s.prefix+"/{id}/reports/{style}/download", a.download(a.unsaved(s.kind)))
 	}
+
+	handle("GET /reports/{id}", a.runSaved)
+	handle("GET /reports/{id}/parts", a.parts(a.saved))
+	handle("GET /reports/{id}/download", a.download(a.saved))
+	handle("GET /reports/{id}/edit", a.edit)
+	handle("POST /reports/{id}/edit", a.change)
+	handle("POST /reports/{id}/note", a.note)
+	handle("POST /reports/{id}/remove", a.remove)
 }
 
 func actor(w http.ResponseWriter, r *http.Request) (userbus.User, bool) {
@@ -95,6 +111,12 @@ func actor(w http.ResponseWriter, r *http.Request) (userbus.User, bool) {
 func (a app) failed(w http.ResponseWriter, r *http.Request, err error) {
 	if errors.Is(err, reportbus.ErrNotFound) {
 		a.cfg.Render.Render(w, r, http.StatusNotFound, "report-missing", nil)
+
+		return
+	}
+
+	if errors.Is(err, reportbus.ErrForbidden) {
+		a.cfg.Render.Render(w, r, http.StatusForbidden, "report-missing", "refused")
 
 		return
 	}
@@ -139,9 +161,12 @@ func (a app) style(w http.ResponseWriter, r *http.Request, kind types.ScopeKind)
 // --- the list ----------------------------------------------------------------------
 
 type listView struct {
-	Books  reportbus.Books
-	Path   string
-	Styles []reportbus.Style
+	Books   reportbus.Books
+	Path    string
+	Styles  []reportbus.Style
+	Saved   []reportbus.Saved
+	CanKeep bool
+	Done    string
 }
 
 func (a app) list(kind types.ScopeKind) http.HandlerFunc {
@@ -163,7 +188,17 @@ func (a app) list(kind types.ScopeKind) http.HandlerFunc {
 			return
 		}
 
-		a.cfg.Render.Render(w, r, http.StatusOK, "reports", listView{Books: books, Path: scopePath(scope), Styles: reportbus.StylesFor(kind)})
+		saved, err := a.cfg.Reports.SavedOf(r.Context(), me.ID, scope)
+		if err != nil {
+			a.failed(w, r, err)
+
+			return
+		}
+
+		a.cfg.Render.Render(w, r, http.StatusOK, "reports", listView{
+			Books: books, Path: scopePath(scope), Styles: reportbus.StylesFor(kind), Saved: saved,
+			CanKeep: books.Access.Can(tenancybus.Bookkeep), Done: r.URL.Query().Get("done"),
+		})
 	}
 }
 
@@ -249,12 +284,48 @@ type reportView struct {
 	Report  reportbus.IncomeExpenses
 	Style   reportbus.Style
 	Path    string // the books' page
-	Base    string // the style's page for these books
+	Base    string // the style's page for these books, or the saved report's
 	Problem string
+	Done    string
 	Today   types.Date
+
+	// Saved is the saved report run, nil for a style run without saving;
+	// NoteBy names who wrote its period's note. CanKeep is whether the
+	// reader keeps the books: may save the report, change it, and write
+	// its notes.
+	Saved   *reportbus.SavedRun
+	NoteBy  string
+	CanKeep bool
+
+	// Typed is what was typed into the save form, shown again with a
+	// problem.
+	Typed reportbus.Fields
 
 	choices url.Values
 }
+
+// Preset is the key of the preset the period shown is, or "".
+func (v reportView) Preset() string {
+	for _, pr := range v.Report.Presets {
+		if pr.Period == v.Report.Period {
+			return pr.Key
+		}
+	}
+
+	return ""
+}
+
+// NoteDate is the day the period's note was written.
+func (v reportView) NoteDate() types.Date {
+	if v.Saved == nil {
+		return types.Date{}
+	}
+
+	return types.DateOf(v.Saved.Note.At)
+}
+
+// PeriodFields is the period shown, as the hidden fields of a form.
+func (v reportView) PeriodFields() url.Values { return periodValues(url.Values{}, v.Report.Period) }
 
 // Query is the report as it is in an address: its choices and period.
 func (v reportView) Query() string { return periodValues(v.choices, v.Report.Period).Encode() }
@@ -323,6 +394,15 @@ func (v reportView) Figure(by, kind, category, month, currency string) string {
 	return v.Base + "/parts?" + q.Encode()
 }
 
+// builder is how a page finds the report it is about: a style run with
+// its choices in the address (unsaved), or a saved report (saved).
+type builder func(w http.ResponseWriter, r *http.Request) (reportView, bool)
+
+// unsaved is the style's report the address asks for.
+func (a app) unsaved(kind types.ScopeKind) builder {
+	return func(w http.ResponseWriter, r *http.Request) (reportView, bool) { return a.report(w, r, kind) }
+}
+
 // report is the style's report the address asks for.
 func (a app) report(w http.ResponseWriter, r *http.Request, kind types.ScopeKind) (reportView, bool) {
 	me, ok := actor(w, r)
@@ -352,7 +432,7 @@ func (a app) report(w http.ResponseWriter, r *http.Request, kind types.ScopeKind
 
 	v := reportView{
 		Report: rep, Style: style, Path: scopePath(scope), Base: scopePath(scope) + "/reports/" + style.Key,
-		Today: types.DateOf(now), choices: choiceValues(rep),
+		Today: types.DateOf(now), choices: choiceValues(rep), CanKeep: rep.Access.Can(tenancybus.Bookkeep),
 	}
 
 	if ask.bad {
@@ -365,9 +445,14 @@ func (a app) report(w http.ResponseWriter, r *http.Request, kind types.ScopeKind
 func (a app) run(kind types.ScopeKind) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if v, ok := a.report(w, r, kind); ok {
-			a.cfg.Render.Render(w, r, http.StatusOK, "report-"+v.Style.Key, v)
+			a.show(w, r, http.StatusOK, v)
 		}
 	}
+}
+
+// show is a report's page.
+func (a app) show(w http.ResponseWriter, r *http.Request, status int, v reportView) {
+	a.cfg.Render.Render(w, r, status, "report-"+v.Style.Key, v)
 }
 
 // --- the parts behind a figure ------------------------------------------------------
@@ -380,9 +465,9 @@ type partsView struct {
 	Sum    money.Amount
 }
 
-func (a app) parts(kind types.ScopeKind) http.HandlerFunc {
+func (a app) parts(build builder) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		v, ok := a.report(w, r, kind)
+		v, ok := build(w, r)
 		if !ok {
 			return
 		}
@@ -437,9 +522,9 @@ const words = 9
 // download is the report as a CSV: a block per currency, a row per line of
 // the table, the months across, with a byte-order mark so that a
 // spreadsheet reads its accents, as the accountant's package does.
-func (a app) download(kind types.ScopeKind) http.HandlerFunc {
+func (a app) download(build builder) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		v, ok := a.report(w, r, kind)
+		v, ok := build(w, r)
 		if !ok {
 			return
 		}
