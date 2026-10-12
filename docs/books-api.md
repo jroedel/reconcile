@@ -229,6 +229,8 @@ from (`docs/design.md`). Lists take `limit` and a `cursor`.
 | `POST /api/v1/payees/{payee}/split` `{spelling, into}` | `split_payee` | **New** (`SplitPayee`): a spelling and its payments back out, into a payee of its own or another; it undoes a join |
 | `PUT /api/v1/transactions/{transaction}/payee` `{payee \| name}` | `set_payee` | **New** (`SetPayee`): whom a payment went to, a payee of the list or a new name, as "Paid to" on its page |
 
+Both inbox tools read every file waiting, which is longer than the proxy in front of the server lets a request last when the inbox is full (issue #107). Each runs its reading as a job (`foundation/jobs`, in this process) and waits ten seconds: a short inbox answers as above, and a longer one answers `202 {working, job, stage, done, of, note}`. The same tool called again with `job` asks after it, and once it is done answers as above. A job is the key's person's and the tool's; the site restarting forgets it, and asking after it is then a 404 that says to call again without it. That is safe for an import, which recognizes what it imported before.
+
 As built: `import_from_inbox` takes `accounts` as a list of `{file, part,
 account}`, the part as `list_inbox` gives it; `gather_explanation` takes the
 accounts as `account`, the same word `list_explanation_candidates` uses;

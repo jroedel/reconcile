@@ -21,6 +21,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/user/userbus"
 	"github.com/jroedel/reconcile/business/types"
 	"github.com/jroedel/reconcile/business/types/money"
+	"github.com/jroedel/reconcile/foundation/jobs"
 	"github.com/jroedel/reconcile/foundation/web"
 )
 
@@ -39,7 +40,7 @@ import (
 // Ledger is the slice of ledgerbus the books endpoints read.
 type Ledger interface {
 	Inbox(ctx context.Context, actor types.ID) ([]ledgerbus.InboxFile, error)
-	Propose(ctx context.Context, actor types.ID, fileIDs []types.ID, chosen map[string]types.ID) ([]ledgerbus.Proposal, error)
+	ProposeSaying(ctx context.Context, actor types.ID, fileIDs []types.ID, chosen map[string]types.ID, read func(done, of int)) ([]ledgerbus.Proposal, error)
 	Coverage(ctx context.Context, actor, accountID types.ID, today types.Date) ([]ledgerbus.MonthCover, error)
 	Statements(ctx context.Context, actor, accountID types.ID) ([]ledgerbus.Statement, error)
 	Review(ctx context.Context, actor, id types.ID) (ledgerbus.Review, error)
@@ -175,8 +176,9 @@ func (a app) bookEndpoints() []Endpoint {
 		},
 		{
 			Method: http.MethodGet, Path: Prefix + "/inbox", Scope: read, Tool: "list_inbox",
-			Summary: "The statement files waiting in your inbox, sent by your Gmail script, each read for the account proposed for it: its period, how it checked, how many transactions are new, and whether it can be imported with no person looking at it, or what needs a person.",
-			Returns: "{files: [{inbox_id, file, name, received, source, parts: [{part, account, account_name, by, period, transactions, new, check, ready, imported, needs}]}], imports_url}",
+			Summary: "The statement files waiting in your inbox, sent by your Gmail script, each read for the account proposed for it: its period, how it checked, how many transactions are new, and whether it can be imported with no person looking at it, or what needs a person. " + workingNote,
+			Query:   []Field{jobField("list_inbox")},
+			Returns: "{files: [{inbox_id, file, name, received, source, parts: [{part, account, account_name, by, period, transactions, new, check, ready, imported, needs}]}], imports_url}; or, while the files are still being read, " + workingReturns,
 			handler: a.listInbox,
 		},
 		{
@@ -849,22 +851,29 @@ func (a app) overview(w http.ResponseWriter, r *http.Request) {
 func (a app) listInbox(w http.ResponseWriter, r *http.Request) {
 	rd := a.reader(r)
 
-	inbox, err := a.books.Ledger.Inbox(r.Context(), rd.me)
-	if a.bookRefused(w, r, err, "inbox") {
+	res, ok := a.job(w, r, rd.me, "list_inbox", r.URL.Query().Get("job"), "inbox", func(ctx context.Context, report func(jobs.Progress)) (any, error) {
+		inbox, err := a.books.Ledger.Inbox(ctx, rd.me)
+		if err != nil {
+			return nil, err
+		}
+
+		files := make([]types.ID, 0, len(inbox))
+		for _, f := range inbox {
+			files = append(files, f.FileID)
+		}
+
+		var props []ledgerbus.Proposal
+		if len(files) > 0 {
+			props, err = a.books.Ledger.ProposeSaying(ctx, rd.me, files, nil, reading(report))
+		}
+
+		return inboxResult{inbox: inbox, props: props}, err
+	})
+	if !ok {
 		return
 	}
 
-	files := make([]types.ID, 0, len(inbox))
-	for _, f := range inbox {
-		files = append(files, f.FileID)
-	}
-
-	var props []ledgerbus.Proposal
-	if len(files) > 0 {
-		if props, err = a.books.Ledger.Propose(r.Context(), rd.me, files, nil); a.bookRefused(w, r, err, "file") {
-			return
-		}
-	}
+	inbox, props := res.inbox, res.props
 
 	out := make([]map[string]any, 0, len(inbox))
 

@@ -127,16 +127,25 @@ func TestABulkImportOfSeveralFiles(t *testing.T) {
 	form := url.Values{"f": q["f"], "to-" + csv: {strings.TrimPrefix(first, "/accounts/")}}
 
 	rec = stranger.post("/imports/import", form)
-	if loc := rec.Header().Get("Location"); rec.Code != http.StatusSeeOther || !strings.Contains(loc, "imported=0") {
+	if loc := rec.Header().Get("Location"); rec.Code != http.StatusSeeOther || !strings.Contains(loc, "job=") {
 		t.Errorf("a stranger's import: %d to %q", rec.Code, loc)
+	} else {
+		wantBody(t, stranger.get(loc), "Imported: 0.")
 	}
 
-	// The treasurer chooses the CSV's account and imports.
+	// The treasurer chooses the CSV's account and imports. The import is a
+	// job (issue #107), and the list it lands on is the job's.
 	rec = e.owner.post("/imports/import", form)
 
 	done := rec.Header().Get("Location")
-	if rec.Code != http.StatusSeeOther || !strings.Contains(done, "imported=2") {
+	if rec.Code != http.StatusSeeOther || !strings.Contains(done, "job=") {
 		t.Fatalf("import: %d to %q", rec.Code, done)
+	}
+
+	// The treasurer's job is not the stranger's: for them it is not there,
+	// and the list is read again as theirs, with nothing on it.
+	if body := stranger.get(done).Body.String(); strings.Contains(body, "statements.pdf") || strings.Contains(body, "Imported: 2.") {
+		t.Error("a stranger sees the treasurer's import")
 	}
 
 	page = e.owner.get(done)

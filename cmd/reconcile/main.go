@@ -40,6 +40,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/translation/translationbus"
 	"github.com/jroedel/reconcile/business/domain/user/stores/userdb"
 	"github.com/jroedel/reconcile/business/domain/user/userbus"
+	"github.com/jroedel/reconcile/foundation/jobs"
 	"github.com/jroedel/reconcile/foundation/logger"
 	"github.com/jroedel/reconcile/foundation/mail"
 	"github.com/jroedel/reconcile/foundation/sqldb"
@@ -187,6 +188,11 @@ func run() error {
 
 	go prune(ctx, log, users)
 
+	// What takes longer than the proxy lets a request last: a bulk
+	// import's reading and importing (issue #107). Its jobs stop with the
+	// server; one cut short is started again by whoever asks after it.
+	runner := jobs.New(ctx, log)
+
 	handler, err := muxer.New(muxer.Config{
 		Log:        log,
 		DB:         db,
@@ -210,6 +216,7 @@ func run() error {
 		Mail:       sender,
 		Bootstrap:  cfg.Auth.BootstrapSecret,
 		TrustProxy: cfg.Server.TrustProxy,
+		Jobs:       runner,
 	})
 	if err != nil {
 		return err

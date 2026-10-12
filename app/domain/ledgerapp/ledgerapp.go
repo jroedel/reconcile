@@ -90,6 +90,12 @@ type Config struct {
 	Rules  *rulebus.Business
 	Render Renderer
 
+	// Jobs runs a bulk import's reading and importing off the request
+	// (bulk.go, issue #107), and JobWait is how long a request waits on
+	// one; zero is bulkWait.
+	Jobs    Jobs
+	JobWait time.Duration
+
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
 }
@@ -102,6 +108,10 @@ type app struct {
 func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
+	}
+
+	if cfg.JobWait == 0 {
+		cfg.JobWait = bulkWait
 	}
 
 	a := app{cfg: cfg}
@@ -133,9 +143,9 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	handle("POST /transactions/{id}/explain/lines", a.gather)
 	handle("POST /transactions/{id}/explain/settle", a.settle)
 	handle("GET /projects/{id}/book", a.book)
-	handle(SlowPatterns[0], a.bulk)
+	handle("GET /imports", a.bulk)
 	handle(BulkPatterns[0], a.bulkUpload)
-	handle(SlowPatterns[1], a.bulkImport)
+	handle("POST /imports/import", a.bulkImport)
 	handle("POST /imports/check", a.bulkCheck)
 	handle("POST /imports/inbox/{id}/dismiss", a.dismiss)
 }

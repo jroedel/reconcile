@@ -16,6 +16,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/user/userbus"
 	"github.com/jroedel/reconcile/business/types"
 	"github.com/jroedel/reconcile/business/types/money"
+	"github.com/jroedel/reconcile/foundation/jobs"
 	"github.com/jroedel/reconcile/foundation/web"
 )
 
@@ -81,12 +82,13 @@ func (a app) keepEndpoints() []Endpoint {
 	return []Endpoint{
 		{
 			Method: http.MethodPost, Path: Prefix + "/inbox/import", Scope: write, Tool: "import_from_inbox",
-			Summary: "Import statements waiting in your inbox, as the bulk import on " + a.base + "/imports does. Only what needs no person is imported: a part that checks against its own figures, with nothing set aside, nothing skipped and no row waiting to be told whose it is. The rest stays waiting, and the answer says what each needs. A file leaves the inbox once every part of it is imported.",
+			Summary: "Import statements waiting in your inbox, as the bulk import on " + a.base + "/imports does. Only what needs no person is imported: a part that checks against its own figures, with nothing set aside, nothing skipped and no row waiting to be told whose it is. The rest stays waiting, and the answer says what each needs. A file leaves the inbox once every part of it is imported. " + workingNote,
 			Body: &Body{Encoding: "json", Fields: []Field{
+				jobField("import_from_inbox"),
 				{Name: "files", Type: "array of string", Description: "The files to import, by the file id list_inbox gives; every file waiting when left out."},
 				{Name: "accounts", Type: "array of object {file, part, account}", Description: "An account for a file, or for one part of a file, that list_inbox proposed none for, or proposed the wrong one: the file's id, the part as list_inbox gives it (empty for a file of one), and the account. Only an account you keep the books of."},
 			}},
-			Returns: "{imported, files: [{file, name, parts: [{part, account, account_name, outcome: imported|already_imported|waiting, needs, page}]}], imports_url}",
+			Returns: "{imported, files: [{file, name, parts: [{part, account, account_name, outcome: imported|already_imported|waiting, needs, page}]}], imports_url}; or, while the files are still being read or imported, " + workingReturns,
 			handler: a.importInbox,
 		},
 		{
@@ -249,52 +251,49 @@ func (a app) idList(w http.ResponseWriter, list []string, name string) ([]types.
 
 // --- the inbox --------------------------------------------------------------------
 
-func (a app) importInbox(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		Files    []string `json:"files"`
-		Accounts []struct {
-			File    string `json:"file"`
-			Part    string `json:"part"`
-			Account string `json:"account"`
-		} `json:"accounts"`
-	}
+// accountChoice is an account import_from_inbox is told for a file's
+// part.
+type accountChoice struct {
+	File    string `json:"file"`
+	Part    string `json:"part"`
+	Account string `json:"account"`
+}
 
-	if !a.body(w, r, &in) {
-		return
-	}
-
-	asked, ok := a.idList(w, in.Files, "files")
+// startImport reads what import_from_inbox was asked, and the inbox, in
+// the call -- both quick, and a file that is not waiting there is the
+// call's answer -- and starts the reading and importing as a job, which
+// it waits on as job does.
+func (a app) startImport(w http.ResponseWriter, r *http.Request, rd *reader, askedFiles []string, accounts []accountChoice) (inboxResult, bool) {
+	asked, ok := a.idList(w, askedFiles, "files")
 	if !ok {
-		return
+		return inboxResult{}, false
 	}
 
 	chosen := map[string]types.ID{}
 
-	for _, c := range in.Accounts {
+	for _, c := range accounts {
 		file, ok := a.optionalID(w, c.File, "accounts")
 		if !ok {
-			return
+			return inboxResult{}, false
 		}
 
 		account, ok := a.optionalID(w, c.Account, "accounts")
 		if !ok {
-			return
+			return inboxResult{}, false
 		}
 
 		if file.Zero() || account.Zero() {
 			web.WriteJSON(w, http.StatusBadRequest, web.Problem("accounts", "Each account choice needs a file and an account, and a part for a file of several."))
 
-			return
+			return inboxResult{}, false
 		}
 
 		chosen[ledgerbus.Proposal{File: filebus.File{ID: file}, Part: c.Part}.Key()] = account
 	}
 
-	rd := a.reader(r)
-
 	inbox, err := a.books.Ledger.Inbox(r.Context(), rd.me)
 	if a.bookRefused(w, r, err, "inbox") {
-		return
+		return inboxResult{}, false
 	}
 
 	// Only files in the inbox: an id that is not one there is nothing to
@@ -314,7 +313,7 @@ func (a app) importInbox(w http.ResponseWriter, r *http.Request) {
 		if _, ok := names[id]; !ok {
 			web.WriteJSON(w, http.StatusNotFound, web.Problem("files", fmt.Sprintf("%s is not a file waiting in your inbox. list_inbox lists them.", id)))
 
-			return
+			return inboxResult{}, false
 		}
 	}
 
@@ -322,18 +321,61 @@ func (a app) importInbox(w http.ResponseWriter, r *http.Request) {
 		files = files[:ledgerbus.MaxBatch]
 	}
 
-	var props []ledgerbus.Proposal
-	if len(files) > 0 {
-		if props, err = a.books.Ledger.Propose(r.Context(), rd.me, files, chosen); a.bookRefused(w, r, err, "file") {
-			return
+	// The same files and choices asked twice while the first is working
+	// are the one job (jobs.Runner.Start).
+	key := fmt.Sprintf("import %v %v", files, chosen)
+	me := rd.me
+
+	return a.job(w, r, me, "import_from_inbox", "", key, func(ctx context.Context, report func(jobs.Progress)) (any, error) {
+		res := inboxResult{files: files, names: names}
+
+		if len(files) > 0 {
+			props, err := a.books.Ledger.ProposeSaying(ctx, me, files, chosen, reading(report))
+			if err != nil {
+				return nil, err
+			}
+
+			res.props = props
 		}
+
+		report(jobs.Progress{Stage: "importing"})
+
+		n, err := a.books.Ledger.ImportProposals(ctx, time.Now(), me, res.props)
+		res.imported = n
+
+		return res, err
+	})
+}
+
+func (a app) importInbox(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Job      string          `json:"job"`
+		Files    []string        `json:"files"`
+		Accounts []accountChoice `json:"accounts"`
 	}
 
-	n, err := a.books.Ledger.ImportProposals(r.Context(), time.Now(), rd.me, props)
-	if a.bookRefused(w, r, err, "file") {
+	if !a.body(w, r, &in) {
 		return
 	}
 
+	rd := a.reader(r)
+
+	var (
+		res inboxResult
+		ok  bool
+	)
+
+	if in.Job != "" {
+		res, ok = a.job(w, r, rd.me, "import_from_inbox", in.Job, "", nil)
+	} else {
+		res, ok = a.startImport(w, r, rd, in.Files, in.Accounts)
+	}
+
+	if !ok {
+		return
+	}
+
+	files, names, props, n := res.files, res.names, res.props, res.imported
 	ready := 0
 
 	out := make([]map[string]any, 0, len(files))

@@ -5,6 +5,7 @@
 */}}
 {{define "problem"}}{{if .}}<p class="notice" role="alert">
 {{- if eq . "no-file"}}{{t "Choose a file first: the statement you downloaded from your bank's website."}}
+{{- else if eq . "busy"}}{{t "The site has too many files waiting to be read just now. Try again in a minute."}}
 {{- else if eq . "too-big"}}{{t "That file is too big for a statement. Download a shorter period from your bank, a few months at a time."}}
 {{- else if eq . "pdf-unavailable"}}{{t "PDFs cannot be read on this site at the moment. Download the same statement from your bank's website as CSV or OFX instead."}}
 {{- else if eq . "pdf-scan"}}{{t "That PDF is a picture of a statement, such as a scan, with no text in it to read. Download the statement from your bank's website as CSV or OFX instead."}}
