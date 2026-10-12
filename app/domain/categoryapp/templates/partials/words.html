@@ -2,6 +2,10 @@
 {{- if eq . "name"}}{{t "Give the category a name, of at most {max} characters." "max" 60}}
 {{- else if eq . "kind"}}{{t "Choose what kind of money it is: income, an expense, a transfer or pass-through."}}
 {{- else if eq . "duplicate"}}{{t "The list already has a category with that name. If it is archived, bring it back instead."}}
+{{- else if eq . "group-name"}}{{t "Give the group a name, of at most {max} characters." "max" 60}}
+{{- else if eq . "group-duplicate"}}{{t "The list already has a group with that name. If it is archived, bring it back instead."}}
+{{- else if eq . "group-kind"}}{{t "A category goes under a group of its own kind."}}
+{{- else if eq . "group-archived"}}{{t "That group is archived. Bring it back first."}}
 {{- else}}{{t "Something went wrong at our end. Please try again in a few minutes."}}
 {{- end}}</p>{{end}}{{end}}
 
@@ -11,6 +15,12 @@
 {{- else if eq . "archived"}}{{t "Archived. It is off the choices, and stays on the transactions that have it."}}
 {{- else if eq . "restored"}}{{t "Brought back."}}
 {{- else if eq . "kind"}}{{t "Saved. Every part in it now counts as that kind, earlier ones included."}}
+{{- else if eq . "group-added"}}{{t "Group added. Put categories under it from their own lines."}}
+{{- else if eq . "group-renamed"}}{{t "Renamed, on every report."}}
+{{- else if eq . "group-archived"}}{{t "Archived. Its categories stay under it on reports, and none can be put under it."}}
+{{- else if eq . "group-restored"}}{{t "Brought back."}}
+{{- else if eq . "grouped"}}{{t "Saved. Reports by group show it on its group's line."}}
+{{- else if eq . "ungrouped"}}{{t "Saved. It is under no group now, and has its own line on reports."}}
 {{- end}}</p>{{end}}{{end}}
 
 {{/* kind is a kind of money's name, as a heading or a choice. */}}

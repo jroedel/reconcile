@@ -131,6 +131,16 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 
 	report := saveReport(t, e.owner, e.org, url.Values{"style": {"income-expenses-by-month"}, "title": {"P&L"}})
 
+	// A group of each list, and a category of each to put under it.
+	for _, list := range []string{e.org + "/categories", e.ownAccount + "/categories"} {
+		wantRedirect(t, e.owner.post(list, url.Values{"name": {"Groceries"}, "kind": {"expense"}}), list+"?done=added")
+	}
+
+	group := addedGroup(t, e.owner, e.org+"/categories", "Food", "expense")
+	ownGroup := addedGroup(t, e.owner, e.ownAccount+"/categories", "Food", "expense")
+	category := categoriesOn(e.owner, e.org+"/categories")["Groceries"]
+	ownCategory := categoriesOn(e.owner, e.ownAccount+"/categories")["Groceries"]
+
 	gets := []string{
 		e.org, e.account, e.project, e.ownAccount, e.ownProject,
 		"/accounts/new?org=" + orgID, "/projects/new?org=" + orgID,
@@ -171,6 +181,8 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		{"/projects", url.Values{"org": {orgID}, "name": {"Mine now"}}},
 		{e.org + "/categories", url.Values{"name": {"Mine now"}, "kind": {"expense"}}},
 		{e.ownAccount + "/categories", url.Values{"name": {"Mine now"}, "kind": {"expense"}}},
+		{e.org + "/categories/groups", url.Values{"name": {"Mine now"}, "kind": {"expense"}}},
+		{e.ownAccount + "/categories/groups", url.Values{"name": {"Mine now"}, "kind": {"expense"}}},
 		{e.org + "/budget?year=2026", url.Values{"currency": {"USD"}, "expense-total": {"100"}}},
 		{e.org + "/budget/copy?year=2027", nil},
 		{e.org + "/budget/year-start", url.Values{"month": {"7"}}},
@@ -209,6 +221,24 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 			write{account + "/rules", url.Values{"match": {"Mine now"}, "direction": {"out"}}},
 			write{account + "/rules/apply", nil},
 			write{account + "/sort?month=2026-07", url.Values{"tx-0": {"0123456789abcdef0123456789abcdef"}, "category-0": {"0123456789abcdef0123456789abcdef"}}},
+		)
+	}
+
+	for i, c := range []string{category, ownCategory} {
+		g := strings.TrimPrefix([]string{group, ownGroup}[i], "/category-groups/")
+
+		writes = append(writes,
+			write{c + "/rename", url.Values{"name": {"Mine now"}}},
+			write{c + "/archive", url.Values{"archived": {"1"}}},
+			write{c + "/kind", url.Values{"kind": {"income"}}},
+			write{c + "/group", url.Values{"group": {g}}},
+		)
+	}
+
+	for _, g := range []string{group, ownGroup} {
+		writes = append(writes,
+			write{g + "/rename", url.Values{"name": {"Mine now"}}},
+			write{g + "/archive", url.Values{"archived": {"1"}}},
 		)
 	}
 

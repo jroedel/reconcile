@@ -28,7 +28,10 @@ func parsed(w http.ResponseWriter, r *http.Request) bool {
 func fields(r *http.Request) reportbus.Fields {
 	f := reportbus.Fields{
 		Title: r.PostForm.Get("title"), Description: r.PostForm.Get("description"), Period: r.PostForm.Get("default"),
-		Choices: reportbus.IncomeExpensesChoices{PassThrough: reportbus.PassThroughShown(r.PostForm.Get("passthrough"))},
+		Choices: reportbus.IncomeExpensesChoices{
+			PassThrough: reportbus.PassThroughShown(r.PostForm.Get("passthrough")),
+			Detail:      reportbus.Detail(r.PostForm.Get("detail")),
+		},
 	}
 
 	for _, s := range r.PostForm["account"] {

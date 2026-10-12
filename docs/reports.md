@@ -276,11 +276,25 @@ lines can be read as ten.
   by whoever may change the list's categories. The split editor's choice
   is still the categories, grouped by kind as now; groups are for
   reading, not sorting.
-- `category_groups(id, owner_kind, owner_id, kind, name, created_by,
-  created_at, archived_at)`, `STRICT`, unique on the owner and name; and
-  `categories.group_id NULL` by `AddColumn` in `categorydb`, with the
-  old-schema test. Making, renaming and archiving a group, and moving a
-  category in or out, go in the history.
+- **An archived group keeps its categories.** It is off the choices, so
+  nothing new goes under it, but last year's report by group reads as it
+  did, and its categories are shown under it on the categories page. A
+  category taken out of it cannot go back until it is brought back.
+- Only income and expense groups are offered on the page, because a
+  report's rows are those; the rule itself takes a group of any kind.
+- In code a group is `categorybus.Heading`, because `categorybus.Group`
+  was already the categories of one kind as a choice lays them out. On a
+  page, in the history and in the engine's dimension (`ByGroup`) it is a
+  group.
+- `category_groups(id, org_id, account_id, kind, name, created_by,
+  created_at, archived_at)`, `STRICT`, with an owner column of each kind
+  as `categories` has, unique on the owner and name without regard to
+  case; and `categories.group_id NULL` by `AddColumn` in `categorydb`,
+  with the old-schema test. Making, renaming and archiving a group, and
+  moving a category in or out, go in the history.
+- A note's fingerprint of the figures is of the categories' sums, not the
+  groups', so moving a category between groups does not say the figures
+  changed: the money is the same.
 
 ## Who
 

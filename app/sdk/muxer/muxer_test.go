@@ -121,7 +121,7 @@ func newSite(t *testing.T, want sqldb.Expected, configure func(*Config)) (http.H
 		Categories: categories,
 		Rules:      rules,
 		Budgets:    budgetbus.NewBusiness(log, budgetdb.NewStore(db), tenancy, ledger, categories),
-		Reports:    reportbus.NewBusiness(tenancy, ledger, reportdb.NewStore(db)),
+		Reports:    reportbus.NewBusiness(tenancy, ledger, categories, reportdb.NewStore(db)),
 		Receipts:   receipts,
 		Export:     exportbus.NewBusiness(log, tenancy, ledger, receipts, categories, files),
 		BaseURL:    base,

@@ -102,6 +102,10 @@ type Category struct {
 	CreatedBy  types.ID
 	CreatedAt  time.Time
 	ArchivedAt time.Time
+
+	// GroupID is the heading it is under (Heading), zero for none: one of
+	// its list's, of its kind.
+	GroupID types.ID
 }
 
 // Archived reports whether it is off the choices.
@@ -119,6 +123,11 @@ type Storer interface {
 	Update(ctx context.Context, c Category, ev eventbus.Event) error
 	ByID(ctx context.Context, id types.ID) (Category, error)
 	Of(ctx context.Context, owner types.Scope) ([]Category, error)
+
+	CreateHeading(ctx context.Context, h Heading, ev eventbus.Event) error
+	UpdateHeading(ctx context.Context, h Heading, ev eventbus.Event) error
+	HeadingByID(ctx context.Context, id types.ID) (Heading, error)
+	HeadingsOf(ctx context.Context, owner types.Scope) ([]Heading, error)
 }
 
 // Business is the set of operations on category lists.
@@ -325,7 +334,22 @@ func (b *Business) SetKind(ctx context.Context, now time.Time, actor, id types.I
 	from := c.Kind
 	c.Kind = kind
 
-	return c, b.store.Update(ctx, c, eventbus.New(now, actor, c.Owner, KindSet, map[string]string{"name": c.Name, "from": string(from), "kind": string(kind)}))
+	detail := map[string]string{"name": c.Name, "from": string(from), "kind": string(kind)}
+
+	// A heading is of one kind, so a category of another leaves it, and the
+	// history says which; a person puts it under one of its new kind.
+	if !c.GroupID.Zero() {
+		h, err := b.store.HeadingByID(ctx, c.GroupID)
+		if err != nil && !errors.Is(err, ErrNotFound) {
+			return Category{}, err
+		}
+
+		if err != nil || h.Kind != kind {
+			c.GroupID, detail["group"] = types.ID{}, h.Name
+		}
+	}
+
+	return c, b.store.Update(ctx, c, eventbus.New(now, actor, c.Owner, KindSet, detail))
 }
 
 // Group is the categories of one kind.

@@ -33,6 +33,11 @@
     <label class="choice"><input type="radio" name="passthrough" value="total"{{if ne (printf "%s" $f.Choices.PassThrough) "each"}} checked{{end}}> {{t "One total"}}</label>
     <label class="choice"><input type="radio" name="passthrough" value="each"{{if eq (printf "%s" $f.Choices.PassThrough) "each"}} checked{{end}}> {{t "Each category"}}</label>
   </fieldset>
+  {{if $e.Report.Grouped}}<fieldset class="field">
+    <legend>{{t "A row for"}}</legend>
+    <label class="choice"><input type="radio" name="detail" value="category"{{if ne (printf "%s" $f.Choices.Detail) "group"}} checked{{end}}> {{t "Each category"}}</label>
+    <label class="choice"><input type="radio" name="detail" value="group"{{if eq (printf "%s" $f.Choices.Detail) "group"}} checked{{end}}> {{t "Each group, and each category under none"}}</label>
+  </fieldset>{{end}}
   <button type="submit">{{t "Save"}}</button>
 </form>
 </section>

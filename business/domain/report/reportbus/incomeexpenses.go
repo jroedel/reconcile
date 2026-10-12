@@ -68,12 +68,23 @@ const (
 	EachCategory PassThroughShown = "each"
 )
 
+// Detail is how finely a report's income and expenses are shown.
+type Detail string
+
+// The details. A category under no group is its own row either way, so a
+// list with no groups reads the same in both.
+const (
+	EachCategoryRow Detail = "category"
+	EachGroupRow    Detail = "group"
+)
+
 // IncomeExpensesChoices is what a person chooses of this style. A field
 // added later gets a default here, so that every address and saved report
 // from before it reads as that default.
 type IncomeExpensesChoices struct {
 	Accounts    []types.ID // none: every account of the books
 	PassThrough PassThroughShown
+	Detail      Detail
 }
 
 func (c IncomeExpensesChoices) normal() IncomeExpensesChoices {
@@ -81,15 +92,20 @@ func (c IncomeExpensesChoices) normal() IncomeExpensesChoices {
 		c.PassThrough = OneTotal
 	}
 
+	if c.Detail != EachGroupRow {
+		c.Detail = EachCategoryRow
+	}
+
 	return c
 }
 
-// Row is a line of the table: a category, a kind's total, the net, or what
-// is not sorted yet. Months is a figure per month of the report, in its
-// order; Total is theirs together.
+// Row is a line of the table: a category, a group of them, a kind's total,
+// the net, or what is not sorted yet. Months is a figure per month of the
+// report, in its order; Total is theirs together.
 type Row struct {
 	Kind       categorybus.Kind
-	CategoryID types.ID // zero for a total
+	CategoryID types.ID // zero for a group or a total
+	GroupID    types.ID // a group's row
 	Name       string
 	Months     []money.Amount
 	Total      money.Amount
@@ -179,7 +195,12 @@ func (b *Business) IncomeExpenses(ctx context.Context, now time.Time, actor type
 	c = c.normal()
 	p = defaulted(p, today, books.FiscalStart)
 
-	a, err := b.Sum(ctx, actor, Question{Scope: scope, Accounts: c.Accounts, Period: p, By: []Dimension{ByKind, ByCategory, ByMonth}})
+	by := []Dimension{ByKind, ByCategory, ByMonth}
+	if c.Detail == EachGroupRow {
+		by = []Dimension{ByKind, ByGroup, ByCategory, ByMonth}
+	}
+
+	a, err := b.Sum(ctx, actor, Question{Scope: scope, Accounts: c.Accounts, Period: p, By: by})
 	if err != nil {
 		return IncomeExpenses{}, err
 	}
@@ -322,16 +343,23 @@ func newRow(kind categorybus.Kind, name string, months []string) Row {
 	return Row{Kind: kind, Name: name, Months: make([]money.Amount, len(months))}
 }
 
-// rowFor is the category's row among rows, made if it is not there yet.
+// rowFor is the cell's row among rows, made if it is not there yet: its
+// group's, when the cells were read by group and it is under one, and
+// otherwise its category's.
 func rowFor(rows *[]Row, c Cell, months []string) *Row {
 	for i := range *rows {
-		if (*rows)[i].CategoryID == c.CategoryID {
+		if r := (*rows)[i]; (!c.GroupID.Zero() && r.GroupID == c.GroupID) || (c.GroupID.Zero() && r.GroupID.Zero() && r.CategoryID == c.CategoryID) {
 			return &(*rows)[i]
 		}
 	}
 
 	r := newRow(c.Kind, c.Category, months)
 	r.CategoryID = c.CategoryID
+
+	if !c.GroupID.Zero() {
+		r.Name, r.CategoryID, r.GroupID = c.Group, types.ID{}, c.GroupID
+	}
+
 	*rows = append(*rows, r)
 
 	return &(*rows)[len(*rows)-1]
