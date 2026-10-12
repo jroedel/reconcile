@@ -101,6 +101,56 @@ func Restrict(path string) error {
 	return nil
 }
 
+// Snapshot writes a consistent copy of the database to path while it is in
+// use, and checks that the copy reads.
+//
+// VACUUM INTO rather than copying the file. The database is in WAL mode, so
+// its latest writes are in the -wal file until a checkpoint, and a copy of
+// the .db alone opens perfectly and is missing them, with nothing to say so.
+// VACUUM INTO reads the database as one transaction, the WAL included, in
+// whatever process asks -- a second process beside the running server, here
+// -- and so needs neither the server stopped nor sqlite3 on the host, which
+// shared hosting does not promise.
+//
+// The file is made first, empty, private and only if nothing is there:
+// VACUUM INTO writes into an empty file, so the copy is 0600 from its first
+// byte rather than after a chmod, and a snapshot never overwrites another.
+func Snapshot(ctx context.Context, db *sql.DB, path string) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return fmt.Errorf("starting the snapshot: %w", err)
+	}
+
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("starting the snapshot: %w", err)
+	}
+
+	if _, err := db.ExecContext(ctx, `VACUUM INTO ?`, path); err != nil {
+		os.Remove(path)
+
+		return fmt.Errorf("taking the snapshot: %w", err)
+	}
+
+	// Read back, read-only, so that a copy that cannot be read is found now
+	// and not on the day it is needed.
+	copied, err := sql.Open("sqlite", "file:"+uriPath.Replace(path)+"?mode=ro")
+	if err != nil {
+		return fmt.Errorf("checking the snapshot: %w", err)
+	}
+	defer copied.Close()
+
+	var verdict string
+	if err := copied.QueryRowContext(ctx, `PRAGMA quick_check`).Scan(&verdict); err != nil {
+		return fmt.Errorf("checking the snapshot: %w", err)
+	}
+
+	if verdict != "ok" {
+		return fmt.Errorf("the snapshot at %s does not read whole: %s", path, verdict)
+	}
+
+	return nil
+}
+
 // Init creates the infrastructure table. Domain tables belong to their own
 // stores; this one is about the database rather than about any domain.
 //

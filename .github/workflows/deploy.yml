@@ -96,7 +96,6 @@ jobs:
           APP_PORT: ${{ vars.APP_PORT }}
           APP_DIR: ${{ vars.APP_DIR }}
           APP_DOCROOT: ${{ vars.APP_DOCROOT }}
-          KEEP_BACKUPS: ${{ vars.KEEP_BACKUPS }}
 
           # A runner's checkout is a detached HEAD, and the trigger already is
           # "a commit on main".

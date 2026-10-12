@@ -68,9 +68,10 @@ deploy workflow skips itself rather than failing. The `ship` job in
    a deploy that changes nothing;
 4. stops if a newer commit has reached `main` meanwhile (its own deploy
    follows);
-5. reinstalls `.htaccess` and the cron watchdog;
+5. reinstalls `.htaccess`, the cron watchdog and the nightly backup;
 6. under the supervisor's lock: stops the app, backs up `reconcile.db` and
-   snapshots `files/` (keeping `KEEP_BACKUPS` of each), and swaps the binary;
+   snapshots `files/`, prunes the old ones by age (below), and swaps the
+   binary;
 7. starts it, and waits for `/healthz` on the loopback. If it does not start
    or does not answer, it **rolls back** to the last binary that did;
 8. checks from outside that `/healthz` is 200 and `/` is answered by the app.
@@ -87,12 +88,14 @@ On the server, in `APP_DIR`:
 | `config.toml` | from `make deploy-send-secrets`; never edited on the server |
 | `reconcile.db` | the database, mode 0600 |
 | `files/` | uploaded statements and receipts, one file per content hash. Mode 0700, served only through the app |
-| `backups/` | per deploy, a copy of the database and a snapshot of `files/`, the newest `KEEP_BACKUPS` of each kept. The snapshots are hard links, so a file is stored once however many hold it. On the same disk, so a copy off the server is still a person's to take |
+| `backups/` | a copy of the database and a snapshot of `files/`, taken on every deploy and every night at 03:23 by the server's clock. Kept by age: everything from the last two days, the newest of each day for thirty days, and the newest of each month for good. The snapshots are hard links, so a file is stored once however many hold it. On the same disk, so the copy that survives losing the server is `make prod-pull-backup` |
 | `run.sh`, `supervise.sh` | start the binary, and keep it running from cron |
+| `backup.sh` | the nightly backup, and the pruning by age every backup goes through |
 | `reconcile.log` | the server's log |
 | `deployed-commit.txt` | the commit that is live |
 
-The watchdog is two crontab lines ending in `# reconcile`. The crontab is
+The watchdog and the nightly backup are three crontab lines ending in
+`# reconcile`. The crontab is
 shared with mass-intentions and stewards, and each project's deploy leaves the
 others' lines alone -- `scripts/deploy-test.sh` holds that.
 
@@ -103,6 +106,7 @@ others' lines alone -- `scripts/deploy-test.sh` holds that.
 | `make prod-status` | the process, the public checks, what is live, backups, the size of `files/`, the log |
 | `make prod-logs N=200` | the tail of the log |
 | `make prod-backup` | a backup now (stops the app for a second or two) |
+| `make prod-pull-backup` | a snapshot of the live database, and every uploaded file not already there, into `~/reconcile-backups` (or `DEST=`). Nothing stops; run it again and only new files come down. It is everybody's books: keep it off shared drives and out of the repository |
 | `make prod-restart` | restart |
 | `make deploy` | deploy from your machine, from a clean `main` |
 | `make deploy-htaccess` | the front end only |

@@ -17,6 +17,7 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEPLOY="$REPO_DIR/deploy/deploy.sh"
 SUPERVISE="$REPO_DIR/deploy/supervise.sh"
+BACKUP="$REPO_DIR/deploy/backup.sh"
 
 pass=0
 fail=0
@@ -106,7 +107,7 @@ rm -f "$APP_DIR"/reconcile* "$APP_DIR/state" "$APP_DIR/supervise.sh"
 # ------------------------------------------------------------------ cron
 
 echo
-echo "the watchdog, on a crontab shared with mass-intentions and stewards"
+echo "the watchdog and the nightly backup, on a crontab shared with mass-intentions and stewards"
 
 export CRONFILE="$TMP/crontab.txt"
 mkdir -p "$TMP/bin"
@@ -141,28 +142,30 @@ for _ in 1 2 3; do install_cron; done
 count() { grep -c -- "$1" "$CRONFILE" || true; }
 ours() { grep -c ' # reconcile$' "$CRONFILE" || true; }
 
-check "three deploys leave exactly our two lines" test "$(ours)" -eq 2
+check "three deploys leave exactly our three lines" test "$(ours)" -eq 3
 check "one of them is the watchdog, every five minutes" \
 	grep -q "^\*/5 \* \* \* \* cd $Q_DIR && ./supervise.sh watch # reconcile$" "$CRONFILE"
-check "and the other starts it at boot" \
+check "one starts it at boot" \
 	grep -q "^@reboot cd $Q_DIR && ./supervise.sh start # reconcile$" "$CRONFILE"
+check "and one backs it up every night" \
+	grep -q "^23 3 \* \* \* cd $Q_DIR && ./backup.sh nightly # reconcile$" "$CRONFILE"
 check "every mass-intentions line is left alone" test "$(count '# mass-intentions')" -eq 3
 check "and every stewards line" test "$(count '# stewards$')" -eq 2
-check "and so is somebody else's" test "$(count 'backup.sh')" -eq 1
+check "and so is somebody else's" test "$(count '/home/someone/backup.sh')" -eq 1
 
 # The other direction. mass-intentions' install_cron removes every line matching
 # this before writing its own -- copied here from its deploy.sh, because the
 # repository is not available to CI. If ours matched it, its next deploy would
 # delete our watchdog and nothing would restart this app again.
 MASS_INTENTIONS_STALE='# mass-intentions|supervise\.sh start (production|rehearsal)'
-survives_theirs() { [ "$(grep -Ev "$MASS_INTENTIONS_STALE" "$CRONFILE" | grep -c ' # reconcile$')" -eq 2 ]; }
+survives_theirs() { [ "$(grep -Ev "$MASS_INTENTIONS_STALE" "$CRONFILE" | grep -c ' # reconcile$')" -eq 3 ]; }
 check "mass-intentions' next deploy leaves our watchdog in place" survives_theirs
 
 # stewards finds its own lines by the marker " # stewards" at the end of the
 # line, exactly as we find ours, so the two can only collide if one marker
 # ends the other.
 STEWARDS_STALE=' # stewards$'
-survives_stewards() { [ "$(grep -Ev "$STEWARDS_STALE" "$CRONFILE" | grep -c ' # reconcile$')" -eq 2 ]; }
+survives_stewards() { [ "$(grep -Ev "$STEWARDS_STALE" "$CRONFILE" | grep -c ' # reconcile$')" -eq 3 ]; }
 check "and so does stewards' next deploy" survives_stewards
 
 # One of ours at a path we no longer use. Found by the marker wherever it
@@ -283,8 +286,14 @@ check "Apache's 404 does not" not_apache
 echo
 echo "backups"
 
-KEEP_BACKUPS=2
 eval "$(body backup_script)"
+
+# backup.sh as shipped, which the snippet prunes through. Its clock is
+# BACKUP_NOW: the backups below are stamped 2026-09-30, and are "now" until
+# the clock is moved on.
+cp "$BACKUP" "$APP_DIR/backup.sh"
+utc() { command date -u -d "$1" +%s; }
+export BACKUP_NOW; BACKUP_NOW="$(utc 2026-09-30T12:00:00Z)"
 
 # The stamp comes from `date`, which is replaced so that four backups in the
 # same second have four names.
@@ -306,9 +315,7 @@ printf 'db\n' > "$APP_DIR/reconcile.db"
 for _ in 1 2 3 4; do run_backup >/dev/null; done
 
 kept() { find "$APP_DIR/backups" -name 'reconcile-*.db' | wc -l | tr -d ' '; }
-newest_kept() { test -f "$APP_DIR/backups/reconcile-20260930T000005Z.db"; }
-check "four backups with KEEP_BACKUPS=2 leave two (saw $(kept))" test "$(kept)" -eq 2
-check "and the two kept are the newest" newest_kept
+check "four backups the same morning are all kept, being less than two days old (saw $(kept))" test "$(kept)" -eq 4
 check "the backups directory is private" test "$(stat -c %a "$APP_DIR/backups")" = 700
 
 # The files: snapshotted beside each backup, as links rather than copies.
@@ -333,7 +340,16 @@ check "a file removed afterwards survives in the snapshot" survives
 
 for _ in 1 2 3; do run_backup >/dev/null 2>&1; done
 snaps() { find "$APP_DIR/backups" -maxdepth 1 -name 'files-*' | wc -l | tr -d ' '; }
-check "snapshots are kept to KEEP_BACKUPS too (saw $(snaps))" test "$(snaps)" -eq 2
+
+# A week on, the next deploy's backup prunes the old ones: of a day a week
+# ago, only its newest is kept.
+newest="$(find "$APP_DIR/backups" -name 'reconcile-*.db' | sort -r | head -1)"
+BACKUP_NOW="$(utc 2026-10-07T12:00:00Z)"
+( cd "$APP_DIR" && ./backup.sh prune )
+check "a week later, one backup of that day is kept (saw $(kept))" test "$(kept)" -eq 1
+check "and it is the day's newest" test -f "$newest"
+check "and one snapshot of the files (saw $(snaps))" test "$(snaps)" -eq 1
+BACKUP_NOW="$(utc 2026-09-30T12:00:00Z)"
 
 # A host whose cp cannot link: the snapshot warns, the database is backed up
 # all the same, and the command the snippet is part of carries on.
@@ -346,12 +362,163 @@ echo after-the-snippet" ) 2>&1 )"
 
 warned()       { grep -q 'WARNING: the files could not be snapshotted' <<<"$out"; }
 db_backed_up() { grep -q 'backed up to backups/reconcile-' <<<"$out"; }
-no_half_snap() { test "$(snaps)" -le 2; }
+no_half_snap() { test "$(snaps)" -eq 1; }
 check "a snapshot that fails warns" warned
 check "and the database is backed up all the same" db_backed_up
 check "and nothing half-made is left" no_half_snap
 check "and the command carries on" grep -q 'after-the-snippet' <<<"$out"
 unset -f date
+
+# ------------------------------------------------------------------ kept by age
+
+echo
+echo "which backups are kept"
+
+eval "$(extract "$BACKUP" doomed)"
+STAMP='[0-9]{8}T[0-9]{6}Z'
+
+# Invented names, a year of them, against a clock at 2026-10-12 00:00: two
+# days ago is the 10th, thirty days ago the 12th of September.
+let_go="$(doomed 20261010T000000Z 20260912T000000Z <<'NAMES'
+reconcile-20261011T230000Z.db
+reconcile-20261011T010000Z.db
+reconcile-20261010T120000Z.db
+reconcile-20261009T200000Z.db
+reconcile-20261009T100000Z.db
+reconcile-20260920T030000Z.db
+reconcile-20260901T120000Z.db
+reconcile-20260901T080000Z.db
+reconcile-20260815T030000Z.db
+reconcile-20260801T030000Z.db
+reconcile-20250105T030000Z.db
+reconcile-not-one-of-ours.db
+NAMES
+)"
+
+goes()  { grep -qx "reconcile-$1.db" <<<"$let_go"; }
+stays() { ! goes "$1"; }
+check "everything from the last two days stays" stays 20261011T010000Z
+check "  however many there are in a day" stays 20261010T120000Z
+check "of an older day, its newest stays" stays 20261009T200000Z
+check "  and the others go" goes 20261009T100000Z
+check "a day alone in its last thirty stays" stays 20260920T030000Z
+check "past thirty days, the newest of the month stays" stays 20260901T120000Z
+check "  and the rest of that month goes" goes 20260901T080000Z
+check "  in every month" goes 20260801T030000Z
+check "a month's newest stays for good" stays 20250105T030000Z
+check "a name it did not make is never let go" stays not-one-of-ours
+check "and nothing else goes (saw $(grep -c . <<<"$let_go"))" test "$(grep -c . <<<"$let_go")" -eq 3
+
+# ------------------------------------------------------------------ nightly
+
+echo
+echo "the nightly backup"
+
+NIGHT="$TMP/night"
+mkdir -p "$NIGHT/files"
+cp "$BACKUP" "$NIGHT/backup.sh"
+
+# The binary, faked to what backup.sh asks of it: -backup writes the file it
+# is given, or fails when told to.
+cat > "$NIGHT/reconcile" <<'FAKE'
+#!/usr/bin/env bash
+[ -f ./fail ] && { echo "reconcile: the database is locked" >&2; exit 1; }
+while [ $# -gt 0 ]; do [ "$1" = -backup ] && { printf 'snapshot\n' > "$2"; exit 0; }; shift; done
+exit 2
+FAKE
+chmod +x "$NIGHT/reconcile"
+
+night() { ( cd "$NIGHT" && ./backup.sh nightly ) 2>&1; }
+
+out="$(night)"; status=$?
+nothing_yet() { [ -z "$out" ] && [ ! -d "$NIGHT/backups" ]; }
+check "with no database yet, it does nothing and says nothing" nothing_yet
+
+printf 'db\n' > "$NIGHT/reconcile.db"
+printf 'an invented receipt\n' > "$NIGHT/files/cccc"
+out="$(night)"; status=$?
+nightly_db()    { find "$NIGHT/backups" -name 'reconcile-*.db' | grep -q .; }
+nightly_files() { find "$NIGHT/backups" -path '*/files-*/cccc' | grep -q .; }
+nightly_mode()  { test "$(stat -c %a "$(find "$NIGHT/backups" -name 'reconcile-*.db' | head -1)")" = 600; }
+check "it backs the database up" nightly_db
+check "and snapshots the files" nightly_files
+check "privately" nightly_mode
+check "and says nothing, so cron sends no mail" test -z "$out"
+check "and succeeds" test "$status" -eq 0
+
+touch "$NIGHT/fail"
+sleep 1
+before="$(find "$NIGHT/backups" -name 'reconcile-*.db' | wc -l)"
+out="$(night)" && status=0 || status=$?
+said_why()    { grep -q 'the database is locked' <<<"$out" && grep -q 'nightly backup of the database failed' <<<"$out"; }
+nothing_half() { test "$(find "$NIGHT/backups" -name 'reconcile-*.db' | wc -l)" -eq "$before"; }
+check "a backup that fails says why, so cron mails it" said_why
+check "and fails" test "$status" -ne 0
+check "and leaves nothing half-made" nothing_half
+rm -f "$NIGHT/fail"
+unset BACKUP_NOW
+
+# ------------------------------------------------------------------ pull
+
+echo
+echo "pulling a copy to this machine"
+
+eval "$(body sha256_of)"
+eval "$(body cmd_pull_backup)"
+
+# The server is a directory here, scp is cp, and what needs ssh or secrets.env
+# is already done.
+SERVER="$TMP/server"
+mkdir -p "$SERVER/files/sized"
+load_config() { :; }
+need_app_dir() { :; }
+ssh_setup() { :; }
+die() { echo "DIED: $*" >&2; exit 1; }
+pull_file() { cp "$SERVER/$1" "$2"; }
+pull_in_server() { APP_DIR=. ; remote_in_app() { ( cd "$SERVER" && bash -c "$1" ); }; cmd_pull_backup "$@"; }
+
+cp "$NIGHT/reconcile" "$SERVER/reconcile"
+# Invented files, each named by its content's SHA-256 as the file store names
+# them, and two things that are not uploads at all.
+for content in 'an invented receipt' 'an invented statement' 'a third invented file'; do
+	printf '%s\n' "$content" > "$SERVER/files/x"
+	mv "$SERVER/files/x" "$SERVER/files/$(sha256_of "$SERVER/files/x")"
+done
+printf 'a picture made again from its photo\n' > "$SERVER/files/sized/thumb.jpg"
+printf 'half an upload\n' > "$SERVER/files/.upload-123"
+
+PULLED="$TMP/pulled"
+out="$( (pull_in_server "$PULLED") 2>&1 )" && status=0 || status=$?
+
+pulled_db()    { find "$PULLED" -maxdepth 1 -name 'reconcile-*.db' | grep -q .; }
+db_private()   { test "$(stat -c %a "$(find "$PULLED" -maxdepth 1 -name 'reconcile-*.db' | head -1)")" = 600; }
+no_leftover()  { ! find "$SERVER/backups" -name '*.pull.db' | grep -q .; }
+three_files()  { test "$(find "$PULLED/files" -type f | wc -l)" -eq 3; }
+named_right()  { for f in "$PULLED"/files/*; do [ "$(sha256_of "$f")" = "$(basename "$f")" ] || return 1; done; }
+check "the pull succeeds" test "$status" -eq 0
+check "it brings the database down" pulled_db
+check "privately" db_private
+check "and leaves no snapshot behind on the server" no_leftover
+check "it brings the three files, and not the pictures or a half-made upload" three_files
+check "each the content its name says" named_right
+check "into a private directory" test "$(stat -c %a "$PULLED")" = 700
+
+out="$( (pull_in_server "$PULLED") 2>&1 )"
+first="$(find "$PULLED/files" -type f | sort | head -1)"
+other="$(find "$PULLED/files" -type f | sort | tail -1)"
+inode="$(stat -c %i "$other")"
+rm "$first"
+( pull_in_server "$PULLED" ) >/dev/null 2>&1
+came_back() { test -f "$first" && [ "$(sha256_of "$first")" = "$(basename "$first")" ]; }
+untouched() { [ "$(stat -c %i "$other")" = "$inode" ]; }
+check "a second pull brings back a file that is missing here" came_back
+check "and leaves the ones already here as they are" untouched
+
+inside="$( (pull_in_server "$REPO_DIR/pulled-by-mistake") 2>&1 )" && status=0 || status=$?
+refused_repo() { [ "$status" -ne 0 ] && grep -q 'inside the repository' <<<"$inside"; }
+check "a destination inside the repository is refused" refused_repo
+check "and nothing is left there" test ! -e "$REPO_DIR/pulled-by-mistake"
+rm -rf "$REPO_DIR/pulled-by-mistake"
 
 # ------------------------------------------------------------------ the lock
 

@@ -247,8 +247,12 @@ is forgotten. Do not work around a denial — a denied command is the answer.
 
 These are the storage conventions from mass-intentions and stewards, where
 each one was paid for. Plain SQLite through `modernc.org/sqlite`
-(`foundation/sqldb`), pure Go so the release stays static. `deploy.sh` backs
-up `reconcile.db` and snapshots `files/` on every deploy.
+(`foundation/sqldb`), pure Go so the release stays static. `reconcile.db` is
+backed up and `files/` snapshotted on every deploy and every night, and kept
+by age (`deploy/backup.sh`). `make prod-pull-backup` brings a copy of both to
+a person's machine, outside the working tree: it is every organization's
+books, so the rule for statements applies to it, and an agent never runs it
+or reads what it brought down.
 
 - **No migration tool.** Each store owns `Init(ctx, db)` holding idempotent
   `CREATE TABLE IF NOT EXISTS … STRICT` DDL, and exports

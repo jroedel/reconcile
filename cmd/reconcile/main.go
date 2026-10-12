@@ -53,10 +53,31 @@ func main() {
 	}
 }
 
+// snapshot copies the database at path into a new file at dest, without
+// stopping the server that is using it (sqldb.Snapshot).
+//
+// A database that is not there is refused rather than opened: opening would
+// create an empty one, and a snapshot of that is a backup of nothing that
+// looks like a backup of something.
+func snapshot(path, dest string) error {
+	if _, err := os.Stat(path); err != nil {
+		return fmt.Errorf("there is no database to back up at %s: %w", path, err)
+	}
+
+	db, err := sqldb.Open(path)
+	if err != nil {
+		return fmt.Errorf("opening the database at %s: %w", path, err)
+	}
+	defer db.Close()
+
+	return sqldb.Snapshot(context.Background(), db, dest)
+}
+
 func run() error {
 	var (
 		configPath = flag.String("config", "config.toml", "path to the configuration file")
 		check      = flag.Bool("check", false, "load and validate the configuration, print a summary, and exit")
+		backup     = flag.String("backup", "", "write a consistent copy of the live database to this new file, and exit")
 	)
 
 	flag.Parse()
@@ -74,6 +95,12 @@ func run() error {
 		fmt.Print(cfg.summary())
 
 		return nil
+	}
+
+	// -backup exists for deploy/backup.sh, which runs it beside the server
+	// every night, and for the copy a person pulls (make prod-pull-backup).
+	if *backup != "" {
+		return snapshot(cfg.DB.Path, *backup)
 	}
 
 	logFile, shouldClose, err := openLog(cfg.Log.File)
