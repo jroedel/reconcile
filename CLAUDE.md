@@ -154,10 +154,13 @@ compared with what happened), `receipt`
 (the photos and PDFs that justify a charge, waiting in an account's or
 project's inbox until a person matches them), `shape` (the layouts of
 statements no declaration describes, as the words their structure uses
-and never their contents, for the site administrator) and `export` (the
-accountant's zip, read across the others and stored nowhere). The pages
+and never their contents, for the site administrator), `export` (the
+accountant's zip, read across the others and stored nowhere) and `report`
+(an engine that adds a scope's books up by kind, category, project,
+account and month, and the styles, written here, that lay it out; stored
+nowhere either, `docs/reports.md`). The pages
 over them are `homeapp`, `authapp`, `tenancyapp`, `ledgerapp`,
-`categoryapp`, `payeeapp`, `ruleapp`, `budgetapp`, `receiptapp`, `exportapp`, `adminapp` and
+`categoryapp`, `payeeapp`, `ruleapp`, `budgetapp`, `reportapp`, `receiptapp`, `exportapp`, `adminapp` and
 `translationapp` (the review screen); a program's ways
 in are `apiapp` (`/api/v1`: the translations, the statement inbox a
 person's Gmail script fills, and reading and keeping the books, each endpoint behind the

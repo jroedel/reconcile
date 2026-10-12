@@ -171,6 +171,9 @@ type Storer interface {
 	// OrgLines is the same of an organization's accounts, for a period.
 	OrgLines(ctx context.Context, orgID types.ID, from, to types.Date) ([]ProjectLine, error)
 
+	// AccountLines is the same of one account, for a period.
+	AccountLines(ctx context.Context, accountID types.ID, from, to types.Date) ([]ProjectLine, error)
+
 	// AccountFigures and ProjectFigures are the figures a list shows
 	// beside each, by id; one with no transactions has zero figures.
 	AccountFigures(ctx context.Context, ids []types.ID) (map[types.ID]Figures, error)

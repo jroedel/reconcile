@@ -1,0 +1,12 @@
+{{define "title"}}{{t "Reports"}} · {{.Data.Books.Name}}{{end}}
+{{define "content"}}{{$v := .Data}}
+<p class="crumbs"><a href="{{$v.Path}}">{{$v.Books.Name}}</a></p>
+<h1>{{t "Reports"}}</h1>
+<p class="hint">{{t "A report adds up the money in these books, as it stands today. Run one for any months; sorting a charge changes the next report at once."}}</p>
+{{range $v.Styles}}
+<section class="card">
+<h2><a href="{{$v.Path}}/reports/{{.Key}}">{{template "style-name" .Key}}</a></h2>
+<p>{{template "style-about" .Key}}</p>
+</section>
+{{end}}
+{{end}}

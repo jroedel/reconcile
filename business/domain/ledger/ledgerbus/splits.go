@@ -489,8 +489,6 @@ func (b *Business) ProjectBook(ctx context.Context, actor, projectID types.ID) (
 	return book, nil
 }
 
-// totals adds the lines up under a heading, per currency, in heading
-// order.
 // OrgPeriod is every part of an organization's accounts posted from from
 // to before to, for anyone who may read the organization -- who may read
 // every account in it. For an organization's budget year (budgetbus).
@@ -512,6 +510,19 @@ func (b *Business) OrgPeriod(ctx context.Context, actor, orgID types.ID, from, t
 	return lines, totals(lines, func(ProjectLine) string { return "" }), nil
 }
 
+// AccountPeriod is every part of one account posted from from to before
+// to, for anyone who may read the account: an account on its own's report
+// (reportbus), as OrgPeriod is an organization's.
+func (b *Business) AccountPeriod(ctx context.Context, actor, accountID types.ID, from, to types.Date) ([]ProjectLine, error) {
+	if _, _, err := b.accounts.Account(ctx, actor, accountID); err != nil {
+		return nil, err
+	}
+
+	return b.store.AccountLines(ctx, accountID, from, to)
+}
+
+// totals adds the lines up under a heading, per currency, in heading
+// order.
 func totals(lines []ProjectLine, key func(ProjectLine) string) []Total {
 	index := map[[2]string]int{}
 

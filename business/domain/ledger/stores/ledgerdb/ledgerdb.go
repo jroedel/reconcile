@@ -1507,6 +1507,11 @@ func (s *Store) OrgLines(ctx context.Context, orgID types.ID, from, to types.Dat
 	return s.lines(ctx, `a.org_id = ? AND a.reference = 0 AND t.posted_on >= ? AND t.posted_on < ?`, orgID.String(), from.String(), to.String())
 }
 
+// AccountLines is every part of one account posted from from to before to.
+func (s *Store) AccountLines(ctx context.Context, accountID types.ID, from, to types.Date) ([]ledgerbus.ProjectLine, error) {
+	return s.lines(ctx, `t.account_id = ? AND t.posted_on >= ? AND t.posted_on < ?`, accountID.String(), from.String(), to.String())
+}
+
 // lines is the parts matching a condition, with their transaction, account
 // and category.
 func (s *Store) lines(ctx context.Context, where string, args ...any) ([]ledgerbus.ProjectLine, error) {

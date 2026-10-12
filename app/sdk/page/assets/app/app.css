@@ -352,3 +352,42 @@ table.ledger { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
 .cap-yes { color: var(--money-in); }
 .cap-no { color: var(--money-out); }
 .cap-na, .cap-unknown { color: var(--muted); }
+
+/* ---------------------------------------------------------------- reports */
+
+/*
+ * A report is a table a month to a column (docs/reports.md). On a phone the
+ * months scroll inside the table, never the page; the row names stay put so
+ * that a figure is never far from what it is.
+ */
+.report th[scope="row"] { font-weight: 400; color: var(--ink); white-space: nowrap; position: sticky; left: 0; background: var(--surface); }
+.report thead th { white-space: nowrap; }
+.report .kind th { color: var(--ink); font-weight: 600; padding-top: 1rem; }
+.report .total th, .report .total td { font-weight: 600; border-top: 2px solid var(--line); }
+.report .below th, .report .below td { color: var(--muted); }
+.report td.money a { text-decoration: none; }
+.report td.money a:hover, .report td.money a:focus { text-decoration: underline; }
+.report-head .description { white-space: pre-line; }
+.printed { display: none; }
+
+/*
+ * Printed, a report is the sheet a house reads at its meeting: no
+ * navigation and no forms, the table as wide as the paper, and the period
+ * and the day it was printed at its head. Money out keeps its minus sign,
+ * which is what says so in black and white.
+ */
+@page report { size: landscape; margin: 1.2cm; }
+
+@media print {
+	.masthead, .foot, .no-print, form { display: none !important; }
+	body { background: #fff; color: #000; display: block; min-height: 0; }
+	main { max-width: none; padding: 0; }
+	.report-page { page: report; }
+	.scroll { overflow: visible; }
+	a { color: inherit; text-decoration: none; }
+	.card { border: 0; box-shadow: none; padding: 0; background: none; }
+	.report { font-size: 9pt; }
+	.report th[scope="row"] { position: static; background: none; }
+	.money.in, .money.out { color: inherit; }
+	.printed { display: block; }
+}

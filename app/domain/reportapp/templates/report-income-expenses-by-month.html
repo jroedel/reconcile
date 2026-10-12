@@ -1,0 +1,102 @@
+{{define "title"}}{{template "style-name" .Data.Style.Key}} · {{.Data.Report.Name}}{{end}}
+{{define "content"}}{{$v := .Data}}{{$r := $v.Report}}{{$cols := inc (inc (len $r.Months))}}
+<div class="report-page">
+<p class="crumbs no-print"><a href="{{$v.Path}}">{{$r.Name}}</a> · <a href="{{$v.Path}}/reports">{{t "Reports"}}</a></p>
+
+<div class="report-head">
+<h1>{{template "style-name" $v.Style.Key}}</h1>
+<p><strong>{{$r.Name}}</strong> ·
+{{if $r.Period.All}}{{t "Every month there is"}}{{else if eq $r.Period.From $r.Period.To}}{{template "month" $r.Period.From}}{{else}}{{t "{from} to {to}" "from" $r.Period.From "to" $r.Period.To}}{{end}}</p>
+<p class="printed hint">{{t "As it stood on {date}." "date" $v.Today}}</p>
+{{if $r.Partial}}<p class="hint">{{t "Only these accounts: {names}." "names" (join $v.ChosenNames ", ")}}</p>{{end}}
+</div>
+{{template "report-problem" $v.Problem}}
+
+<nav class="no-print" aria-label="{{t "Which months"}}">
+<ul class="months">
+{{range $r.Presets}}<li><a href="{{$v.For .Key}}"{{if $v.Current .Key}} aria-current="page"{{end}}>{{template "preset" .Key}}</a></li>
+{{end}}</ul>
+{{if not $r.Period.All}}<p><a href="{{$v.For "before"}}">{{t "← The months before"}}</a> · <a href="{{$v.For "after"}}">{{t "The months after →"}}</a></p>{{end}}
+</nav>
+
+{{if not $r.Sections}}<p>{{t "No money in these months."}}</p>{{end}}
+
+{{range $s := $r.Sections}}{{$cur := $s.Currency}}
+<section class="card">
+{{if gt (len $r.Sections) 1}}<h2>{{$cur}}</h2>{{end}}
+<div class="scroll">
+<table class="ledger report">
+<thead><tr><th scope="col">{{t "Category"}}</th>{{range $r.Months}}<th scope="col" class="money">{{template "month" .}}</th>{{end}}<th scope="col" class="money">{{t "Total"}}</th></tr></thead>
+<tbody>
+<tr class="kind"><th scope="rowgroup" colspan="{{$cols}}">{{t "Income"}}</th></tr>
+{{range $s.Income}}{{template "category-row" (dict "Row" . "View" $v "Cur" $cur)}}{{end}}
+{{template "kind-row" (dict "Row" $s.IncomeTotal "View" $v "Cur" $cur "Kind" "income")}}
+<tr class="kind"><th scope="rowgroup" colspan="{{$cols}}">{{t "Expenses"}}</th></tr>
+{{range $s.Expenses}}{{template "category-row" (dict "Row" . "View" $v "Cur" $cur)}}{{end}}
+{{template "kind-row" (dict "Row" $s.ExpensesTotal "View" $v "Cur" $cur "Kind" "expense")}}
+<tr class="total"><th scope="row">{{t "Net"}}</th>{{range $s.Net.Months}}<td class="money{{if lt . 0}} out{{else if gt . 0}} in{{end}}">{{if .}}{{money . $cur}}{{end}}</td>{{end}}<td class="money{{if lt $s.Net.Total 0}} out{{else}} in{{end}}">{{money $s.Net.Total $cur}}</td></tr>
+{{template "kind-row" (dict "Row" $s.Unsorted "View" $v "Cur" $cur "Kind" "unsorted")}}
+<tr class="below"><th scope="row">{{t "Sorted"}}</th>{{range $s.Sorted}}<td class="money">{{if ge . 0}}{{t "{n}%" "n" .}}{{end}}</td>{{end}}<td class="money">{{if ge $s.SortedTotal 0}}{{t "{n}%" "n" $s.SortedTotal}}{{end}}</td></tr>
+<tr class="below"><th scope="row">{{t "Reconciled"}}</th>{{range $r.Marks}}<td class="money">{{template "mark" (printf "%s" .)}}</td>{{end}}<td></td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>{{t "What should come back to zero"}}</h3>
+<ul class="list">
+{{if eq (printf "%s" $r.Choices.PassThrough) "each"}}
+{{range $s.PassThrough}}<li>{{.Name}}: <span class="money">{{money .Balance $cur}}</span></li>{{else}}<li>{{t "No money passed through."}}</li>{{end}}
+{{else}}<li>{{t "Pass-through still owed at the end: {amount}" "amount" (money $s.PassThroughTotal $cur)}}</li>{{end}}
+<li>{{if or $s.Transfers $s.TransferMonths}}{{t "Transfers between your accounts are off by {amount} at the end: a side not imported yet, or money on its way." "amount" (money $s.Transfers $cur)}}
+{{if $s.TransferMonths}}{{t "Months in this report where they do not net to zero:"}} {{range $i, $m := $s.TransferMonths}}{{if $i}}, {{end}}{{template "month" $m.Month}} ({{money $m.Balance $cur}}){{end}}{{end}}
+{{else}}{{t "Transfers between your accounts come back to zero."}}{{end}}</li>
+</ul>
+{{if $r.Partial}}<p class="hint">{{t "These are reckoned across every account of the books, not only those in the report: a transfer to an account left out is still a transfer."}}</p>{{end}}
+</section>
+{{end}}
+
+<p class="hint">{{t "Card charges count in the month they were made, and paying the card counts in no month: it is a transfer. A month that is not reconciled yet may still change. Every figure opens the transactions it adds up."}}</p>
+
+<section class="card no-print">
+<h2>{{t "Change what it shows"}}</h2>
+<form method="get" action="{{$v.Base}}">
+  <div class="field">
+    <label for="from">{{t "From the month"}}</label>
+    <input id="from" name="from" type="month" value="{{if not $r.Period.All}}{{$r.Period.From}}{{end}}" placeholder="2026-01">
+    <label for="to">{{t "to the month"}}</label>
+    <input id="to" name="to" type="month" value="{{if not $r.Period.All}}{{$r.Period.To}}{{end}}" placeholder="2026-07">
+    <p class="hint">{{t "As year and month, such as 2026-07, where the browser asks for text."}}</p>
+  </div>
+  {{if gt (len $r.Accounts) 1}}<fieldset class="field">
+    <legend>{{t "Accounts"}}</legend>
+    {{range $r.Accounts}}<label class="choice"><input type="checkbox" name="account" value="{{.ID}}"{{if $v.Chosen .ID}} checked{{end}}> {{.Name}}{{if .Archived}} <span class="badge">{{t "archived"}}</span>{{end}}</label>
+    {{end}}
+  </fieldset>{{end}}
+  <fieldset class="field">
+    <legend>{{t "Pass-through"}}</legend>
+    <label class="choice"><input type="radio" name="passthrough" value="total"{{if ne (printf "%s" $r.Choices.PassThrough) "each"}} checked{{end}}> {{t "One total"}}</label>
+    <label class="choice"><input type="radio" name="passthrough" value="each"{{if eq (printf "%s" $r.Choices.PassThrough) "each"}} checked{{end}}> {{t "Each category"}}</label>
+  </fieldset>
+  <button type="submit">{{t "Show"}}</button>
+</form>
+</section>
+
+<p class="no-print"><a class="button quiet" href="{{$v.Base}}/download?{{$v.Query}}">{{t "Download as a spreadsheet"}}</a></p>
+<p class="hint no-print">{{t "To hand it out, print this page, or save it as a PDF from the browser's print window."}}</p>
+</div>
+{{end}}
+
+{{/* category-row is one category's line, each figure linked to its parts. */}}
+{{define "category-row"}}{{$row := .Row}}{{$v := .View}}{{$cur := .Cur}}
+<tr><th scope="row">{{$row.Name}}</th>
+{{- range $i, $m := $v.Report.Months}}<td class="money">{{template "figure" (dict "Amount" (index $row.Months $i) "Cur" $cur "Href" ($v.Figure "category,month" "" $row.CategoryID.String $m $cur))}}</td>{{end -}}
+<td class="money">{{template "figure" (dict "Amount" $row.Total "Cur" $cur "Href" ($v.Figure "category" "" $row.CategoryID.String "" $cur))}}</td></tr>
+{{end}}
+
+{{/* kind-row is a kind's total, or what is not sorted yet. */}}
+{{define "kind-row"}}{{$row := .Row}}{{$v := .View}}{{$cur := .Cur}}{{$kind := .Kind}}
+<tr class="{{if eq $kind "unsorted"}}below{{else}}total{{end}}"><th scope="row">
+{{- if eq $kind "income"}}{{t "Total income"}}{{else if eq $kind "expense"}}{{t "Total expenses"}}{{else}}{{t "Not sorted yet"}}{{end}}</th>
+{{- range $i, $m := $v.Report.Months}}<td class="money">{{template "figure" (dict "Amount" (index $row.Months $i) "Cur" $cur "Href" ($v.Figure "kind,month" $kind "" $m $cur))}}</td>{{end -}}
+<td class="money">{{template "figure" (dict "Amount" $row.Total "Cur" $cur "Href" ($v.Figure "kind" $kind "" "" $cur))}}</td></tr>
+{{end}}

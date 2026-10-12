@@ -26,6 +26,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/ledger/stores/ledgerdb"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/stores/receiptdb"
+	"github.com/jroedel/reconcile/business/domain/report/reportbus"
 	"github.com/jroedel/reconcile/business/domain/rule/rulebus"
 	"github.com/jroedel/reconcile/business/domain/rule/stores/ruledb"
 	"github.com/jroedel/reconcile/business/domain/shape/shapebus"
@@ -119,6 +120,7 @@ func newSite(t *testing.T, want sqldb.Expected, configure func(*Config)) (http.H
 		Categories: categories,
 		Rules:      rules,
 		Budgets:    budgetbus.NewBusiness(log, budgetdb.NewStore(db), tenancy, ledger, categories),
+		Reports:    reportbus.NewBusiness(tenancy, ledger),
 		Receipts:   receipts,
 		Export:     exportbus.NewBusiness(log, tenancy, ledger, receipts, categories, files),
 		BaseURL:    base,
