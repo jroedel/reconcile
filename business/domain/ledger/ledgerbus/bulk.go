@@ -32,8 +32,9 @@ import (
 //
 // Each proposal is read as its own preview reads it, for its account, and
 // is imported with the others only when nothing in it needs a person: it
-// balances by its own figures or the file's, the count rule set nothing
-// aside, no row was skipped, and no row is waiting to be told whose it is.
+// balances by its own figures or the file's, or adds nothing to the books
+// (Draft.AddsNothing), the count rule set nothing aside, no row was
+// skipped, and no row is waiting to be told whose it is.
 // The rest stay on the list, each with its own preview for whatever it
 // needs, which is where a person answers it. Nothing a bulk import does
 // is anything a single import would not do: it is the same Import, with
@@ -98,7 +99,7 @@ func (p Proposal) Key() string {
 func (p Proposal) Unattended() bool {
 	d := p.Draft
 
-	return p.Problem == nil && !p.Account.Zero() && !d.Choose && d.Ready() && d.Check.OK && !d.LooksByHolder &&
+	return p.Problem == nil && !p.Account.Zero() && !d.Choose && d.Ready() && (d.Check.OK || d.AddsNothing()) && !d.LooksByHolder &&
 		len(d.Statement.Doubts) == 0 && d.Result.Skipped == 0 && !d.Result.Unplaced && d.Unnamed == 0
 }
 
@@ -345,24 +346,67 @@ func Expected(err error) bool {
 // each as its own preview would, and says how many were. One that can no
 // longer be -- imported in another tab meanwhile, say -- is left for its
 // preview to explain.
+//
+// The proposals were read before any of them was imported, and a file
+// read for an account is read again before it is imported, if another of
+// the batch has gone into that account since. Its preview's counts are
+// then the ones it is imported by: without it, a file that needed nobody
+// when it was read alone could overlap one imported before it, and have
+// rows set aside that no person saw. And a file that was not ready may be
+// once another has gone in -- a bank's CSV whose every row a checked
+// statement of the same days brought in (Draft.AddsNothing) -- so the
+// batch is gone over again until a pass imports nothing.
+//
+// Each proposal is left as it was last read, in props itself, so that a
+// caller reading them afterwards (Unattended, Imported) says what became
+// of each.
 func (b *Business) ImportProposals(ctx context.Context, now time.Time, actor types.ID, props []Proposal) (int, error) {
 	n := 0
 	failed := map[types.ID]bool{}
 
-	for _, p := range props {
-		if !p.Unattended() {
-			continue
-		}
+	// imports counts what each account has taken in this batch, and read
+	// what each proposal's account had taken when it was last read.
+	imports := map[types.ID]int{}
+	read := make([]int, len(props))
+	done := make([]bool, len(props))
 
-		_, err := b.Import(ctx, now, actor, p.Account, p.File.ID, p.Draft.defaults())
+	for again := true; again; {
+		again = false
 
-		switch {
-		case err == nil:
-			n++
-		case !Expected(err):
-			return n, err
-		default:
-			failed[p.File.ID] = true
+		for i := range props {
+			p := &props[i]
+
+			if done[i] || p.Problem != nil || p.Account.Zero() {
+				continue
+			}
+
+			if read[i] != imports[p.Account] {
+				d, err := b.prepareFor(ctx, actor, p.Account, p.File.ID, p.Part)
+				if err != nil && !Expected(err) {
+					return n, err
+				}
+
+				p.Draft, p.Problem, read[i] = d, err, imports[p.Account]
+			}
+
+			if !p.Unattended() {
+				continue
+			}
+
+			done[i] = true
+
+			_, err := b.Import(ctx, now, actor, p.Account, p.File.ID, p.Draft.defaults())
+
+			switch {
+			case err == nil:
+				n++
+				imports[p.Account]++
+				again = true
+			case !Expected(err):
+				return n, err
+			default:
+				failed[p.File.ID] = true
+			}
 		}
 	}
 
