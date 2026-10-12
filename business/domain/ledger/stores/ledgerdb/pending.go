@@ -91,13 +91,25 @@ func post(ctx context.Context, tx *sql.Tx, st *ledgerbus.Statement, txs []ledger
 // wording, or one of the two cut short -- the same holder's, or one that
 // names nobody, as already matches. Nothing else about it changes, so the
 // history has nothing to say.
+//
+// Three lookups joined by UNION, each on an index of its own, rather than
+// one WHERE with the three joined by OR. That reads the same and is not:
+// the OR with a subquery in it keeps SQLite from using either index, so
+// each call read every transaction of the account, and an import calls it
+// for every row it already holds -- every row of the file, in the second
+// pass a preview makes (Store.Import). A statement of two thousand rows
+// into a full account took longer than the server lets a request run, and
+// the person importing it saw the proxy's "Bad Gateway".
 func settle(ctx context.Context, tx *sql.Tx, st *ledgerbus.Statement, t ledgerbus.Transaction) error {
 	rows, err := tx.QueryContext(ctx, `
-SELECT rowid, holder FROM transactions WHERE account_id = ? AND pending = 1 AND (hash = ?
-    OR external_id <> '' AND external_id = ?
-    OR id IN (SELECT transaction_id FROM transaction_aliases WHERE account_id = ? AND hash = ?))
-ORDER BY rowid`,
-		t.AccountID.String(), t.Hash, t.ExternalID, t.AccountID.String(), t.Hash)
+SELECT rowid, holder FROM transactions WHERE account_id = ? AND hash = ? AND pending = 1
+UNION
+SELECT rowid, holder FROM transactions WHERE account_id = ? AND external_id = ? AND external_id <> '' AND pending = 1
+UNION
+SELECT t.rowid, t.holder FROM transaction_aliases a JOIN transactions t ON t.id = a.transaction_id
+WHERE a.account_id = ? AND a.hash = ? AND t.pending = 1
+ORDER BY 1`,
+		t.AccountID.String(), t.Hash, t.AccountID.String(), t.ExternalID, t.AccountID.String(), t.Hash)
 	if err != nil {
 		return fmt.Errorf("posting a pending charge: %w", err)
 	}
