@@ -195,6 +195,7 @@ func New(cfg Config) (http.Handler, error) {
 		reportapp.Routes(mux, reportapp.Config{
 			Log:     cfg.Log,
 			Reports: cfg.Reports,
+			Users:   cfg.Users,
 			Render:  cfg.Render,
 		}, guard)
 

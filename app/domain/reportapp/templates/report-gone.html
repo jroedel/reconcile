@@ -1,0 +1,7 @@
+{{define "title"}}{{.Data.Saved.Saved.Title}}{{end}}
+{{define "content"}}{{$v := .Data}}
+<p class="crumbs"><a href="{{$v.Path}}">{{$v.Report.Name}}</a> · <a href="{{$v.Path}}/reports">{{t "Reports"}}</a></p>
+<h1>{{$v.Saved.Saved.Title}}</h1>
+<p>{{t "This report's layout is no longer offered, so it cannot be run. Its notes are kept in the history."}}</p>
+{{if $v.CanKeep}}<form method="post" action="{{$v.Base}}/remove"><button type="submit" class="quiet">{{t "Remove this report"}}</button></form>{{end}}
+{{end}}

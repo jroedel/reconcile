@@ -21,6 +21,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/ledger/stores/ledgerdb"
 	"github.com/jroedel/reconcile/business/domain/report/reportbus"
+	"github.com/jroedel/reconcile/business/domain/report/stores/reportdb"
 	"github.com/jroedel/reconcile/business/domain/rule/rulebus"
 	"github.com/jroedel/reconcile/business/domain/rule/stores/ruledb"
 	"github.com/jroedel/reconcile/business/domain/tenancy/stores/tenancydb"
@@ -42,6 +43,7 @@ type world struct {
 	cats    *categorybus.Business
 	files   *filebus.Business
 	users   *userdb.Store
+	store   *reportdb.Store
 }
 
 func newWorld(t *testing.T) *world {
@@ -57,7 +59,7 @@ func newWorld(t *testing.T) *world {
 	t.Cleanup(func() { db.Close() })
 
 	for _, init := range []func(context.Context, *sql.DB) error{
-		userdb.Init, eventdb.Init, tenancydb.Init, filedb.Init, categorydb.Init, ruledb.Init, ledgerdb.Init,
+		userdb.Init, eventdb.Init, tenancydb.Init, filedb.Init, categorydb.Init, ruledb.Init, ledgerdb.Init, reportdb.Init,
 	} {
 		if err := init(t.Context(), db); err != nil {
 			t.Fatal(err)
@@ -78,7 +80,7 @@ func newWorld(t *testing.T) *world {
 
 	return &world{
 		t: t, ledger: ledger, ten: ten, cats: cats, files: files, users: users,
-		reports: reportbus.NewBusiness(ten, ledger),
+		reports: reportbus.NewBusiness(ten, ledger, reportdb.NewStore(db)), store: reportdb.NewStore(db),
 	}
 }
 

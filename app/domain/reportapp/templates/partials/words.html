@@ -35,4 +35,16 @@
 
 {{define "report-problem"}}{{if .}}<p class="notice" role="alert">
 {{- if eq . "period"}}{{t "That period could not be read, so the year so far is shown. Choose a first and a last month, the first not after the last."}}
+{{- else if eq . "title"}}{{t "Give the report a title, of at most {max} characters." "max" 100}}
+{{- else if eq . "description"}}{{t "The description can be at most {max} characters." "max" 2000}}
+{{- else if eq . "note"}}{{t "A note can be at most {max} characters." "max" 4000}}
+{{- else if eq . "default"}}{{t "Choose one of the periods offered."}}
 {{- else}}{{t "Something went wrong at our end. Please try again in a few minutes."}}{{end}}</p>{{end}}{{end}}
+
+{{define "report-done"}}{{if .}}<p class="notice ok" role="status">
+{{- if eq . "saved"}}{{t "Saved. Run it for any months from here, or from the list of reports; write a note for each."}}
+{{- else if eq . "changed"}}{{t "Saved. The history says what changed."}}
+{{- else if eq . "noted"}}{{t "The note is saved, for these months only."}}
+{{- else if eq . "note-removed"}}{{t "The note is removed."}}
+{{- else if eq . "removed"}}{{t "The report is removed. Its notes are kept in the history."}}
+{{- end}}</p>{{end}}{{end}}

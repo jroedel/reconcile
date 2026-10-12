@@ -125,7 +125,8 @@ way every month.
 - **An account's mark can change under it.** Putting an account for
   reference, or taking it off, changes every period's figures, past ones
   too. A period's note written before the change says, beneath it, that
-  the report's accounts have changed since.
+  the figures have changed since; and an account the report was saved
+  with that is for reference now is named as left out.
 - **What it names is kept by ID and checked when it is read.** An archived
   account or category is still counted, because history needs it, and
   is shown as archived. One that no longer exists is named on the report
@@ -160,13 +161,17 @@ figures do not.
   and no links: it is printed as it was typed.
 - **A note does not freeze the figures.** Nothing a report adds up is
   stored, so sorting a charge after the note was written changes the
-  figures under it. The note says who wrote it and when, and when the
-  report's accounts have a change in the period after that -- a part
-  sorted or split, a statement imported or removed -- the run says the
-  figures have changed since the note. The history knows: every such
-  change is an event with its time, and parts keep no time of their
-  own. Keeping a printed copy as it stood is the paper's job,
-  or a later plan's.
+  figures under it. The note says who wrote it and when, and keeps a
+  fingerprint of the figures as they stood then; when a run's figures
+  no longer match it -- a part sorted or split, a statement imported or
+  removed, a category's kind, an account put for reference -- the run
+  says the figures have changed since the note. (Planned as a reading of
+  the history, and changed while building it, 2026-10-12: the history
+  records a part put in a project but not a part sorted into a
+  category, and recording every sort would drown each account's history
+  in lines nobody reads. The figures are what the note was written
+  beside, and they say whether they moved.) Keeping a printed copy as it
+  stood is the paper's job, or a later plan's.
 - **Who:** the title, the description and the notes are written by whoever
   may save the report (Bookkeep on its scope); everyone who may run it
   reads them. Writing, changing and removing a note go in the history
@@ -296,18 +301,22 @@ lines can be read as ten.
 `business/domain/report/stores/reportdb`:
 
 - **`reports(id, scope_kind, scope_id, style, title, description, choices,
-  created_by, created_at, updated_by, updated_at, archived_at)`**,
+  period, created_by, created_at, updated_by, updated_at, removed_at)`**,
   `STRICT`. `style`
-  is the style's key. `choices` is TEXT holding JSON that the style
+  is the style's key. `period` is the preset a run shows when its address
+  names no months ("last-month", "year-to-date", …), '' for the style's
+  own default. A removed report keeps its row, and its notes, for the
+  history. `choices` is TEXT holding JSON that the style
   decodes into its own struct: unknown fields are ignored, missing ones
   take their default. It is stored as JSON because each style's choices
   differ and a column per choice would mean a migration per choice; it
   is read only by its style, never queried, and never a language.
-- **`report_notes(report_id, period_from, period_to, note, updated_by,
-  updated_at)`**, `STRICT`, with the report and the period as its key,
-  so that writing a note twice is a correction. The period is the run's
-  first and last month, as the address has them. A note set to nothing
-  is removed.
+- **`report_notes(report_id, period_from, period_to, note, figures,
+  updated_by, updated_at)`**, `STRICT`, with the report and the period as
+  its key, so that writing a note twice is a correction. The period is
+  the run's first and last month, as the address has them, both '' for
+  every month there is. `figures` is the fingerprint of the figures the
+  note was written beside. A note set to nothing is removed.
 - Nothing the engine computes is stored. A report is read from the parts
   every time, so that sorting a charge changes the next report at once.
 

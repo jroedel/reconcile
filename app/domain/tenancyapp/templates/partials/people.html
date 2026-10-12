@@ -117,6 +117,10 @@
 {{- else if eq .Action "budget.removed"}} {{if .Detail.category}}{{t "took {category} out of the budget" "category" .Detail.category}}{{else if eq .Detail.kind "income"}}{{t "took the total income out of the budget"}}{{else}}{{t "took the total expenses out of the budget"}}{{end}}{{with .Detail.year}} ({{.}}){{end}}
 {{- else if eq .Action "budget.copied"}} {{t "copied the budget for {from} into {year}" "from" .Detail.from "year" .Detail.year}}
 {{- else if eq .Action "org.fiscal"}} {{template "fiscal-line" .Detail.month}}
+{{- else if eq .Action "report.saved"}} {{t "saved the report {title}" "title" .Detail.title}}
+{{- else if eq .Action "report.changed"}} {{if .Detail.from}}{{t "renamed the report {from} to {title}" "from" .Detail.from "title" .Detail.title}}{{else}}{{t "changed the report {title}" "title" .Detail.title}}{{end}}
+{{- else if eq .Action "report.removed"}} {{t "removed the report {title}" "title" .Detail.title}}
+{{- else if eq .Action "report.noted"}} {{if .Detail.note}}{{if .Detail.from}}{{t "wrote a note on the report {title} for {from} to {to}: {note}" "title" .Detail.title "from" .Detail.from "to" .Detail.to "note" .Detail.note}}{{else}}{{t "wrote a note on the report {title} for every month there is: {note}" "title" .Detail.title "note" .Detail.note}}{{end}}{{else}}{{if .Detail.from}}{{t "removed the note on the report {title} for {from} to {to}" "title" .Detail.title "from" .Detail.from "to" .Detail.to}}{{else}}{{t "removed the note on the report {title} for every month there is" "title" .Detail.title}}{{end}}{{end}}
 {{- else if eq .Action "account.reference"}} {{if eq .Detail.reference "true"}}{{t "marked it for reference: kept to explain the books, and counted in none of their totals"}}{{else}}{{t "took the mark for reference off: it counts in the organization's totals again"}}{{end}}
 {{- else if eq .Action "receipt.added"}} {{t "added {n} receipts" "n" .Detail.count}}
 {{- else if eq .Action "receipt.removed"}} {{t "removed the receipt {what}" "what" .Detail.what}}
