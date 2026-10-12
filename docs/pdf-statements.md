@@ -90,6 +90,13 @@ one of the 78 account-months balanced to the cent):
   daily balances. The import takes the part whose number ends as the
   account's last four digits do, or asks which on the preview; only those
   four digits are kept. The same file can be imported into each account.
+- **An account with no activity** in the month still has its part: its
+  summary states its beginning and ending balance, and nothing else. It
+  is imported as a statement with no transactions when the two are the
+  same (`Draft.Quiet`), so that its month counts as imported and can be
+  reconciled; when they differ, its check fails instead of the account
+  vanishing from the file. Of 529 account-months in 153 consolidated
+  statements read locally, 156 were such months.
 - **Marks a bank hides in the text** ("\*start\*deposits and additions")
   are not on the page, and are dropped.
 

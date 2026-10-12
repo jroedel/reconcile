@@ -103,7 +103,7 @@ func TestTry(t *testing.T) {
 			tr.Now.Layout, tr.Now.Matched, tr.Draft.Matched, tr.Same, tr.Signature)
 	}
 
-	if len(tr.Draft.Parts) != 2 || tr.Draft.Parts[0].Last4 != pdfsourcetest.First {
+	if len(tr.Draft.Parts) != 3 || tr.Draft.Parts[0].Last4 != pdfsourcetest.First {
 		t.Fatalf("parts %+v", tr.Draft.Parts)
 	}
 

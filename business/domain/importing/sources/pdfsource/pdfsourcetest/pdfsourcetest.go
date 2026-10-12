@@ -8,22 +8,27 @@ import (
 	"github.com/jroedel/reconcile/foundation/pdftext/pdftexttest"
 )
 
-// The consolidated statement's two accounts, by the last four digits of
-// their invented numbers, and what each comes to.
+// The consolidated statement's three accounts, by the last four digits of
+// their invented numbers, and what each comes to. The third had no
+// activity in the month.
 const (
 	First  = "1111"
 	Second = "2222"
+	Third  = "3333"
 
 	FirstOpening, FirstClosing   = "1000.00", "1420.00"
 	SecondOpening, SecondClosing = "500.00", "450.00"
+	ThirdBalance                 = "250.00"
 )
 
-// Consolidated draws a bank's statement for two checking accounts in one
-// document, the way a bank's own statement lays them out rather than a
-// page printed from its website:
+// Consolidated draws a bank's statement for two checking accounts and a
+// savings account in one document, the way a bank's own statement lays
+// them out rather than a page printed from its website:
 //
 //   - each account under its own "Account Number", with a summary of its
 //     beginning and ending balance;
+//   - a savings account with no activity in the month, which has its
+//     summary and nothing else;
 //   - its rows by kind, under headings that say which way the money went,
 //     with no sign on any amount;
 //   - the checks paid, each row starting with the check's number, one with
@@ -60,6 +65,7 @@ func Consolidated() []byte {
 	p1 = append(p1, pdftexttest.Row(80, 40, "CONSOLIDATED BALANCE SUMMARY")...)
 	p1 = append(p1, pdftexttest.Row(100, 40, "Example Business Checking", 250, "000000001111", 400, "$1,000.00", 500, "$1,420.00")...)
 	p1 = append(p1, pdftexttest.Row(115, 40, "Example Business Checking", 250, "000000002222", 400, "$500.00", 500, "$450.00")...)
+	p1 = append(p1, pdftexttest.Row(130, 40, "Example Business Savings", 250, "000000003333", 400, "$250.00", 500, "$250.00")...)
 	p1 = append(p1, pdftexttest.Row(150, 40, "EXAMPLE BUSINESS CHECKING", 330, "Account Number: 000000001111")...)
 	p1 = append(p1, pdftexttest.Row(175, 40, "CHECKING SUMMARY")...)
 	p1 = append(p1, pdftexttest.Row(190, 60, "Beginning Balance", 500, "$1,000.00")...)
@@ -115,6 +121,13 @@ func Consolidated() []byte {
 	p3 = append(p3, pdftexttest.Row(290, 40, "DAILY ENDING BALANCE")...)
 	p3 = append(p3, pdftexttest.Row(305, 60, "DATE", 160, "AMOUNT", 260, "DATE", 360, "AMOUNT")...)
 	p3 = append(p3, pdftexttest.Row(320, 60, "09/20", 160, "$525.00", 260, "09/21", 360, "450.00")...)
+
+	// The third account, with nothing to list.
+	p3 = append(p3, pdftexttest.Row(380, 40, "EXAMPLE BUSINESS SAVINGS", 330, "Account Number: 000000003333")...)
+	p3 = append(p3, pdftexttest.Row(400, 40, "SAVINGS SUMMARY")...)
+	p3 = append(p3, pdftexttest.Row(415, 60, "Beginning Balance", 500, "$250.00")...)
+	p3 = append(p3, pdftexttest.Row(430, 60, "Ending Balance", 400, "0", 500, "$250.00")...)
+	p3 = append(p3, pdftexttest.Row(445, 60, "Interest Paid This Period", 500, "$0.00")...)
 
 	return pdftexttest.Draw(p1, p2, p3)
 }

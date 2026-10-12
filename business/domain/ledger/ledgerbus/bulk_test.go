@@ -3,6 +3,7 @@ package ledgerbus_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/jroedel/reconcile/business/domain/importing/sources/pdfsource/pdfsourcetest"
@@ -11,8 +12,9 @@ import (
 	"github.com/jroedel/reconcile/business/types"
 )
 
-// A month's files at once: a consolidated statement's two parts go to the
-// accounts whose numbers end as theirs, an OFX download to the one account
+// A month's files at once: a consolidated statement's three parts go to
+// the accounts whose numbers end as theirs, the one with no activity among
+// them, an OFX download to the one account
 // its number fits -- not one the treasurer only views -- a CSV and a card's
 // printed activity to the accounts their layouts went to before, and a CSV
 // in a layout never seen is asked about. Those that need nobody are
@@ -36,6 +38,7 @@ func TestABulkImport(t *testing.T) {
 
 	first := acct(me, "Checking A", "checking", pdfsourcetest.First)
 	second := acct(me, "Checking B", "checking", pdfsourcetest.Second)
+	quiet := acct(me, "Savings C", "savings", pdfsourcetest.Third)
 	savings := acct(me, "Savings", "savings", "")
 	card := acct(me, "Card", "card", "")
 	downloaded := acct(me, "Downloaded", "checking", "1234")
@@ -85,6 +88,7 @@ func TestABulkImport(t *testing.T) {
 	wants := map[string]want{
 		files[0].String() + "-" + pdfsourcetest.First:  {first, ledgerbus.ByNumber, true},
 		files[0].String() + "-" + pdfsourcetest.Second: {second, ledgerbus.ByNumber, true},
+		files[0].String() + "-" + pdfsourcetest.Third:  {quiet, ledgerbus.ByNumber, true},
 		files[1].String(): {savings, ledgerbus.ByMemory, true},
 		files[2].String(): {downloaded, ledgerbus.ByNumber, false},
 		files[3].String(): {card, ledgerbus.ByMemory, false},
@@ -104,12 +108,12 @@ func TestABulkImport(t *testing.T) {
 	}
 
 	// The card's activity is in its account already, and says so.
-	if p := props[4]; !p.Imported() {
+	if p := props[slices.IndexFunc(props, func(p ledgerbus.Proposal) bool { return p.File.ID == files[3] })]; !p.Imported() {
 		t.Errorf("the card's activity again: imported %v", p.Imported())
 	}
 
 	n, err := w.ledger.ImportProposals(ctx, now, me, props)
-	if err != nil || n != 3 {
+	if err != nil || n != 4 {
 		t.Fatalf("imported %d: %v", n, err)
 	}
 
