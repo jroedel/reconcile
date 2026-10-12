@@ -108,6 +108,50 @@ money was, and it is a property of each part (split), through its category:
   "Personal, repaid" (pass-through), renamable like any other.
 - Reconciling stays a cash check. The kinds never change a balance.
 
+### Whose books, and accounts for reference (decided 2026-10-12)
+
+An organization is **the books somebody keeps**, not the legal body that
+owns the accounts (the "Org ↔ account" decision above, carried through to
+the kinds). A transfer is money between two accounts that are both inside
+those books. Money that crosses their edge is income or an expense, even
+when the other side is the same legal body: the national office pays for a
+house's flight and takes the amount from the house's checking, and to the
+house that withdrawal is travel, an expense, however it was paid.
+
+The person who keeps a house's books may also import an account that is
+not the house's -- the national office's checking, say -- because it
+explains the house's: which flight that withdrawal paid for. They cannot
+explain every movement in it and do not want to. Such an account is
+marked **for reference**:
+
+- **It stays in the organization**, so that it can explain the house's
+  transactions ("Explain this amount" draws from the organization's
+  accounts, `docs/clearing.md`), receipts can be matched to it, and its
+  statements are imported, checked and reconciled as any account's are.
+- **Its parts count nowhere**: not in the organization's operations, its
+  budget year, its reports, what should come back to zero, or a project's
+  book; and a part of it may not be put in a project. If they counted,
+  the flight would be the house's expense twice, once as the national
+  office's charge and once as the house's withdrawal.
+- **Nobody is asked to sort it.** It is left out of what is to sort and
+  of the sorting rules' suggestions; a person may still give its parts a
+  category for their own understanding.
+- **The mark is an owner's** (Manage on the account), shown wherever the
+  account is named, and recorded in its history (`account.reference`,
+  on or off).
+- **It can be taken off.** If the person who keeps these books comes to
+  keep the national office's too, the mark comes off and its parts count
+  from then on. Or the national office's books become an organization of
+  their own, with their own account importing the same statements, and
+  the house's stays for reference: statements are kept per account, so
+  the same file in two accounts is two sets of records, not a duplicate.
+  Every report and total is read from the parts each time, so taking the
+  mark off or putting it on changes past periods' figures too; the
+  history says when, and a saved report's note says when its accounts
+  changed after it was written (`docs/reports.md`).
+- `accounts.reference INTEGER NOT NULL DEFAULT 0 CHECK (reference IN (0,
+  1))`, by `AddColumn` in `tenancydb`, with the old-schema test.
+
 **Identity**
 - `users(id, email UNIQUE, name, lang, site_admin, enabled, created_at, updated_at)`. The email can change, and everything references `id`.
 - `signin_codes`, `sessions`, `backup_codes`: as in mass-intentions.
@@ -242,6 +286,7 @@ Owners, bookkeepers and accountants can download it (the Export permission). It 
    - The books through an API: scoped keys for anybody, an inbox that an Apps Script in the person's Google account fills with the statements their email brings, and endpoints and MCP tools through which Claude on claude.ai imports, sorts, writes and tests rules, and checks the result; reconciling stays a person's (planned in `docs/books-api.md`)
    - From a phone: an installable app that photos and screenshots are shared to, many at once; check images that wait for their number or their check to clear, and are matched when it does; and MCP tools through which Claude sees a receipt and reads a check, held to the bank's amount (planned in `docs/phone.md`)
    - Payees: whom each payment went to, spellings joined by a person, a mark on a payee whose payments are reported to the accountant, and the year's payments by payee; named for no country's tax form, and holding no tax number (planned in `docs/payees.md`)
+   - Accounts for reference (above, "Whose books"): the mark on the account's edit page and wherever it is named, and its parts left out of the organization's totals, budget, what should come back to zero, a project's book and what is to sort. Before reports, which build on it
    - Reports: an engine that sums parts by kind, category, group, project, payee, account and month; styles written in code and reviewed by pull request ("Income and expenses by month", "A project"); saved reports, a style with its choices made, run for a period chosen each time; category groups; printing and a CSV. No builder on the web yet, and nothing in the way of one (planned in `docs/reports.md`)
    - Thumbnails (stewards `imaging`, now `foundation/imaging`): a JPEG or PNG receipt has a small picture for lists and a large one for its page, upright and without EXIF, made the first time a page asks and kept beside the original by its hash (`files/sized/`). The original is unchanged, still a tap away, and is what the accountant's package holds. PDF, WebP and HEIC are shown or offered as they are
 

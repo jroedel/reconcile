@@ -19,6 +19,16 @@ Only income and expenses are the organization's operations. Transfers and
 pass-through are kept and shown, and each should come back to zero, but
 they are never counted as earning or spending.
 
+An organization here is **the books somebody keeps**, not the body that
+owns the accounts in law: a house, a parish, a pilgrimage's committee.
+Money that crosses the edge of those books is income or an expense, even
+when the other side belongs to the same legal body. When the national
+office pays for a house's flight and then takes the amount from the
+house's checking, the house spent it on travel; it is a transfer only
+when both accounts are the house's own. An account kept beside the books
+to explain them, and not part of them, is marked **for reference** and
+counted nowhere.
+
 So: upload bank and card statements, check them against their own
 balances, say what each part of each charge was, attach receipts, follow
 projects that draw from several accounts, reconcile each month, and hand the
