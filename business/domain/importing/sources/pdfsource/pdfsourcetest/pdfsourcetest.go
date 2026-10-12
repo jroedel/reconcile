@@ -32,6 +32,8 @@ const (
 //   - a description that starts with an earlier date than the row's;
 //   - the last deposit of a section broken at the foot of the page, its
 //     date on one line and the rest on the next;
+//   - the last withdrawal broken the same way, the rest of it starting with
+//     the earlier date the transfer was made on;
 //   - the balance at the end of each day with activity, in a table of its
 //     own, three pairs to a line, one pair broken across lines by a mark
 //     the bank hides in the text;
@@ -85,7 +87,9 @@ func Consolidated() []byte {
 	p2 = append(p2, pdftexttest.Row(215, 40, "ELECTRONIC WITHDRAWALS")...)
 	p2 = append(p2, cols(230)...)
 	p2 = append(p2, row(250, "09/16", "09/14/2026 Debit For An Item Processed Twice", "$5.00")...)
-	p2 = append(p2, row(265, "09/20", "Online Transfer To Chk ...2222", "25.00")...)
+	p2 = append(p2, pdftexttest.Row(265, 60, "09/20")...)
+	p2 = append(p2, pdftexttest.Row(273, 10, "*end*electronic withdrawal")...)
+	p2 = append(p2, pdftexttest.Row(281, 130, "09/19 Online Transfer To Chk ...2222", 520, "25.00")...)
 	p2 = append(p2, pdftexttest.Row(290, 40, "DAILY ENDING BALANCE")...)
 	p2 = append(p2, pdftexttest.Row(305, 60, "DATE", 160, "AMOUNT", 260, "DATE", 360, "AMOUNT", 440, "DATE", 520, "AMOUNT")...)
 	p2 = append(p2, pdftexttest.Row(320, 60, "09/02", 160, "$1,300.00", 260, "09/12", 360, "1,225.00", 440, "09/20", 520, "1,345.00")...)

@@ -63,7 +63,7 @@ func TestAConsolidatedStatement(t *testing.T) {
 		"09-12 -10.00 Check 1003 = 1225.00",
 		"09-15 150.00 Orig CO Name:Example Payroll Descr:Dir Dep Sec:PPD = 1375.00",
 		"09-16 -5.00 09/14/2026 Debit For An Item Processed Twice = 1370.00",
-		"09-20 -25.00 Online Transfer To Chk ...2222 = 1345.00",
+		"09-20 -25.00 09/19 Online Transfer To Chk ...2222 = 1345.00",
 		"09-28 75.00 Remote Online Deposit = 1420.00",
 	}
 
