@@ -11,6 +11,7 @@ import (
 	"net/http"
 
 	"github.com/jroedel/reconcile/app/sdk/mid"
+	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/types"
@@ -42,17 +43,31 @@ type Waiter interface {
 	CheckInbox(ctx context.Context, actor types.ID) (receiptbus.CheckInbox, error)
 }
 
+// Figurer is the part of ledgerbus the front page uses: beside each
+// account and project on its own, how much it has held (issue #106). Those
+// in an organization are listed bare here, for the volunteer at the
+// counter who wants the receipts button and nothing else; their figures
+// are on the organization's page. Those on their own have no other list.
+type Figurer interface {
+	AccountFigures(ctx context.Context, actor types.ID, ids []types.ID) (map[types.ID]ledgerbus.Figures, error)
+	ProjectFigures(ctx context.Context, actor types.ID, ids []types.ID) (map[types.ID]ledgerbus.Figures, error)
+}
+
 type view struct {
 	Overview tenancybus.Overview
 	Waiting  int
 
 	// Checks is how many of the person's own checks wait to be filed.
 	Checks int
+
+	// AccountFigures and ProjectFigures are for those on their own, by id.
+	AccountFigures map[types.ID]ledgerbus.Figures
+	ProjectFigures map[types.ID]ledgerbus.Figures
 }
 
 // Routes mounts the front page. {$} so that it is "/" and nothing else; every
 // other path that nothing claims is a 404, not the front page again.
-func Routes(mux *http.ServeMux, log *slog.Logger, render Renderer, overview Overviewer, receipts Waiter) {
+func Routes(mux *http.ServeMux, log *slog.Logger, render Renderer, overview Overviewer, receipts Waiter, figures Figurer) {
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		var v view
 
@@ -79,6 +94,23 @@ func Routes(mux *http.ServeMux, log *slog.Logger, render Renderer, overview Over
 				v.Checks = len(checks.Waiting)
 			} else {
 				log.Error("the person's own checks could not be read", "request_id", web.RequestIDFrom(r.Context()), "error", err)
+			}
+
+			var accounts, projects []types.ID
+			for _, a := range ov.Accounts {
+				accounts = append(accounts, a.ID)
+			}
+
+			for _, p := range ov.Projects {
+				projects = append(projects, p.ID)
+			}
+
+			if v.AccountFigures, err = figures.AccountFigures(r.Context(), u.ID, accounts); err != nil {
+				log.Error("the accounts' figures could not be read", "request_id", web.RequestIDFrom(r.Context()), "error", err)
+			}
+
+			if v.ProjectFigures, err = figures.ProjectFigures(r.Context(), u.ID, projects); err != nil {
+				log.Error("the projects' figures could not be read", "request_id", web.RequestIDFrom(r.Context()), "error", err)
 			}
 		}
 

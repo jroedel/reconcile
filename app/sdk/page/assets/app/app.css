@@ -222,6 +222,7 @@ code.key {
 .list, .people, .history { list-style: none; padding: 0; margin: 0 0 var(--gap); }
 .list li, .people li { padding: 0.6rem 0; border-bottom: 1px solid var(--line); }
 .list li:last-child, .people li:last-child { border-bottom: 0; }
+.list .figures { margin: 0.2rem 0 0; }
 .people .who-line { margin-bottom: 0.4rem; }
 .people .hint { margin-left: 0.35rem; }
 
