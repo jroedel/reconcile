@@ -313,6 +313,16 @@ WHERE t.posted_as IS NULL AND NOT EXISTS (SELECT 1 FROM splits s WHERE s.transac
 		return fmt.Errorf("giving every transaction its part: %w", err)
 	}
 
+	// And none to a pending charge that has posted, whose parts are its
+	// posted charge's (ledgerbus/pending.go). A release from before it,
+	// rolled back to, ignores posted_as and gives such a charge a part as
+	// it starts; without this, that part would stay when this one returns,
+	// and the charge would count beside its posted form for good.
+	if _, err := db.ExecContext(ctx, `
+DELETE FROM splits WHERE transaction_id IN (SELECT id FROM transactions WHERE posted_as IS NOT NULL)`); err != nil {
+		return fmt.Errorf("taking the parts off pending charges that have posted: %w", err)
+	}
+
 	// The sorting rule that sorted a part (docs/sorting.md), a later
 	// column beside the CREATE; NULL for a part a person sorted or nobody
 	// has. Not a foreign key: removing a rule leaves what it sorted as it
