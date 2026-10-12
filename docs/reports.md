@@ -44,7 +44,9 @@ in a scope, in a period, summed by some dimensions, in each currency.**
 - **The parts are the ledger's.** The engine reads them through
   `ledgerbus` (`OrgLines` already reads every part of an organization's
   accounts in a period, archived accounts included) and adds no counting
-  rule of its own. A pending charge that has posted, a transfer explained
+  rule of its own. An account for reference (`docs/plan.md`, "Whose
+  books") is not one of the books', so it is never among a report's
+  accounts and is not offered as a choice. A pending charge that has posted, a transfer explained
   by what it paid for, an entry by hand: each counts in a report exactly
   as it counts in the month list, a project's book and a budget, because
   it is the same parts. A report that disagreed with the book would be
@@ -119,6 +121,10 @@ way every month.
 - **A style can be run without saving it.** A scope's page links to each
   style that takes it, with the defaults. A saved report is for the one
   that is run every month, not a step before every report.
+- **An account's mark can change under it.** Putting an account for
+  reference, or taking it off, changes every period's figures, past ones
+  too. A period's note written before the change says, beneath it, that
+  the report's accounts have changed since.
 - **What it names is kept by ID and checked when it is read.** An archived
   account or category is still counted, because history needs it, and
   is shown as archived. One that no longer exists is named on the report

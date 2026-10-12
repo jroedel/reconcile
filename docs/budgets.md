@@ -46,8 +46,9 @@ zero").
 
 - **A project:** every part in the project, from any account, all time --
   the same parts as its book.
-- **An organization's year:** every part of the organization's accounts
-  posted in the budget year (from the first day of the starting month,
+- **An organization's year:** every part of the organization's accounts,
+  except those for reference (`docs/plan.md`, "Whose books"), posted in
+  the budget year (from the first day of the starting month,
   twelve months), whether or not it is in a project. An account on its own
   is in no organization and in no organization's budget.
 - Actuals are signed sums within a kind, as everywhere: a refund lowers
