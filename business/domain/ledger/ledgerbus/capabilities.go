@@ -43,10 +43,14 @@ func (c Can) rank() int {
 	return slices.Index([]Can{Has, Unknown, Lacks, NotInFormat}, c)
 }
 
-// The things a file can have, in order of importance: the first three are
-// the ones a page shows at a glance.
+// The things a file can have, in order of importance. The first four are
+// what make an import sound -- its balances to check it by, at its ends and
+// on its rows; the bank's own name for each row, so that the same row from
+// another file is known; and the whole of each description -- and are the
+// ones a page shows at a glance (Main).
 const (
-	CanBalances    = "balances"
+	CanEnds        = "ends"
+	CanRows        = "rows"
 	CanIdentifiers = "identifiers"
 	CanWhole       = "whole"
 	CanChecks      = "checks"
@@ -54,16 +58,27 @@ const (
 	CanNumber      = "number"
 )
 
-// Main is how many of a file's capabilities are shown at a glance.
-const Main = 3
+// mains is the capabilities shown at a glance, in their order.
+var mains = []string{CanEnds, CanRows, CanIdentifiers, CanWhole}
 
 // Capability is one thing a file has or lacks, and Why, a word the page
 // says in a sentence of its own.
+//
+// Better is, for a main one the file lacks, the kind of download that
+// usually has it: "ofx", "csv" or "statement" (the bank's monthly PDF
+// statement), never the file's own kind; empty when there is none to
+// suggest. It is advice about formats in general, not about this bank:
+// what a person can try the next time they download, said the moment the
+// file is read (issue #111, as its reporter meant it).
 type Capability struct {
-	Name string
-	Can  Can
-	Why  string
+	Name   string
+	Can    Can
+	Why    string
+	Better string
 }
+
+// Main reports a capability shown at a glance.
+func (c Capability) Main() bool { return slices.Contains(mains, c.Name) }
 
 // Capabilities is what the draft's file can do, in order of importance,
 // or nothing for a draft that read nothing: one with no columns chosen, or
@@ -80,14 +95,28 @@ func (d Draft) Capabilities() []Capability {
 
 	recs := d.Result.Records
 
-	out := []Capability{d.balances(), d.identifiers(), d.whole()}
+	out := []Capability{d.ends()}
+
+	// A card's downloads seldom carry a balance on each row, and nothing is
+	// missing for it: its statement's balances are what it is checked by. So
+	// for a card the mark is shown only when a file has one, rather than a
+	// cross on every file.
+	if rows := d.rows(); rows.Can == Has || d.Account.Kind != tenancybus.Card {
+		out = append(out, rows)
+	}
+
+	out = append(out, d.identifiers(), d.whole())
+
+	for i := range out {
+		out[i].Better = better(out[i], d.Format)
+	}
 
 	switch {
 	case slices.ContainsFunc(recs, func(r importbus.Record) bool { return r.CheckNumber != "" }),
 		d.Format == CSV && d.Mapping.Check != "":
-		out = append(out, Capability{CanChecks, Has, "numbered"})
+		out = append(out, Capability{Name: CanChecks, Can: Has, Why: "numbered"})
 	default:
-		out = append(out, Capability{CanChecks, Unknown, "none-here"})
+		out = append(out, Capability{Name: CanChecks, Can: Unknown, Why: "none-here"})
 	}
 
 	named, holders := 0, map[string]bool{}
@@ -101,39 +130,100 @@ func (d Draft) Capabilities() []Capability {
 	if d.Account.Kind == tenancybus.Card && (d.ByHolder || len(holders) > 1) {
 		switch {
 		case len(recs) > 0 && named == len(recs):
-			out = append(out, Capability{CanHolders, Has, "named"})
+			out = append(out, Capability{Name: CanHolders, Can: Has, Why: "named"})
 		case named > 0:
-			out = append(out, Capability{CanHolders, Lacks, "some-unnamed"})
+			out = append(out, Capability{Name: CanHolders, Can: Lacks, Why: "some-unnamed"})
 		default:
-			out = append(out, Capability{CanHolders, Lacks, "unnamed"})
+			out = append(out, Capability{Name: CanHolders, Can: Lacks, Why: "unnamed"})
 		}
 	}
 
 	if d.Result.Last4 != "" || d.Part != "" {
-		out = append(out, Capability{CanNumber, Has, "named"})
+		out = append(out, Capability{Name: CanNumber, Can: Has, Why: "named"})
 	} else {
-		out = append(out, Capability{CanNumber, Lacks, "unnamed"})
+		out = append(out, Capability{Name: CanNumber, Can: Lacks, Why: "unnamed"})
 	}
 
 	return out
 }
 
-// balances is whether the file states its own balances: the document's,
-// not any a person typed, since the question is what the download can do.
-// A balance on every row is as good as the two at the ends, and better.
-func (d Draft) balances() Capability {
+// ends is whether the file states its balances at its start and its end:
+// the document's, not any a person typed, since the question is what the
+// download can do. A balance on every row gives both, the first row's less
+// its amount and the last row's.
+func (d Draft) ends() Capability {
 	res := d.Result
 
 	switch {
-	case len(res.Records) > 0 && !slices.ContainsFunc(res.Records, func(r importbus.Record) bool { return !r.HasBalance }):
-		return Capability{CanBalances, Has, "every-row"}
 	case res.Opening.Known && res.Closing.Known:
-		return Capability{CanBalances, Has, "stated"}
+		return Capability{Name: CanEnds, Can: Has, Why: "stated"}
+	case everyRowBalanced(res.Records):
+		return Capability{Name: CanEnds, Can: Has, Why: "from-rows"}
 	case res.LateBalance:
-		return Capability{CanBalances, Lacks, "download-day"}
+		return Capability{Name: CanEnds, Can: Lacks, Why: "download-day"}
+	case res.Closing.Known:
+		return Capability{Name: CanEnds, Can: Lacks, Why: "closing-only"}
 	default:
-		return Capability{CanBalances, Lacks, "none"}
+		return Capability{Name: CanEnds, Can: Lacks, Why: "none"}
 	}
+}
+
+// rows is whether the file states a balance on each row, or at the end of
+// each day: what finds a row missing from the middle of a file, and
+// where (Check's ByBalances).
+func (d Draft) rows() Capability {
+	res := d.Result
+
+	switch {
+	case everyRowBalanced(res.Records):
+		return Capability{Name: CanRows, Can: Has, Why: "every-row"}
+	case len(res.Daily) > 0:
+		return Capability{Name: CanRows, Can: Has, Why: "daily"}
+	case slices.ContainsFunc(res.Records, func(r importbus.Record) bool { return r.HasBalance }):
+		return Capability{Name: CanRows, Can: Lacks, Why: "some"}
+	default:
+		return Capability{Name: CanRows, Can: Lacks, Why: "none"}
+	}
+}
+
+func everyRowBalanced(recs []importbus.Record) bool {
+	return len(recs) > 0 && !slices.ContainsFunc(recs, func(r importbus.Record) bool { return !r.HasBalance })
+}
+
+// better is the kind of download that usually has what c lacks, other than
+// the file's own kind: an OFX names its rows, a CSV keeps whole descriptions, and
+// the bank's statement states its balances, and a checking account's its
+// balance day by day. A guess about banks in general -- each says only
+// "usually" on the page -- and none for what the file has.
+func better(c Capability, format Format) string {
+	if c.Can == Has || !c.Main() {
+		return ""
+	}
+
+	var kinds []string
+
+	switch c.Name {
+	case CanIdentifiers:
+		kinds = []string{"ofx"}
+	case CanWhole:
+		kinds = []string{"csv"}
+	case CanEnds:
+		kinds = []string{"statement"}
+	case CanRows:
+		kinds = []string{"statement", "csv"}
+	}
+
+	// A PDF is not taken for the statement: one that lacks balances is a
+	// page printed from the bank's site, whose statement has them.
+	own := map[Format]string{OFX: "ofx", CSV: "csv"}[format]
+
+	for _, k := range kinds {
+		if k != own {
+			return k
+		}
+	}
+
+	return ""
 }
 
 // identifiers is whether the bank names each row, so that the same row
@@ -143,15 +233,15 @@ func (d Draft) identifiers() Capability {
 
 	switch {
 	case d.Format == PDF:
-		return Capability{CanIdentifiers, NotInFormat, "pdf"}
+		return Capability{Name: CanIdentifiers, Can: NotInFormat, Why: "pdf"}
 	case d.Format == CSV:
-		return Capability{CanIdentifiers, Lacks, "csv"}
+		return Capability{Name: CanIdentifiers, Can: Lacks, Why: "csv"}
 	case len(recs) == 0:
-		return Capability{CanIdentifiers, Unknown, "no-rows"}
+		return Capability{Name: CanIdentifiers, Can: Unknown, Why: "no-rows"}
 	case slices.ContainsFunc(recs, func(r importbus.Record) bool { return r.ExternalID == "" }):
-		return Capability{CanIdentifiers, Lacks, "some-missing"}
+		return Capability{Name: CanIdentifiers, Can: Lacks, Why: "some-missing"}
 	default:
-		return Capability{CanIdentifiers, Has, "every-row"}
+		return Capability{Name: CanIdentifiers, Can: Has, Why: "every-row"}
 	}
 }
 
@@ -164,11 +254,11 @@ func (d Draft) whole() Capability {
 
 	switch {
 	case len(recs) == 0:
-		return Capability{CanWhole, Unknown, "no-rows"}
+		return Capability{Name: CanWhole, Can: Unknown, Why: "no-rows"}
 	case d.Result.CutAt > 0, slices.ContainsFunc(recs, func(r importbus.Record) bool { return CutShort(r.Description) }):
-		return Capability{CanWhole, Lacks, "cut"}
+		return Capability{Name: CanWhole, Can: Lacks, Why: "cut"}
 	default:
-		return Capability{CanWhole, Has, "whole"}
+		return Capability{Name: CanWhole, Can: Has, Why: "whole"}
 	}
 }
 
@@ -192,18 +282,27 @@ type Together struct {
 	Bring        map[string][]string
 }
 
-// Everything reports whether together they have every main capability.
-func (t Together) Everything() bool {
-	return !slices.ContainsFunc(t.Capabilities, func(c Capability) bool { return c.Can != Has })
-}
+// Checkable reports whether together they have balances to check the
+// days by: at their ends, or on their rows.
+func (t Together) Checkable() bool { return t.Can(CanEnds) == Has || t.Can(CanRows) == Has }
 
-// Missing is the main capabilities none of them has.
+// Everything reports whether together they have all an import needs to be
+// sound: balances of either kind, the bank's identifiers, and whole
+// descriptions.
+func (t Together) Everything() bool { return len(t.Missing()) == 0 }
+
+// Missing is what none of them has: "balances" when neither kind, and the
+// identifiers and the whole descriptions.
 func (t Together) Missing() []string {
 	var out []string
 
-	for _, c := range t.Capabilities {
-		if c.Can != Has {
-			out = append(out, c.Name)
+	if !t.Checkable() {
+		out = append(out, "balances")
+	}
+
+	for _, name := range []string{CanIdentifiers, CanWhole} {
+		if t.Can(name) != Has {
+			out = append(out, name)
 		}
 	}
 
@@ -286,14 +385,18 @@ func Togethers(props []Proposal) []Together {
 				}
 			}
 
-			for c := range Main {
-				best := Capability{}
+			for _, name := range mains {
+				best := Capability{Name: name, Can: NotInFormat}
 
 				var has, lacks []string
 
+				asked := false
+
 				for _, r := range g {
-					mine := props[r.i].Draft.Capabilities()[c]
-					if best.Name == "" || mine.Can.rank() < best.Can.rank() {
+					mine, ok := capability(props[r.i].Draft.Capabilities(), name)
+					asked = asked || ok
+
+					if mine.Can.rank() < best.Can.rank() {
 						best = mine
 					}
 
@@ -304,6 +407,13 @@ func Togethers(props []Proposal) []Together {
 					}
 				}
 
+				// A card's balance on each row, asked of none of them, is
+				// nothing to say of them together either.
+				if !asked {
+					continue
+				}
+
+				best.Better = ""
 				t.Capabilities = append(t.Capabilities, best)
 
 				if len(has) > 0 && len(lacks) > 0 {
@@ -316,6 +426,18 @@ func Togethers(props []Proposal) []Together {
 	}
 
 	return out
+}
+
+// capability is the one by name, and whether the file was asked it: not a
+// card's balance on each row, when it has none.
+func capability(caps []Capability, name string) (Capability, bool) {
+	for _, c := range caps {
+		if c.Name == name {
+			return c, true
+		}
+	}
+
+	return Capability{Name: name, Can: Unknown}, false
 }
 
 // dated is a proposal of a batch, by its index, and its days.

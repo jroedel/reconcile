@@ -10,11 +10,15 @@ import (
 	"github.com/jroedel/reconcile/business/types"
 )
 
-// cans is a draft's capabilities as name=answer, in order.
+// cans is a draft's capabilities as name=answer, in order, with the kind
+// of download suggested for one it lacks: name=answer>better.
 func cans(caps []ledgerbus.Capability) []string {
 	out := make([]string, len(caps))
 	for i, c := range caps {
 		out[i] = c.Name + "=" + string(c.Can)
+		if c.Better != "" {
+			out[i] += ">" + c.Better
+		}
 	}
 
 	return out
@@ -22,8 +26,10 @@ func cans(caps []ledgerbus.Capability) []string {
 
 // The issue's case (#111): a card's OFX with the bank's identifiers and
 // names cut short, and its CSV of the same days with the whole names and
-// no identifier. Neither has balances. Each says what it has, and the two
-// together say what each brings and that the balances are still missing.
+// no identifier. Neither has balances. Each says what it has, and which
+// kind of download would bring what it lacks; the two together say what
+// each brings and that the balances are still missing. A card's balance
+// on each row, which neither has, is not asked of either.
 func TestWhatAnOFXAndACSVCanDoTogether(t *testing.T) {
 	w := newWorld(t)
 	me := w.user("treasurer@example.org")
@@ -37,8 +43,8 @@ func TestWhatAnOFXAndACSVCanDoTogether(t *testing.T) {
 	}
 
 	for i, want := range [][]string{
-		{"balances=no", "identifiers=yes", "whole=no", "checks=unknown", "number=no"},
-		{"balances=no", "identifiers=no", "whole=yes", "checks=unknown", "number=no"},
+		{"ends=no>statement", "identifiers=yes", "whole=no>csv", "checks=unknown", "number=no"},
+		{"ends=no>statement", "identifiers=no>ofx", "whole=yes", "checks=unknown", "number=no"},
 	} {
 		if got := cans(props[i].Draft.Capabilities()); !slices.Equal(got, want) {
 			t.Errorf("%s: %v, want %v", props[i].File.Name, got, want)
@@ -51,7 +57,7 @@ func TestWhatAnOFXAndACSVCanDoTogether(t *testing.T) {
 	}
 
 	g := together[0]
-	if got := cans(g.Capabilities); !slices.Equal(got, []string{"balances=no", "identifiers=yes", "whole=yes"}) {
+	if got := cans(g.Capabilities); !slices.Equal(got, []string{"ends=no", "identifiers=yes", "whole=yes"}) {
 		t.Errorf("together: %v", got)
 	}
 
@@ -59,7 +65,7 @@ func TestWhatAnOFXAndACSVCanDoTogether(t *testing.T) {
 		t.Errorf("together: %+v", g)
 	}
 
-	if !slices.Equal(g.Bring["identifiers"], []string{"december.ofx"}) || !slices.Equal(g.Bring["whole"], []string{"december.csv"}) || g.Bring["balances"] != nil {
+	if !slices.Equal(g.Bring["identifiers"], []string{"december.ofx"}) || !slices.Equal(g.Bring["whole"], []string{"december.csv"}) || g.Bring["ends"] != nil {
 		t.Errorf("what each brings: %v", g.Bring)
 	}
 
@@ -75,8 +81,9 @@ func TestWhatAnOFXAndACSVCanDoTogether(t *testing.T) {
 	}
 }
 
-// A consolidated PDF that checks by its balances has them, and has no
-// identifiers because no PDF does; it names its account.
+// A consolidated PDF that checks by its balances has them at its ends and
+// on its rows, and has no identifiers because no PDF does -- for which an
+// OFX is suggested; it names its account.
 func TestWhatAPDFCanDo(t *testing.T) {
 	needPoppler(t)
 
@@ -94,7 +101,7 @@ func TestWhatAPDFCanDo(t *testing.T) {
 	}
 
 	caps := d.Capabilities()
-	if got := cans(caps[:2]); !slices.Equal(got, []string{"balances=yes", "identifiers=na"}) || caps[len(caps)-1].Can != ledgerbus.Has {
+	if got := cans(caps[:3]); !slices.Equal(got, []string{"ends=yes", "rows=yes", "identifiers=na>ofx"}) || caps[len(caps)-1].Can != ledgerbus.Has {
 		t.Errorf("the PDF: %v", cans(caps))
 	}
 
@@ -110,7 +117,7 @@ func TestWhatAPDFCanDo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := cans(d.Capabilities()); !slices.Equal(got, []string{"balances=no", "identifiers=na", "whole=no", "checks=unknown", "number=no"}) {
+	if got := cans(d.Capabilities()); !slices.Equal(got, []string{"ends=no>statement", "identifiers=na>ofx", "whole=no>csv", "checks=unknown", "number=no"}) {
 		t.Errorf("the printed page, one holder: %v", got)
 	}
 
@@ -122,13 +129,14 @@ func TestWhatAPDFCanDo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := cans(d.Capabilities()); !slices.Equal(got, []string{"balances=no", "identifiers=na", "whole=no", "checks=unknown", "holders=yes", "number=no"}) {
+	if got := cans(d.Capabilities()); !slices.Equal(got, []string{"ends=no>statement", "identifiers=na>ofx", "whole=no>csv", "checks=unknown", "holders=yes", "number=no"}) {
 		t.Errorf("the printed page: %v", got)
 	}
 }
 
-// A checking account's CSV with a balance on every row has balances, and
-// says nothing of holders, which are a card's.
+// A checking account's CSV with a balance on every row has them at its
+// ends too, and lacks only the identifiers an OFX would bring; it says
+// nothing of holders, which are a card's.
 func TestACSVWithABalanceOnEveryRow(t *testing.T) {
 	w := newWorld(t)
 	me := w.user("treasurer@example.org")
@@ -136,7 +144,21 @@ func TestACSVWithABalanceOnEveryRow(t *testing.T) {
 
 	d, _ := w.prepare(me, checking, "checking-july.csv")
 
-	if got := cans(d.Capabilities()); !slices.Equal(got, []string{"balances=yes", "identifiers=no", "whole=yes", "checks=unknown", "number=no"}) {
+	if got := cans(d.Capabilities()); !slices.Equal(got, []string{"ends=yes", "rows=yes", "identifiers=no>ofx", "whole=yes", "checks=unknown", "number=no"}) {
+		t.Errorf("the CSV: %v", got)
+	}
+}
+
+// A checking account's CSV with no balances lacks both kinds: the
+// statement is suggested for each, and not a CSV again.
+func TestACSVWithNoBalances(t *testing.T) {
+	w := newWorld(t)
+	me := w.user("treasurer@example.org")
+	checking := w.account(me, "checking")
+
+	d, _ := w.preview(me, checking, "export.csv", csvOf("2026-07-03,CORNER GROCERY,-33.99"))
+
+	if got := cans(d.Capabilities()[:4]); !slices.Equal(got, []string{"ends=no>statement", "rows=no>statement", "identifiers=no>ofx", "whole=yes"}) {
 		t.Errorf("the CSV: %v", got)
 	}
 }
