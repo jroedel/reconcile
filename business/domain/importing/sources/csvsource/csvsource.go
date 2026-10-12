@@ -146,7 +146,7 @@ var (
 
 	// Not "name", which is a payee as often as a person.
 	holderNames = []string{
-		"cardholder", "card holder", "card member", "cardmember", "card member name", "cardholder name",
+		"cardholder", "card holder", "card member", "cardmember", "card member name", "cardholder name", "member name",
 		"titular", "tarjetahabiente", "titular do cartão", "titular do cartao", "portador",
 	}
 )

@@ -369,3 +369,38 @@ func TestAmountsDetachedFromTheirRows(t *testing.T) {
 		t.Errorf("balances %+v, %+v", res.Opening, res.Closing)
 	}
 }
+
+// A page printed before its list of transactions had loaded: the
+// headings, "End of Activity" under them, and the period's total, on the
+// line after its label.
+func TestAPagePrintedBeforeItsListLoaded(t *testing.T) {
+	const empty = `Example Card Services Account Activity                                  10/2/26, 4:15 PM
+
+          Transactions
+
+          Sep 1, 2026 to Sep 30, 2026 | PAT EXAMPLE
+
+        Date                 Name                     Description                                    Amount
+
+
+            End of Activity
+
+          Total Activity Date range
+
+          $1,246.56
+
+
+          Pending purchases                                                                                      $0.00
+` + "\f"
+
+	if _, err := pdfsource.Read(empty); !errors.Is(err, pdfsource.ErrListsNone) || !errors.Is(err, pdfsource.ErrNoRows) {
+		t.Errorf("Read = %v, want ErrListsNone", err)
+	}
+
+	// With a total of nothing, the period had nothing: no rows, and no
+	// more to say.
+	quiet := strings.Replace(empty, "$1,246.56", "$0.00", 1)
+	if _, err := pdfsource.Read(quiet); errors.Is(err, pdfsource.ErrListsNone) || !errors.Is(err, pdfsource.ErrNoRows) {
+		t.Errorf("Read of a quiet period = %v, want ErrNoRows alone", err)
+	}
+}

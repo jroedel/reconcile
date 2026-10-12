@@ -86,6 +86,60 @@ func post(ctx context.Context, tx *sql.Tx, st *ledgerbus.Statement, txs []ledger
 	return left, nil
 }
 
+// superseded is the file's pending rows whose posted form the same file
+// lists, by the rule post uses for one a later file brings: a row not
+// pending, dated on the pending one's day or up to PostWithin after, the
+// same holder's, worded alike or one cut short, and of an amount the
+// pending one may have become. The likest wording, then the nearest day;
+// each posted row once.
+//
+// A bank's page goes on listing an authorization for days after the
+// charge has posted: one card's printed month had a coffee pending on the
+// 28th and posted on the 29th, a car hire's hold of 925.92 beside its
+// charge of 753.64. Imported, the pending row was a second charge, there
+// until somebody released it (ledgerbus.Release). It is left out, and
+// counted (Statement.Superseded).
+func superseded(txs []ledgerbus.Transaction) map[int]bool {
+	out := map[int]bool{}
+	taken := map[int]bool{}
+
+	for i, p := range txs {
+		if !p.Pending {
+			continue
+		}
+
+		best := -1
+
+		for j, t := range txs {
+			if t.Pending || taken[j] || !ledgerbus.SameHolder(p.Holder, t.Holder) ||
+				t.PostedOn.Before(p.PostedOn) || p.PostedOn.AddDays(ledgerbus.PostWithin).Before(t.PostedOn) {
+				continue
+			}
+
+			like := alike(p.Description, t.Description)
+			if like < 2 && !ledgerbus.Truncated(p.Description, t.Description) || !ledgerbus.PostsAs(p.Amount, t.Amount, like == 3) {
+				continue
+			}
+
+			if best < 0 {
+				best = j
+
+				continue
+			}
+
+			if b := alike(p.Description, txs[best].Description); like > b || like == b && t.PostedOn.Before(txs[best].PostedOn) {
+				best = j
+			}
+		}
+
+		if best >= 0 {
+			out[i], taken[best] = true, true
+		}
+	}
+
+	return out
+}
+
 // settle clears the pending mark of the stored charge a posted row of the
 // file is already (ledgerdb.already): by its identity, a remembered
 // wording, or one of the two cut short -- the same holder's, or one that
@@ -230,7 +284,7 @@ ORDER BY t.posted_on, t.rowid`, account.String(), statement.String(), from.Strin
 func replace(ctx context.Context, tx *sql.Tx, st ledgerbus.Statement, p, t ledgerbus.Transaction) error {
 	if _, err := tx.ExecContext(ctx, `
 UPDATE transactions SET statement_id = ?, posted_on = ?, description = ?, amount = ?, balance = ?, external_id = ?,
-    hash = ?, occurrence = ?, holder = ?, pending = 0, check_number = ?
+    hash = ?, occurrence = ?, holder = ?, pending = 0, check_number = ?, wording = ''
 WHERE id = ?`,
 		st.ID.String(), t.PostedOn.String(), t.Description, int64(t.Amount), nullAmount(t.Balance, t.HasBalance),
 		t.ExternalID, t.Hash, t.Occurrence, cmp.Or(t.Holder, p.Holder), cmp.Or(t.CheckNumber, p.CheckNumber), p.ID.String()); err != nil {

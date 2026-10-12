@@ -34,6 +34,7 @@ package pdfsource
 
 import (
 	"errors"
+	"fmt"
 	"regexp"
 	"slices"
 	"strings"
@@ -47,6 +48,14 @@ import (
 // ErrNoRows is a document in which no transaction could be found: not a
 // statement, or a statement laid out in a way this cannot read.
 var ErrNoRows = errors.New("no transaction could be found in the PDF")
+
+// ErrListsNone is a document that lists no transaction and states that
+// its period had some: a bank's page printed before its list of
+// transactions had loaded, which says "End of Activity" under the
+// headings and the period's total below. Read, it would be a month
+// imported with nothing in it; it is a page to print again. It is
+// ErrNoRows too, for whoever does not tell them apart.
+var ErrListsNone = fmt.Errorf("%w: it states activity and lists none", ErrNoRows)
 
 // maxContinuations is how many lines may continue one row. A wrapped
 // description is two or three lines; more is a paragraph of the bank's that
@@ -115,6 +124,10 @@ func read(text string, v *vocabulary) (importbus.Result, error) {
 
 	switch len(accounts) {
 	case 0:
+		if t := r.res.Total; t.Known && t.Amount != 0 {
+			return importbus.Result{Structure: r.st}, ErrListsNone
+		}
+
 		return importbus.Result{Structure: r.st}, ErrNoRows
 	case 1:
 		out := accounts[0].Result
@@ -336,6 +349,10 @@ type reader struct {
 	loneCol int
 	hasLone bool
 
+	// totalNext is a total's label alone on the line before, whose amount
+	// a page with no rows prints on the next line (stated).
+	totalNext bool
+
 	// loose is figures each alone on a line, waiting for rows that print
 	// only their balance (row).
 	loose []figure
@@ -485,6 +502,9 @@ func (r *reader) line(l line) {
 		return
 	}
 
+	totalNext := r.totalNext
+	r.totalNext = false
+
 	// Before the furniture: the line naming an account repeats its shape
 	// for every account of a consolidated statement.
 	if r.account(s) {
@@ -556,6 +576,12 @@ func (r *reader) line(l line) {
 	if body, figs := figures(s); len(figs) > 0 {
 		if len(figs) == 1 && strings.TrimSpace(body) == "" {
 			r.loose = append(r.loose, figs[0])
+
+			// A page with no rows puts the total on the line under its
+			// label, where a page with rows puts it beside it.
+			if totalNext && !r.res.Total.Known {
+				r.res.Total = importbus.Total{Amount: figs[0].amount, Known: true}
+			}
 		}
 
 		r.stated(s)
@@ -573,6 +599,8 @@ func (r *reader) line(l line) {
 
 		return
 	}
+
+	r.totalNext = r.v.total.MatchString(s)
 
 	r.continuation(s)
 }

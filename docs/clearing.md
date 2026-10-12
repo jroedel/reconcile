@@ -138,6 +138,18 @@ every account that exists, and for any account that does not need it.
   holder with a statement in either of the two months before and none
   in this one. "September: 5 of 6 holders."
 - **The accountant's package** gains a "Holder" column.
+- **A name cut short** by a narrow printed column ("GONZALO VILLA…") is
+  the whole name it begins, when exactly one holder of the account or of
+  the file has one (`ledgerbus.WholeName`): on a file's rows as they are
+  read, and on rows already stored when an import meets them, outside
+  reconciled periods (`Statement.Renamed`).
+- **A file that names nobody** -- a bank's download of one card -- is
+  taken for the holder whose charges already here it shares, when at
+  least three of its rows are that holder's and at most one in twenty of
+  those is anybody else's (`inferHolder`). The preview says so, with the
+  question still there to answer otherwise; a bulk import carries the
+  answer. A file of a new period, or of several holders' charges, is
+  asked about as before.
 - **Storage.** `transactions.holder`, the holder a file named, kept
   for every account; it joins the identity only where the option is on.
   The option itself is a row of the ledger's `holder_accounts`, not a
@@ -182,6 +194,13 @@ them.
   the same row (the ledger's duplicate check finds it) and only stops
   being pending. A pending charge in a reconciled period is never
   replaced.
+- **Posted in the same file.** A bank's page goes on listing an
+  authorization for days after its charge has posted, so one printed
+  month can hold both: a coffee pending on the 28th and posted on the
+  29th, a car hire's hold beside its charge. A pending row whose posted
+  form the same file lists, by the rule above, is left out at import,
+  and the preview counts it (`Statement.Superseded`). Before this, both
+  were imported and the pending one waited on "still pending".
 - **Never posted.** A pending row older than ten days past the latest
   statement of its account is listed on the account's page, "still
   pending", with a way for a bookkeeper to remove it (a hold that was

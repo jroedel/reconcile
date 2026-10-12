@@ -34,6 +34,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/importing/shapes"
 	"github.com/jroedel/reconcile/business/domain/importing/sources/csvsource"
 	"github.com/jroedel/reconcile/business/domain/importing/sources/ofxsource"
+	"github.com/jroedel/reconcile/business/domain/importing/sources/pdfsource"
 	"github.com/jroedel/reconcile/business/domain/rule/rulebus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/types"
@@ -55,6 +56,11 @@ var (
 	ErrPDFPassword    = errors.New("the PDF is locked with a password")
 	ErrPDFUnreadable  = errors.New("the PDF could not be opened")
 	ErrPDFNoRows      = errors.New("no transactions could be found in the PDF")
+
+	// ErrPDFListsNone is a page that lists no transactions and states
+	// that its period had some (pdfsource.ErrListsNone): printed before
+	// its list had loaded. It is ErrPDFNoRows too.
+	ErrPDFListsNone = fmt.Errorf("%w: the page states activity and lists none", ErrPDFNoRows)
 
 	// ErrWhichAccount is a document that holds several accounts, imported
 	// before a person said which of them is this one.
@@ -214,6 +220,11 @@ type Storer interface {
 	// from start up to end.
 	Holders(ctx context.Context, account types.ID) ([]string, error)
 	HoldersBetween(ctx context.Context, account types.ID, from, to types.Date) ([]string, error)
+
+	// NamedBetween is the account's rows dated from one day to another,
+	// both included, that name a holder: their day, amount and holder
+	// only, for telling whose a file that names nobody is (holders.go).
+	NamedBetween(ctx context.Context, account types.ID, from, to types.Date) ([]Transaction, error)
 	HolderTotals(ctx context.Context, account types.ID, start, end types.Date) ([]HolderTotal, error)
 
 	// NamedInParts is the account's transactions that name a holder and
@@ -439,6 +450,13 @@ type Draft struct {
 	Unnamed  int
 	Holder   string
 
+	// Inferred is a Holder nobody said, read from the file's rows: Matched
+	// of them are charges of that holder's already here, and practically
+	// none anybody else's (inferHolder). The preview says so, and offers
+	// to change it.
+	Inferred bool
+	Matched  int
+
 	// LooksByHolder is a file whose rows all name one holder, FileHolder,
 	// for an account without the option, which already holds charges
 	// other holders made in the file's days, OtherHolders: what an
@@ -464,6 +482,21 @@ type Draft struct {
 func (d Draft) Ready() bool {
 	return !d.Unmapped && !d.HasEarlier && !d.Check.Failed() && !d.Unproven() && (len(d.Result.Records) > 0 || d.Quiet()) &&
 		d.Statement.Locked == 0
+}
+
+// AddsNothing reports a draft whose every row is in the account already:
+// importing it adds no transaction and changes no amount -- nothing set
+// aside, no pending charge taking its posted form -- and at most lends the
+// rows here the bank's identifier or the whole of a description cut short
+// (ledgerdb's Import). Such a file needs no balances to be imported
+// without a person (Proposal.Unattended): nothing it brings is money the
+// books did not already have. A bank's CSV of the days its OFX brought in
+// is the one this is for.
+func (d Draft) AddsNothing() bool {
+	st := d.Statement
+
+	return len(d.Result.Records) > 0 && !d.Check.Failed() && st.Added == 0 && st.Posted == 0 && len(st.Doubts) == 0 &&
+		!st.ID.Zero()
 }
 
 // Quiet reports whether the draft is a statement of a period with no
@@ -520,6 +553,10 @@ func (b *Business) Prepare(ctx context.Context, actor, accountID, fileID types.I
 
 	if d.Unmapped {
 		return d, nil
+	}
+
+	if err := b.fullHolders(ctx, &d); err != nil {
+		return Draft{}, err
 	}
 
 	if err := b.holders(ctx, &d, opts); err != nil {
@@ -673,6 +710,10 @@ func (b *Business) readPDF(ctx context.Context, d *Draft, data []byte, opts *Opt
 
 	if err != nil {
 		b.seen(ctx, *d)
+
+		if errors.Is(err, pdfsource.ErrListsNone) {
+			return ErrPDFListsNone
+		}
 
 		return ErrPDFNoRows
 	}
@@ -985,15 +1026,17 @@ func insist(txs []Transaction, opts *Options) {
 // it in on import, because only the store knows the counts.
 func EventDetail(st Statement) map[string]string {
 	return map[string]string{
-		"name":      st.FileName,
-		"start":     st.Start.String(),
-		"end":       st.End.String(),
-		"added":     strconv.Itoa(st.Added),
-		"already":   strconv.Itoa(st.Already),
-		"byrule":    strconv.Itoa(st.ByRule),
-		"setaside":  strconv.Itoa(st.SetAside()),
-		"posted":    strconv.Itoa(st.Posted),
-		"completed": strconv.Itoa(st.Completed),
+		"name":       st.FileName,
+		"start":      st.Start.String(),
+		"end":        st.End.String(),
+		"added":      strconv.Itoa(st.Added),
+		"already":    strconv.Itoa(st.Already),
+		"byrule":     strconv.Itoa(st.ByRule),
+		"setaside":   strconv.Itoa(st.SetAside()),
+		"posted":     strconv.Itoa(st.Posted),
+		"completed":  strconv.Itoa(st.Completed),
+		"superseded": strconv.Itoa(st.Superseded),
+		"renamed":    strconv.Itoa(st.Renamed),
 	}
 }
 

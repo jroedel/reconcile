@@ -50,6 +50,13 @@ on a real ledger:
   same days end, in either order, with the bank's identifier and all of
   its words. Outside a reconciled period only; a person's own description
   and payee are never touched.
+- **A row set aside and left out** is the charge already here, by the
+  person's word, and gives it its description when that says more
+  (`ledgerbus.SaysMore`: not cut short, and longer): a printed page's
+  "Home Depot" becomes the bank's "THE HOME DEPOT #6531 BEE CAVES TX",
+  in either order. The words a row was imported with are kept
+  (`transactions.wording`) and its identity is made from them again
+  when the holder option changes, so the first file still matches.
 - **The preview is the import, rolled back** (`Storer.Import` with commit
   false), so the counts it shows are the import's by construction. eumaeus
   learned that a preview which disagrees with the import is worse than

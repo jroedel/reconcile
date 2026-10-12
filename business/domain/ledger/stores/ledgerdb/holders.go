@@ -115,10 +115,11 @@ func (s *Store) SetByHolder(ctx context.Context, account types.ID, on bool, by t
 }
 
 // rehash gives every row of the account without a bank identifier its
-// occurrence and hash under the setting.
+// occurrence and hash under the setting, from the words it was imported
+// with (wording), which a later file's fuller description has not changed.
 func rehash(ctx context.Context, tx *sql.Tx, account types.ID, on bool) error {
 	rows, err := tx.QueryContext(ctx, `
-SELECT rowid, statement_id, posted_on, description, amount, holder, occurrence FROM transactions
+SELECT rowid, statement_id, posted_on, coalesce(nullif(wording, ''), description), amount, holder, occurrence FROM transactions
 WHERE account_id = ? ORDER BY statement_id, occurrence, rowid`, account.String())
 	if err != nil {
 		return fmt.Errorf("reading the account's transactions: %w", err)
@@ -263,6 +264,114 @@ ORDER BY holder`, account.String(), from.String(), to.String())
 	}
 
 	return out, rows.Err()
+}
+
+// NamedBetween is the account's rows dated from one day to another, both
+// included, that name a holder: their day, amount and holder.
+func (s *Store) NamedBetween(ctx context.Context, account types.ID, from, to types.Date) ([]ledgerbus.Transaction, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT posted_on, amount, holder FROM transactions
+WHERE account_id = ? AND holder <> '' AND posted_on BETWEEN ? AND ?`, account.String(), from.String(), to.String())
+	if err != nil {
+		return nil, fmt.Errorf("reading the holders' charges: %w", err)
+	}
+	defer rows.Close()
+
+	var out []ledgerbus.Transaction
+
+	for rows.Next() {
+		var (
+			t      = ledgerbus.Transaction{AccountID: account}
+			posted string
+			amount int64
+		)
+
+		if err := rows.Scan(&posted, &amount, &t.Holder); err != nil {
+			return nil, fmt.Errorf("reading the holders' charges: %w", err)
+		}
+
+		if t.PostedOn, err = types.ParseDate(posted); err != nil {
+			return nil, fmt.Errorf("a stored transaction is unreadable: %w", err)
+		}
+
+		t.Amount = money.Amount(amount)
+		out = append(out, t)
+	}
+
+	return out, rows.Err()
+}
+
+// wholeHolders gives the account's stored rows whose holder is a name cut
+// short the whole name it begins (ledgerbus.WholeName), when exactly one
+// holder of the account, or of the file's rows, has one: the rows a
+// printed page with a narrow column brought in before, under a name the
+// rest of the account knows whole. Outside reconciled periods, as a
+// description is completed. With the holder option on, the holder is part
+// of every row's identity, which is made again (rehash). Said in the
+// statement's count, Renamed.
+func wholeHolders(ctx context.Context, tx *sql.Tx, st *ledgerbus.Statement, txs []ledgerbus.Transaction, on bool) error {
+	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT holder FROM transactions WHERE account_id = ? AND holder <> ''`, st.AccountID.String())
+	if err != nil {
+		return fmt.Errorf("reading the holders: %w", err)
+	}
+
+	var names []string
+
+	for rows.Next() {
+		var h string
+		if err := rows.Scan(&h); err != nil {
+			rows.Close()
+
+			return fmt.Errorf("reading the holders: %w", err)
+		}
+
+		names = append(names, h)
+	}
+
+	rows.Close()
+
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("reading the holders: %w", err)
+	}
+
+	known := slices.Clone(names)
+	for _, t := range txs {
+		known = append(known, t.Holder)
+	}
+
+	renamed := 0
+
+	for _, cut := range names {
+		full, ok := ledgerbus.WholeName(cut, known)
+		if !ok {
+			continue
+		}
+
+		res, err := tx.ExecContext(ctx, `UPDATE transactions AS t SET holder = ? WHERE t.account_id = ? AND t.holder = ? AND NOT `+lockedWhere,
+			full, st.AccountID.String(), cut)
+		if err != nil {
+			return fmt.Errorf("giving a holder their whole name: %w", err)
+		}
+
+		n, err := res.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("giving a holder their whole name: %w", err)
+		}
+
+		renamed += int(n)
+	}
+
+	if renamed == 0 {
+		return nil
+	}
+
+	st.Renamed += renamed
+
+	if !on {
+		return nil
+	}
+
+	return rehash(ctx, tx, st.AccountID, on)
 }
 
 // NamedInParts is the account's transactions that name a holder and have a
