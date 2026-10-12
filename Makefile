@@ -189,6 +189,10 @@ prod-logs: ## The tail of the server's log (make prod-logs N=200)
 prod-backup: ## Back up the live database now, once there is one (stops the app for a moment)
 	@deploy/deploy.sh backup
 
+.PHONY: prod-pull-backup
+prod-pull-backup: ## Copy the live database and the uploaded files here (make prod-pull-backup DEST=~/somewhere)
+	@deploy/deploy.sh pull-backup $(DEST)
+
 .PHONY: prod-restart
 prod-restart: ## Restart the live app
 	@deploy/deploy.sh restart

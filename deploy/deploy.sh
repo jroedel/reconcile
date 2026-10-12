@@ -49,11 +49,8 @@ load_config() {
 	: "${APP_DOCROOT:?APP_DOCROOT is not set}"
 
 	DEPLOY_SSH_PORT="${DEPLOY_SSH_PORT:-22}"
-	KEEP_BACKUPS="${KEEP_BACKUPS:-14}"
 
 	[[ "$APP_PORT" =~ ^[0-9]+$ ]] || die "APP_PORT is \"$APP_PORT\"; it must be a port number"
-	[[ "$KEEP_BACKUPS" =~ ^[0-9]+$ ]] && [ "$KEEP_BACKUPS" -ge 1 ] \
-		|| die "KEEP_BACKUPS is \"$KEEP_BACKUPS\"; it must be a whole number of at least 1"
 }
 
 # need_app_dir is separate from load_config because the front end does not
@@ -102,6 +99,7 @@ ssh_setup() {
 remote()        { ssh "${SSH_OPTS[@]}" -p "$DEPLOY_SSH_PORT" "$DEPLOY_SSH_USER@$DEPLOY_SSH_HOST" "$@"; }
 remote_in_app() { remote "cd $Q_DIR && $1"; }
 push_file()     { scp -q "${SSH_OPTS[@]}" -P "$DEPLOY_SSH_PORT" "$1" "$DEPLOY_SSH_USER@$DEPLOY_SSH_HOST:$2"; }
+pull_file()     { scp -q "${SSH_OPTS[@]}" -P "$DEPLOY_SSH_PORT" "$DEPLOY_SSH_USER@$DEPLOY_SSH_HOST:$1" "$2"; }
 
 # ------------------------------------------------------------------ guards
 
@@ -125,7 +123,7 @@ assert_app_dir_is_private() {
 assert_not_exposed() {
 	local problems=0 code
 
-	for path in config.toml "$APP.db" "$APP.log" run.sh supervise.sh secrets.env; do
+	for path in config.toml "$APP.db" "$APP.log" run.sh supervise.sh backup.sh secrets.env; do
 		code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://$APP_HOST/$path" 2>/dev/null)" || code=""
 
 		case "$code" in
@@ -283,10 +281,13 @@ cmd_htaccess() {
 
 # ------------------------------------------------------------------ cron
 
-# install_cron makes `supervise.sh start` the boot launcher and `supervise.sh
-# watch` the five-minute watchdog. watch is start that prints nothing when the
-# app is already up, because cron emails whatever a job prints; see
-# supervise.sh for the 288 emails a day that cost.
+# install_cron makes `supervise.sh start` the boot launcher, `supervise.sh
+# watch` the five-minute watchdog, and `backup.sh nightly` the night's backup.
+# watch is start that prints nothing when the app is already up, because cron
+# emails whatever a job prints; see supervise.sh for the 288 emails a day that
+# cost. backup.sh is as quiet for the same reason. The backup runs at 03:23 by
+# the server's clock: at night wherever the books are kept, and off the hour,
+# when everybody else's cron jobs start.
 #
 # The crontab is shared with mass-intentions and stewards, which is the reason
 # for both rules below, and scripts/deploy-test.sh holds each of them against
@@ -305,13 +306,14 @@ CRON_MARKER='# reconcile'
 
 install_cron() {
 	local lines="@reboot cd $Q_DIR && ./supervise.sh start $CRON_MARKER
-*/5 * * * * cd $Q_DIR && ./supervise.sh watch $CRON_MARKER"
+*/5 * * * * cd $Q_DIR && ./supervise.sh watch $CRON_MARKER
+23 3 * * * cd $Q_DIR && ./backup.sh nightly $CRON_MARKER"
 
 	remote "crontab -l 2>/dev/null | grep -v ' $CRON_MARKER\$' > /tmp/reconcile-cron.\$\$ || true
 	        printf '%s\n' \"$lines\" >> /tmp/reconcile-cron.\$\$
 	        crontab /tmp/reconcile-cron.\$\$ && rm -f /tmp/reconcile-cron.\$\$"
 
-	ok "the watchdog is scheduled"
+	ok "the watchdog and the nightly backup are scheduled"
 }
 
 # ------------------------------------------------------------------ backup and rollback
@@ -324,6 +326,11 @@ install_cron() {
 # them. A clean shutdown checkpoints the WAL into the .db, so the copy taken
 # afterwards is whole; the -wal is copied too, in case the shutdown was not
 # clean. sqlite3's .backup is used when the host has it, and is safe either way.
+#
+# Which backups are kept is backup.sh's to say, by age, for these and the
+# nightly ones alike (backup.sh, prune). On a host that does not have
+# backup.sh yet -- `make prod-backup` before the first deploy that brings it
+# -- nothing is let go.
 #
 # The files -- statements and receipts -- are snapshotted with hard links, not
 # copied, as stewards does its photos. The file store writes every file whole
@@ -352,14 +359,7 @@ backup_script() {
 				cp -p $APP.db backups/$APP-$stamp.db
 				[ ! -f $APP.db-wal ] || cp -p $APP.db-wal backups/$APP-$stamp.db-wal
 			fi
-			# Newest first by the stamp in the name, never by mtime: cp -p
-			# gives every copy the database's own mtime, so two deploys with
-			# no write between them make backups that tie, and ls -t could
-			# then rotate out the one just taken.
-			ls -1 backups/$APP-*.db 2>/dev/null | sort -r | tail -n +$((KEEP_BACKUPS + 1)) | while read -r old; do
-				rm -f "\$old" "\$old-wal"
-			done
-			echo "backed up to backups/$APP-$stamp.db, keeping $KEEP_BACKUPS"
+			echo "backed up to backups/$APP-$stamp.db"
 		fi
 		if [ -d files ]; then
 			mkdir -p backups && chmod 700 backups
@@ -369,9 +369,9 @@ backup_script() {
 				rm -rf backups/files-$stamp
 				echo "WARNING: the files could not be snapshotted; the database backup is unaffected" >&2
 			fi
-			ls -1d backups/files-* 2>/dev/null | sort -r | tail -n +$((KEEP_BACKUPS + 1)) | while read -r old; do
-				rm -rf "\$old"
-			done
+		fi
+		if [ -x ./backup.sh ]; then
+			./backup.sh prune || echo "WARNING: old backups could not be pruned; every one is still there" >&2
 		fi
 	SH
 }
@@ -431,7 +431,8 @@ cmd_deploy() {
 	push_file "$REPO_DIR/$APP-linux-amd64" "$APP_DIR/$APP.new"
 	push_file "$REPO_DIR/deploy/run.sh"       "$APP_DIR/run.sh"
 	push_file "$REPO_DIR/deploy/supervise.sh" "$APP_DIR/supervise.sh"
-	remote_in_app "chmod 700 $APP.new run.sh supervise.sh"
+	push_file "$REPO_DIR/deploy/backup.sh"    "$APP_DIR/backup.sh"
+	remote_in_app "chmod 700 $APP.new run.sh supervise.sh backup.sh"
 
 	# Pre-flight: the NEW binary reads the LIVE config while the old one is
 	# still serving. A config it will not accept is then a deploy that swaps
@@ -527,7 +528,8 @@ cmd_status() {
 
 	log "the database"
 	remote_in_app "ls -lh $APP.db 2>/dev/null || echo '(no database yet)'"
-	remote_in_app "ls -1 backups/*.db 2>/dev/null | sort -r | head -3 || true"
+	remote_in_app "ls -1 backups/$APP-*.db 2>/dev/null | sort -r | head -3 || true"
+	remote_in_app "n=\$(ls -1 backups/$APP-*.db 2>/dev/null | wc -l); o=\$(ls -1 backups/$APP-*.db 2>/dev/null | sort | head -1); echo \"     \$n kept\${o:+, the oldest \$o}\""
 
 	log "the files"
 	remote_in_app "du -sh files 2>/dev/null || echo '(no files yet)'"
@@ -554,6 +556,118 @@ $(backup_script)"
 	remote_in_app "./supervise.sh start"
 }
 
+# ------------------------------------------------------------------ pull
+
+# sha256_of prints a file's SHA-256, on Linux or on a Mac.
+sha256_of() {
+	if command -v sha256sum >/dev/null 2>&1; then
+		sha256sum "$1" | cut -d' ' -f1
+	else
+		shasum -a 256 "$1" | cut -d' ' -f1
+	fi
+}
+
+# cmd_pull_backup brings the books down to this machine: a snapshot of the
+# database taken now, and every uploaded file not already here. It is the copy
+# that survives losing the server, which the backups on it cannot be (they
+# are on the same disk), and it is a person's to take, by hand, until the
+# backups are sent somewhere off the server on their own.
+#
+# A snapshot taken now rather than the newest backup fetched: the question a
+# pull answers is usually about this morning, which a night-old copy answers
+# wrongly and convincingly. Taken under a name of its own (.pull.db), which
+# backup.sh never prunes nor counts, and removed once it is down: a pull must
+# never age out a real backup, which in mass-intentions an afternoon of pulls
+# would have done.
+#
+# The files are named by their SHA-256 and never change (the file store), so a
+# file already here is the same file, and only the new ones are fetched --
+# each checked against its name when it arrives, since a short copy is still a
+# file. The smaller pictures (files/sized) are left behind: they are made again
+# from the originals.
+#
+# Outside the working tree by default, and mode 700: this is every
+# organization's books, every statement and every receipt. *.db is in
+# .gitignore as the second lock.
+cmd_pull_backup() {
+	load_config; need_app_dir; ssh_setup
+
+	local dest="${1:-$HOME/reconcile-backups}"
+	mkdir -p "$dest/files" || die "$dest cannot be created"
+	dest="$(cd "$dest" && pwd -P)"
+
+	# Made before it is checked, because only a directory that exists has a
+	# real path to compare; taken away again, empty, when it is refused.
+	case "$dest/" in
+	"$(cd "$REPO_DIR" && pwd -P)/"*)
+		rmdir "$dest/files" "$dest" 2>/dev/null || true
+		die "$dest is inside the repository, which is public. Choose a directory outside it"
+		;;
+	esac
+
+	chmod 700 "$dest" "$dest/files"
+
+	local stamp; stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+	local snapshot="backups/$APP-$stamp.pull.db"
+
+	log "taking a snapshot of the live database"
+	remote_in_app "mkdir -p backups && chmod 700 backups && ./$APP -config config.toml -backup $snapshot" \
+		|| die "the snapshot could not be taken; the message above says why. Nothing was pulled"
+
+	local size
+	size="$(remote_in_app "wc -c < $snapshot" | tr -d '[:space:]')"
+
+	local db="$dest/$APP-$stamp.db"
+
+	log "pulling the database ($size bytes)"
+
+	# Removed on both paths rather than in a trap: ssh_setup owns EXIT, and a
+	# second trap on it would replace the one that deletes the ssh key.
+	if ! pull_file "$APP_DIR/$snapshot" "$db"; then
+		remote_in_app "rm -f $snapshot" || true
+		die "the copy did not come down. Nothing has been left on the server"
+	fi
+
+	remote_in_app "rm -f $snapshot" || warn "the snapshot could not be removed from the server: $APP_DIR/$snapshot"
+	chmod 600 "$db"
+
+	local got; got="$(wc -c < "$db" | tr -d '[:space:]')"
+	[ "$got" = "$size" ] || die "the copy is $got bytes where the snapshot was $size. It is short, and it is at $db for you to delete"
+	ok "$db"
+
+	log "pulling the files not already here"
+
+	local listed missing=()
+	listed="$(remote_in_app "cd files 2>/dev/null && find . -maxdepth 1 -type f -printf '%f\n' || true")"
+
+	local name
+	while read -r name; do
+		[[ "$name" =~ ^[0-9a-f]{64}$ ]] || continue
+		[ -f "$dest/files/$name" ] || missing+=("$name")
+	done <<<"$listed"
+
+	if [ "${#missing[@]}" -gt 0 ]; then
+		# The names on stdin and the files back on stdout: no command line to
+		# outgrow, however many there are.
+		printf '%s\n' "${missing[@]}" | remote_in_app "cd files && tar -cf - -T -" | tar -C "$dest/files" -xf - \
+			|| die "the files did not all come down; run it again, and only those still missing are fetched"
+
+		local wrong=0
+		for name in "${missing[@]}"; do
+			if [ "$(sha256_of "$dest/files/$name")" != "$name" ]; then
+				rm -f "$dest/files/$name"
+				wrong=$((wrong + 1))
+			fi
+		done
+
+		[ "$wrong" -eq 0 ] || die "$wrong file(s) did not match their names and were removed; run it again to fetch them"
+	fi
+
+	chmod -R go-rwx "$dest/files"
+	ok "${#missing[@]} new file(s), $(find "$dest/files" -maxdepth 1 -type f | wc -l | tr -d ' ') in all, in $dest/files"
+	log "pulled. It is everybody's books: keep it off any shared drive, and out of the repository"
+}
+
 # ------------------------------------------------------------------ dispatch
 
 usage() {
@@ -564,6 +678,7 @@ usage() {
 		  status           what is live, and whether it is well
 		  logs [n]         the last n lines of the server's log (80)
 		  backup           back up the database now (stops the app for a moment)
+		  pull-backup [d]  copy the live database and the uploaded files to this machine (~/reconcile-backups)
 		  restart          restart the app
 		  htaccess         install the Apache front end only, then check it from outside
 		  render-htaccess  print the .htaccess that would be installed, touch nothing
@@ -575,6 +690,7 @@ deploy)          shift; cmd_deploy "$@" ;;
 status)          shift; cmd_status "$@" ;;
 logs)            shift; cmd_logs "$@" ;;
 backup)          shift; cmd_backup "$@" ;;
+pull-backup)     shift; cmd_pull_backup "$@" ;;
 restart)         shift; cmd_restart "$@" ;;
 htaccess)        shift; cmd_htaccess "$@" ;;
 render-htaccess) shift; load_config; render_htaccess ;;

@@ -300,3 +300,49 @@ func TestADatabaseIsOpenedAtExactlyItsPath(t *testing.T) {
 		}
 	}
 }
+
+// A snapshot of a database in use has the writes still in its WAL, is
+// private, reads, and never overwrites another.
+func TestSnapshotOfADatabaseInUse(t *testing.T) {
+	dir := t.TempDir()
+	ctx := t.Context()
+
+	db, err := sqldb.Open(filepath.Join(dir, "live.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	if _, err := db.ExecContext(ctx, `CREATE TABLE t (n INTEGER) STRICT; INSERT INTO t VALUES (1), (2), (3)`); err != nil {
+		t.Fatal(err)
+	}
+
+	// Still in the WAL: a copy of the .db file alone would not have them.
+	if fi, err := os.Stat(filepath.Join(dir, "live.db-wal")); err != nil || fi.Size() == 0 {
+		t.Fatalf("expected the rows to be in the WAL: %v", err)
+	}
+
+	path := filepath.Join(dir, "snapshot.db")
+	if err := sqldb.Snapshot(ctx, db, path); err != nil {
+		t.Fatal(err)
+	}
+
+	if fi, err := os.Stat(path); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("the snapshot's mode: %v, %v", fi.Mode().Perm(), err)
+	}
+
+	copied, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer copied.Close()
+
+	var n int
+	if err := copied.QueryRowContext(ctx, `SELECT count(*) FROM t`).Scan(&n); err != nil || n != 3 {
+		t.Errorf("the snapshot holds %d rows: %v", n, err)
+	}
+
+	if err := sqldb.Snapshot(ctx, db, path); !errors.Is(err, fs.ErrExist) {
+		t.Errorf("a second snapshot to the same path: %v, want it refused", err)
+	}
+}
