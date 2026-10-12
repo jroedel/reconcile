@@ -29,6 +29,7 @@ is how the house sees the books coming right.
 | Who reads it | **Both on the site and on paper.** Anyone with a role on the scope opens it; the same page prints cleanly, and the browser's "Save as PDF" makes the file |
 | Categories into fewer lines | **Category groups**, in this plan: a list's categories may be gathered into groups ("Food", "House", "Vehicles"), and a report shows either |
 | Pass-through on a house's report | **One total, by choice.** A report may show pass-through as one line ("Personal charges waiting to be repaid: $85.00") or each category's balance |
+| Its title and words (2026-10-12) | **A saved report's title is the person's own** ("P&L"), with a description beneath it that every run shows, and a note for each period that only that period's run shows. A style's own name stays in code, translated, and is the title until a report is saved |
 
 ## Three levels
 
@@ -102,8 +103,8 @@ the shape (then it is a style) or only the detail (then it is a choice).
 
 ### Saved reports
 
-A saved report is **a style's key, its choices, a name, and the scope it
-belongs to**, kept by a person so that the same report comes out the same
+A saved report is **a style's key, its choices, a title, a description,
+and the scope it belongs to**, kept by a person so that the same report comes out the same
 way every month.
 
 - **One scope**: an organization, an account on its own, or a project.
@@ -125,6 +126,47 @@ way every month.
   as missing, never dropped in silence.
 - Saving, changing and removing one go in its scope's history
   (`report.saved`, `report.changed`, `report.removed`), with what changed.
+
+### A title, a description, and a note for each period
+
+Three places for a person's own words, and no more, so that a house can
+call its report what it calls it and the treasurer can say what the
+figures do not.
+
+- **The title.** Unsaved, a style's run is headed by the style's name
+  ("Income and expenses by month"), in the reader's language. A saved
+  report is headed by the title its keeper gave it: "P&L", "Profit and
+  loss", "Informe mensual de la casa". It is the person's words and is
+  not translated; the style's name stays beneath it, small, so that a
+  reader who does not know what "P&L" means here can find out. The
+  title does not change from run to run: a house compares this month's
+  sheet with last month's, and the same heading on both is part of that.
+- **The description**, beneath the title on every run: what the report
+  is and how to read it, written once ("Our true income and expenses.
+  Card charges count in the month they were made; personal charges that
+  were repaid are left out."). Plain text, a few paragraphs at most.
+- **A note for each period**, beneath the description on that period's
+  run only: what the treasurer wants the house to know about these
+  months ("The roof repair is in August; the insurance claim should
+  cover most of it in October."). A note belongs to the report and the
+  exact period it was written for, so August's note is on August's run
+  and not on the year to date's. Plain text, line breaks kept, no markup
+  and no links: it is printed as it was typed.
+- **A note does not freeze the figures.** Nothing a report adds up is
+  stored, so sorting a charge after the note was written changes the
+  figures under it. The note says who wrote it and when, and when the
+  report's accounts have a change in the period after that -- a part
+  sorted or split, a statement imported or removed -- the run says the
+  figures have changed since the note. The history knows: every such
+  change is an event with its time, and parts keep no time of their
+  own. Keeping a printed copy as it stood is the paper's job,
+  or a later plan's.
+- **Who:** the title, the description and the notes are written by whoever
+  may save the report (Bookkeep on its scope); everyone who may run it
+  reads them. Writing, changing and removing a note go in the history
+  (`report.noted`), with the text before and after.
+- An unsaved style has neither a description nor notes. "Save this
+  report" is where both begin.
 
 ## The first two styles
 
@@ -247,13 +289,19 @@ lines can be read as ten.
 
 `business/domain/report/stores/reportdb`:
 
-- **`reports(id, scope_kind, scope_id, style, name, choices, created_by,
-  created_at, updated_by, updated_at, archived_at)`**, `STRICT`. `style`
+- **`reports(id, scope_kind, scope_id, style, title, description, choices,
+  created_by, created_at, updated_by, updated_at, archived_at)`**,
+  `STRICT`. `style`
   is the style's key. `choices` is TEXT holding JSON that the style
   decodes into its own struct: unknown fields are ignored, missing ones
   take their default. It is stored as JSON because each style's choices
   differ and a column per choice would mean a migration per choice; it
   is read only by its style, never queried, and never a language.
+- **`report_notes(report_id, period_from, period_to, note, updated_by,
+  updated_at)`**, `STRICT`, with the report and the period as its key,
+  so that writing a note twice is a correction. The period is the run's
+  first and last month, as the address has them. A note set to nothing
+  is removed.
 - Nothing the engine computes is stored. A report is read from the parts
   every time, so that sorting a charge changes the next report at once.
 
@@ -262,15 +310,17 @@ lines can be read as ten.
 - **`/orgs/{id}/reports`**, and the same for a project and an account on
   its own: the saved reports, and each style that takes the scope, with a
   line saying what it shows. Linked from the scope's page.
-- **`/reports/{id}?from=…&to=…`**: a saved report run for a period, with
-  the period chooser and links to the period before and after. For those
-  who may, a link to change its choices.
+- **`/reports/{id}?from=…&to=…`**: a saved report run for a period, its
+  title, description and that period's note at the head, with the period
+  chooser and links to the period before and after. For those who may, a
+  link to change its title, description and choices, and a form beneath
+  the note to write or change it for this period.
 - **`/orgs/{id}/reports/{style}?from=…&to=…&…`**, and the same for a
   project and an account on its own: a style run without saving it, its choices in the address, with "Save this report" for those who
   may.
 - **Printing** is the same page, with a print stylesheet: no navigation,
-  no links underlined, the period and the date it was printed at the
-  head, and the reconciled line kept. A month's report for a house fits
+  no forms, no links underlined, the title, the period, the date it was
+  printed, the description and the note at the head, and the reconciled line kept. A month's report for a house fits
   on one sheet in landscape when it has groups as its detail.
 - **`/reports/{id}/download?from=…&to=…`**: the same figures as a CSV for
   a spreadsheet, its header row through `page.Renderer.Text`.
@@ -304,7 +354,8 @@ Four pull requests:
    sorted yet, what should come back to zero, the reconciled line; the
    period chooser; printing; the CSV; the stranger walk.
 2. **Saved reports.** `reportdb`, saving, changing, removing, the list,
-   history lines, a style or a choice no longer known.
+   the title and description, notes for a period, history lines, a style
+   or a choice no longer known.
 3. **Category groups.** `category_groups`, `categories.group_id`, the
    categories page, and the "each group" detail.
 4. **The project style and the comparisons.** "A project", and the
@@ -324,11 +375,14 @@ Four pull requests:
 - Styles: each style's default choices; a saved choice the style no
   longer has, ignored; a missing one, defaulted; a style key no longer
   known.
-- `reportdb`: the JSON round trip; the scope's reports.
+- `reportdb`: the JSON round trip; the scope's reports; one note per
+  report and period, a second a correction, an empty one removed.
+- Notes: August's note on August's run and not on the year to date's;
+  "changed since the note" when a part changes after it, and not before.
 - `categorydb`: the unique group per list; the old-schema test for
   `categories.group_id`; changing a category's kind takes it out of its
   group.
 - Through the site: run "Income and expenses by month" for an
   organization with an archived card and see its old months; save it
-  with groups and pass-through as one total; open it as a viewer and
-  print it; a viewer cannot change it; a stranger finds nothing.
+  as "P&L" with a description, groups and pass-through as one total;
+  write September's note; open it as a viewer and print it; a viewer cannot change it; a stranger finds nothing.
