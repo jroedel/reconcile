@@ -327,6 +327,10 @@ type reader struct {
 	loneCol int
 	hasLone bool
 
+	// loose is figures each alone on a line, waiting for rows that print
+	// only their balance (row).
+	loose []figure
+
 	// last4 is the account being read, and parts the accounts read before
 	// it, in a document that holds several.
 	last4 string
@@ -391,6 +395,12 @@ func (r *reader) rowFrom(d day, s, rest string) (row, bool) {
 	}
 
 	at := offset + utf8.RuneCountInString(trimmed) - utf8.RuneCountInString(rest)
+
+	// Each figure's column on the line, as a figure alone on a line has it
+	// (row), rather than from where the text after the date began.
+	for i := range figs {
+		figs[i].col += at
+	}
 
 	return row{date: d, middle: cells(body, at), figures: figs}, true
 }
@@ -489,7 +499,7 @@ func (r *reader) line(l line) {
 
 	if _, ok := r.v.headings(s); ok {
 		importbus.Add(&r.st.Frame, r.v.headingWords(s))
-		r.open = -1
+		r.open, r.loose = -1, nil
 
 		return
 	}
@@ -534,7 +544,11 @@ func (r *reader) line(l line) {
 		return
 	}
 
-	if _, figs := figures(s); len(figs) > 0 {
+	if body, figs := figures(s); len(figs) > 0 {
+		if len(figs) == 1 && strings.TrimSpace(body) == "" {
+			r.loose = append(r.loose, figs[0])
+		}
+
 		r.stated(s)
 		r.open = -1
 
@@ -599,24 +613,45 @@ func (r *reader) row(l line, rw row) {
 		return
 	}
 
+	// A row that prints only its balance, under figures that stood each
+	// alone on a line in the column to its left: the amounts of the rows
+	// below them, which pdftotext could not line up with their rows. A
+	// bank's PDF did this once in 153 statements, drawing a page's amounts
+	// in a font whose glyphs claim to be five times their height, so that
+	// each amount's box reached above its row and pdftotext laid them all
+	// out on lines of their own above the first. Read as they stood, each
+	// row's balance was taken for its amount.
+	//
+	// Paired in order, and only from the left: in a table with no balance
+	// column the row's one figure is in the same column as any figure
+	// alone on a line, and is its amount as it always was. A wrong pairing
+	// is one the stated balances refuse (ledgerbus.verify), which is why
+	// this pairs the figures rather than taking each amount from the
+	// difference of two balances, which could never fail.
+	figs := rw.figures
+	if len(figs) == 1 && len(r.loose) > 0 && r.loose[0].col < figs[0].col {
+		figs = []figure{r.loose[0], figs[0]}
+		r.loose = r.loose[1:]
+	}
+
 	rec := importbus.Record{
 		Line:        l.n,
 		Page:        l.page,
 		Date:        date,
 		Description: desc,
-		Amount:      rw.figures[0].amount,
+		Amount:      figs[0].amount,
 		Memo:        memo,
 		Holder:      memo,
 		Pending:     r.held,
 		CheckNumber: importbus.CheckNumber(number),
 	}
 
-	if len(rw.figures) == 2 {
-		rec.Balance, rec.HasBalance = rw.figures[1].amount, true
+	if len(figs) == 2 {
+		rec.Balance, rec.HasBalance = figs[1].amount, true
 	}
 
 	r.res.Records = append(r.res.Records, rec)
-	r.cols = append(r.cols, rw.figures[0].col)
+	r.cols = append(r.cols, figs[0].col)
 	r.dirs = append(r.dirs, r.dir)
 	r.open, r.continued = len(r.res.Records)-1, 0
 }

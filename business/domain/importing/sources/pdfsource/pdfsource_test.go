@@ -319,3 +319,53 @@ https://cards.example.invalid/activity?accountId=0000-0000          Page 1 of 1
 		t.Errorf("total %+v, the rows %s", res.Total, sum)
 	}
 }
+
+// detached is a savings account's page as pdftotext lays it out when the
+// bank drew its amounts in a font whose glyphs claim to be far taller than
+// they are: each amount's box reaches above its row, so the amounts stand
+// on lines of their own above the first row, the rows print only their
+// balances, and the ending balance lands between two rows.
+const detached = `                              EXAMPLE SAVINGS BANK
+                       March 01, 2026 through March 31, 2026
+
+                                     TRANSACTION DETAIL
+
+           DATE              DESCRIPTION                                        AMOUNT          BALANCE
+
+                             Beginning Balance                                                $1,000.00
+                                                                                 40.00
+                                                                                 15.00
+           03/06             Deposit From Example Parish                                       1,040.00
+
+                             Ending Balance                                                   $1,025.05
+           03/20             Transfer To Chk ...1111                                           1,025.00
+           03/31             Interest Payment                                     0.05         1,025.05
+`
+
+// The amounts stood apart from their rows go back to them in order, each
+// row's one figure is its balance, and the balances give the signs.
+func TestAmountsDetachedFromTheirRows(t *testing.T) {
+	res, err := pdfsource.Read(detached)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{
+		"2026-03-06 40.00 = 1040.00",
+		"2026-03-20 -15.00 = 1025.00",
+		"2026-03-31 0.05 = 1025.05",
+	}
+
+	var got []string
+	for _, r := range res.Records {
+		got = append(got, r.Date.Format("2006-01-02")+" "+r.Amount.String()+" = "+r.Balance.String())
+	}
+
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("rows:\n got %s\nwant %s", strings.Join(got, "\n     "), strings.Join(want, "\n     "))
+	}
+
+	if res.Opening.Amount.String() != "1000.00" || res.Closing.Amount.String() != "1025.05" {
+		t.Errorf("balances %+v, %+v", res.Opening, res.Closing)
+	}
+}
