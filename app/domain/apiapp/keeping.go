@@ -100,9 +100,9 @@ func (a app) keepEndpoints() []Endpoint {
 		},
 		{
 			Method: http.MethodPut, Path: Prefix + "/transactions/{transaction}/splits", Scope: write, Tool: "set_splits",
-			Summary: "Replace a transaction's parts: one charge across categories and projects, as its page does. The parts add up to the whole, each the same way round as it (money out split into money out), none zero. Marked as sorted through this key until a person saves it on the web. Not in a reconciled period.",
+			Summary: "Replace a transaction's parts: one charge across categories and projects, as its page does. The parts add up to the whole, none zero. A part may go the other way from the whole, when one transaction nets two things together: a transfer in of 30.00 that settles 50.00 owed for a trip and 20.00 of supplies owed back is +50.00 and -20.00. Marked as sorted through this key until a person saves it on the web. Not in a reconciled period.",
 			Body: &Body{Encoding: "json", Fields: []Field{
-				{Name: "parts", Type: "array of object {amount, category, project, memo}", Required: true, Description: fmt.Sprintf("1 to %d. amount with its sign, as the transaction's; category and project ids, either or both; memo optional, at most %d characters.", ledgerbus.MaxParts, ledgerbus.MaxMemo)},
+				{Name: "parts", Type: "array of object {amount, category, project, memo}", Required: true, Description: fmt.Sprintf("1 to %d. amount with its own sign, usually the transaction's; category and project ids, either or both; memo optional, at most %d characters.", ledgerbus.MaxParts, ledgerbus.MaxMemo)},
 			}},
 			Returns: "{transaction}", handler: a.setSplits,
 		},

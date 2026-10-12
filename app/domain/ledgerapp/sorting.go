@@ -14,12 +14,13 @@ import (
 	"github.com/jroedel/reconcile/business/domain/rule/rulebus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/types"
+	"github.com/jroedel/reconcile/business/types/money"
 )
 
 // --- one transaction, and sorting it ----------------------------------------
 
 // partRow is one row of the parts form, as typed: the amount as a person
-// writes it, without its sign, which is the transaction's.
+// writes it, without a sign when it goes the transaction's way (partsOf).
 type partRow struct {
 	Amount     string
 	CategoryID string
@@ -74,6 +75,11 @@ type sortForm struct {
 	// zero for the parts together.
 	Problem string
 	Part    int
+
+	// Left is, when the parts do not add up, what is still to go into a
+	// part, counted the transaction's way: negative when they come to
+	// more than it.
+	Left money.Amount
 }
 
 // Out reports whether the transaction is money out, for the labels.
@@ -98,7 +104,7 @@ func rowsOf(t ledgerbus.Transaction) []partRow {
 	rows := make([]partRow, len(t.Splits))
 
 	for i, s := range t.Splits {
-		rows[i] = partRow{Amount: s.Amount.Abs().String(), Memo: s.Memo}
+		rows[i] = partRow{Amount: typedAs(s.Amount, t.Amount), Memo: s.Memo}
 
 		if !s.CategoryID.Zero() {
 			rows[i].CategoryID = s.CategoryID.String()
@@ -321,6 +327,17 @@ func (a app) sortTransaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if invalid, ok := errors.AsType[ledgerbus.Invalid](err); ok {
+		if invalid.Field == "sum" {
+			f.Left = e.Transaction.Amount
+			for _, p := range parts {
+				f.Left -= p.Amount
+			}
+
+			if e.Transaction.Amount < 0 {
+				f.Left = -f.Left
+			}
+		}
+
 		again(http.StatusUnprocessableEntity, invalid.Field, invalid.Index+1)
 
 		return
@@ -395,10 +412,18 @@ func postedRows(r *http.Request) []partRow {
 	return rows
 }
 
-// partsOf turns the rows into parts with the transaction's sign, or names
-// the row, counting from one, whose amount is not one. A single row with
-// no amount is the whole transaction: the common case is one part, sorted,
-// and nobody should have to type the amount the bank already gave.
+// partsOf turns the rows into parts, or names the row, counting from one,
+// whose amount is not one. A single row with no amount is the whole
+// transaction: the common case is one part, sorted, and nobody should have
+// to type the amount the bank already gave.
+//
+// An amount typed without a sign goes the transaction's way, as nearly
+// every part does: a shop's receipt of food and supplies is money out in
+// both, and a label says which way that is. A sign is taken as written, so
+// that a part can go the other way (issue #101): a transfer in of 30.00
+// that is 50.00 owed to this account and 20.00 it owed back is 50.00 and
+// -20.00; a charge of 30.00 net of a 20.00 credit is 50.00 and +20.00. So
+// -20.00 typed on money out is money out, as it always was.
 func partsOf(rows []partRow, t ledgerbus.Transaction) ([]ledgerbus.Part, int) {
 	parts := make([]ledgerbus.Part, len(rows))
 
@@ -411,9 +436,12 @@ func partsOf(rows []partRow, t ledgerbus.Transaction) ([]ledgerbus.Part, int) {
 				return nil, i + 1
 			}
 
-			amount = typed.Abs()
-			if t.Amount < 0 {
-				amount = -amount
+			amount = typed
+			if !signed(row.Amount, typed) {
+				amount = typed.Abs()
+				if t.Amount < 0 {
+					amount = -amount
+				}
 			}
 		}
 
@@ -426,6 +454,25 @@ func partsOf(rows []partRow, t ledgerbus.Transaction) ([]ledgerbus.Part, int) {
 	}
 
 	return parts, 0
+}
+
+// signed reports whether an amount was typed with its sign: a minus in any
+// of the forms typedAmount reads, which leave it negative, or a plus.
+func signed(text string, typed money.Amount) bool {
+	return typed < 0 || strings.HasPrefix(strings.TrimSpace(text), "+")
+}
+
+// typedAs is a part's amount as partsOf reads it back: without a sign when
+// it goes the whole's way, with one when it goes the other.
+func typedAs(part, whole money.Amount) string {
+	switch {
+	case (part < 0) == (whole < 0):
+		return part.Abs().String()
+	case part > 0:
+		return "+" + part.String()
+	default:
+		return part.String()
+	}
 }
 
 // --- a project's book -------------------------------------------------------

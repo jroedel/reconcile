@@ -174,6 +174,17 @@ func TestKeepingTheBooksThroughTheAPI(t *testing.T) {
 		t.Errorf("parts that do not add up: %v", got)
 	}
 
+	// A part may go the other way from the whole (issue #101): -120.00 is
+	// 140.00 of electricity less a 20.00 credit.
+	either := map[string]any{"parts": []map[string]string{
+		{"amount": "-140.00", "category": k.categories["Utilities"]},
+		{"amount": "20.00", "category": k.categories["Utilities"], "memo": "credit"},
+	}}
+
+	if parts := field(s.change(t, http.MethodPut, tx+electric+"/splits", key, either, http.StatusOK), "transaction", "parts").([]any); len(parts) != 2 || field(parts[1], "amount") != "20.00" {
+		t.Errorf("parts either way: %v", parts)
+	}
+
 	two := map[string]any{"parts": []map[string]string{
 		{"amount": "-100.00", "category": k.categories["Utilities"]},
 		{"amount": "-20.00", "category": k.categories["Groceries"], "memo": "light bulbs"},
