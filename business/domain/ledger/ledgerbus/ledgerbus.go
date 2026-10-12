@@ -1000,15 +1000,16 @@ func insist(txs []Transaction, opts *Options) {
 // it in on import, because only the store knows the counts.
 func EventDetail(st Statement) map[string]string {
 	return map[string]string{
-		"name":      st.FileName,
-		"start":     st.Start.String(),
-		"end":       st.End.String(),
-		"added":     strconv.Itoa(st.Added),
-		"already":   strconv.Itoa(st.Already),
-		"byrule":    strconv.Itoa(st.ByRule),
-		"setaside":  strconv.Itoa(st.SetAside()),
-		"posted":    strconv.Itoa(st.Posted),
-		"completed": strconv.Itoa(st.Completed),
+		"name":       st.FileName,
+		"start":      st.Start.String(),
+		"end":        st.End.String(),
+		"added":      strconv.Itoa(st.Added),
+		"already":    strconv.Itoa(st.Already),
+		"byrule":     strconv.Itoa(st.ByRule),
+		"setaside":   strconv.Itoa(st.SetAside()),
+		"posted":     strconv.Itoa(st.Posted),
+		"completed":  strconv.Itoa(st.Completed),
+		"superseded": strconv.Itoa(st.Superseded),
 	}
 }
 

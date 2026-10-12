@@ -115,10 +115,11 @@ func (s *Store) SetByHolder(ctx context.Context, account types.ID, on bool, by t
 }
 
 // rehash gives every row of the account without a bank identifier its
-// occurrence and hash under the setting.
+// occurrence and hash under the setting, from the words it was imported
+// with (wording), which a later file's fuller description has not changed.
 func rehash(ctx context.Context, tx *sql.Tx, account types.ID, on bool) error {
 	rows, err := tx.QueryContext(ctx, `
-SELECT rowid, statement_id, posted_on, description, amount, holder, occurrence FROM transactions
+SELECT rowid, statement_id, posted_on, coalesce(nullif(wording, ''), description), amount, holder, occurrence FROM transactions
 WHERE account_id = ? ORDER BY statement_id, occurrence, rowid`, account.String())
 	if err != nil {
 		return fmt.Errorf("reading the account's transactions: %w", err)

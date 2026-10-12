@@ -206,7 +206,8 @@
 {{end}}</ul>
 {{end}}
 {{if $d.Statement.Posted}}<p class="hint">{{t "{n} of its rows are charges that were pending here and have now posted. Each takes the pending charge's place, with its final date and amount, and keeps how it was sorted." "n" $d.Statement.Posted}}</p>{{end}}
-{{if $d.Statement.Completed}}<p class="hint">{{t "{n} of its rows are here already, from a file that cut their descriptions short. Each takes this file's whole description." "n" $d.Statement.Completed}}</p>{{end}}
+{{if $d.Statement.Completed}}<p class="hint">{{t "{n} of the transactions already here will take this file's description of them, which says more." "n" $d.Statement.Completed}}</p>{{end}}
+{{if $d.Statement.Superseded}}<p class="hint">{{t "{n} of its rows are pending charges that it also lists as posted. Only the posted ones are imported." "n" $d.Statement.Superseded}}</p>{{end}}
 {{if $d.Statement.ByRule}}<p class="hint">{{t "The account's sorting rules will sort {n} of the new ones. They are marked, so you can check them." "n" $d.Statement.ByRule}}</p>{{end}}{{end}}
 {{if $d.Statement.Locked}}<p class="notice" role="alert">{{t "{n} of the new transactions fall in a period that has been reconciled, so this statement cannot be imported. If the bank really changed that period, reopen its statement first, on the month-by-month page." "n" $d.Statement.Locked}} <a href="/accounts/{{$d.Account.ID}}/months">{{t "Month by month"}}</a></p>{{end}}
 </section>

@@ -38,7 +38,7 @@ var Expected = sqldb.Expected{
 		"checked", "added", "already", "imported_by", "imported_at", "shape"},
 	"transactions": {"id", "account_id", "statement_id", "posted_on", "description", "amount", "balance",
 		"external_id", "hash", "occurrence", "holder", "pending", "check_number", "payee",
-		"own_description", "own_description_via", "check_memo", "check_written_on", "payee_id", "payee_via"},
+		"own_description", "own_description_via", "check_memo", "check_written_on", "payee_id", "payee_via", "wording"},
 	"csv_mappings":        {"account_id", "fingerprint", "mapping", "updated_by", "updated_at"},
 	"splits":              {"id", "transaction_id", "position", "amount", "category_id", "project_id", "memo", "rule_id", "via"},
 	"transaction_aliases": {"account_id", "hash", "transaction_id", "created_at"},
@@ -170,6 +170,15 @@ CREATE TABLE IF NOT EXISTS csv_mappings (
 	}
 
 	if err := sqldb.AddColumn(ctx, db, "transactions", "check_written_on", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+
+	// The description a row's identity was made from, when a later file
+	// has since given it one that says more (complete): its hash is made
+	// again from these words, not the new ones, when the account's holder
+	// option changes (rehash). Empty while the description is still the
+	// one it was imported with.
+	if err := sqldb.AddColumn(ctx, db, "transactions", "wording", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
 
@@ -432,7 +441,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		return ledgerbus.Statement{}, fmt.Errorf("storing the statement: %w", err)
 	}
 
-	st.Added, st.Already, st.ByRule, st.Completed, st.Doubts = 0, 0, 0, 0, nil
+	st.Added, st.Already, st.ByRule, st.Completed, st.Superseded, st.Doubts = 0, 0, 0, 0, 0, nil
 
 	// Each row on its own, in the file's order. Nothing is inserted yet:
 	// the count rule needs the rows of other statements as they were.
@@ -443,7 +452,17 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 
 	seen := map[string]bool{}
 
+	// A pending row whose posted form the same file lists is not a charge
+	// of its own (superseded).
+	over := superseded(txs)
+
 	for i, t := range txs {
+		if over[i] {
+			st.Superseded++
+
+			continue
+		}
+
 		known := t.ExternalID != "" && seen[t.ExternalID]
 		seen[t.ExternalID] = true
 
@@ -539,6 +558,13 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 	// What was set aside is remembered as another name for the row it was
 	// taken for, so that the next file worded the same way matches it
 	// exactly and is not asked about again.
+	//
+	// It is the same charge -- the person who could import it left it
+	// out -- so the stored row takes its words too, if they say more
+	// (complete): a printed page's "Home Depot" becomes the bank's own
+	// line, and nothing the file said of the charge is lost.
+	var said []completion
+
 	for _, d := range doubts {
 		if d.Imported {
 			continue
@@ -548,7 +574,12 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			return ledgerbus.Statement{}, err
 		}
 
+		said = append(said, completion{id: d.Twin.ID, t: txs[d.Index]})
 		st.Already++
+	}
+
+	if err := complete(ctx, tx, &st, said); err != nil {
+		return ledgerbus.Statement{}, err
 	}
 
 	st.Doubts = doubts
@@ -717,37 +748,37 @@ func cutShort(ctx context.Context, tx *sql.Tx, t ledgerbus.Transaction, unclaime
 	return out, rows.Err()
 }
 
-// completion is a stored row matched by a description cut short, and the
-// row of the new file that matched it.
+// completion is a stored row taken for a row of the new file -- by a
+// description cut short (row, its rowid), or by the count rule, a doubt
+// left out (id) -- and that row.
 type completion struct {
 	row int64
+	id  types.ID
 	t   ledgerbus.Transaction
 }
 
-// complete gives each stored row that is the one cut short the whole
-// description of the row that matched it, and keeps the whole one's hash
-// as another name for it, as a doubt's wording is kept (remember): its
-// own hash was made from the words it had, and the next file worded as
-// this one would otherwise find it by neither. Neither its hash nor
-// anything a person wrote over it (its own description, its payee)
-// changes. Each row once, by the first that matched it.
+// complete gives each stored row the description of the row of the new
+// file it was taken for, when that one says more of the charge
+// (ledgerbus.SaysMore): the whole of a description cut short, or a bank's
+// own line, "THE HOME DEPOT #6531 BEE CAVES TX", where a printed page
+// said "Home Depot". It keeps the new wording's hash as another name for
+// it, as a doubt's wording is kept (remember): its own hash was made from
+// the words it had, and the next file worded as this one would otherwise
+// find it by neither. Neither its hash nor anything a person wrote over it
+// (its own description, its payee) changes. Each row once, by the first
+// that matched it.
 //
 // Not in a reconciled period: what was reconciled is left as it was
 // reconciled. The match stands all the same, and the next import finds
-// it again by the cut.
+// it again.
 func complete(ctx context.Context, tx *sql.Tx, st *ledgerbus.Statement, whole []completion) error {
-	done := map[int64]bool{}
+	done := map[string]bool{}
 
 	for _, c := range whole {
-		if done[c.row] || c.t.Description == "" || ledgerbus.CutShort(c.t.Description) {
-			continue
-		}
-
-		done[c.row] = true
-
 		var id, desc string
 
-		err := tx.QueryRowContext(ctx, `SELECT t.id, t.description FROM transactions t WHERE t.rowid = ? AND NOT `+lockedWhere, c.row).Scan(&id, &desc)
+		err := tx.QueryRowContext(ctx, `SELECT t.id, t.description FROM transactions t WHERE (t.rowid = ? OR t.id = ?) AND NOT `+lockedWhere,
+			c.row, c.id.String()).Scan(&id, &desc)
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
 			continue
@@ -755,11 +786,15 @@ func complete(ctx context.Context, tx *sql.Tx, st *ledgerbus.Statement, whole []
 			return fmt.Errorf("completing a description: %w", err)
 		}
 
-		if !ledgerbus.CutShort(desc) {
+		if done[id] || !ledgerbus.SaysMore(c.t.Description, desc) {
 			continue
 		}
 
-		if _, err := tx.ExecContext(ctx, `UPDATE transactions SET description = ? WHERE id = ?`, c.t.Description, id); err != nil {
+		done[id] = true
+
+		if _, err := tx.ExecContext(ctx, `
+UPDATE transactions SET wording = CASE WHEN wording = '' THEN description ELSE wording END, description = ? WHERE id = ?`,
+			c.t.Description, id); err != nil {
 			return fmt.Errorf("completing a description: %w", err)
 		}
 
