@@ -131,6 +131,7 @@ foundation/                         no domain knowledge: web, sqldb, logger, ima
 deploy/                             how it reaches the server. Run by CI, not by agents
 scripts/                            how this is built and checked
 apps-script/                        Google Apps Scripts a person copies into their own account
+claude-skills/                      skills a person copies into their own Claude Code
 ```
 
 So far the domains are `translation` (the interface's strings), `user` (who

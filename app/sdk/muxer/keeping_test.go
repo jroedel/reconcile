@@ -334,6 +334,7 @@ func TestTheAPIsWritesAreTheList(t *testing.T) {
 		"POST /api/v1/payees/{payee}/join books:write",
 		"POST /api/v1/payees/{payee}/split books:write",
 		"POST /api/v1/projects books:write",
+		"POST /api/v1/receipts books:write",
 		"POST /api/v1/receipts/{receipt}/attach books:write",
 		"POST /api/v1/receipts/{receipt}/check books:write",
 		"POST /api/v1/receipts/{receipt}/detach books:write",
@@ -421,7 +422,9 @@ func TestNobodyKeepsTheBooksTheyWereNotGiven(t *testing.T) {
 	walked := 0
 
 	for _, e := range idx.Endpoints {
-		if e.Scope != "books:write" {
+		// The tools; sending a receipt's file is a route of its own, with
+		// a walk of its own (TestNobodySendsReceiptsWhereTheyWereNotGiven).
+		if e.Scope != "books:write" || e.Tool == "" {
 			continue
 		}
 

@@ -103,6 +103,12 @@ type Receipts interface {
 	Detach(ctx context.Context, actor, receiptID, transactionID types.ID) (receiptbus.Receipt, error)
 	OutstandingChecks(ctx context.Context, actor, accountID types.ID, by types.Date) (receiptbus.Outstanding, error)
 
+	// Sending a receipt's file (receipts.go).
+	Holding(ctx context.Context, actor types.ID, home types.Scope, fileID types.ID) (receiptbus.Receipt, bool, error)
+	HoldingFor(ctx context.Context, actor, transactionID, fileID types.ID) (receiptbus.Receipt, bool, error)
+	Add(ctx context.Context, now time.Time, actor types.ID, home types.Scope, fileIDs []types.ID, together bool, d receiptbus.Details) ([]receiptbus.Receipt, error)
+	AddToTransaction(ctx context.Context, now time.Time, actor, transactionID types.ID, fileIDs []types.ID, together bool, d receiptbus.Details) ([]receiptbus.Receipt, error)
+
 	// The person's own check inbox (receiptbus, inbox.go): its checks are
 	// among the waiting ones, by an id that get_receipt_image and
 	// read_check take as they take a receipt's.
@@ -133,10 +139,11 @@ type Books struct {
 	History    History
 	Rules      Rules
 	Pictures   Pictures
+	Uploads    Uploads
 }
 
 func (b Books) complete() bool {
-	return b.Ledger != nil && b.Tenancy != nil && b.Categories != nil && b.Receipts != nil && b.History != nil && b.Rules != nil && b.Pictures != nil
+	return b.Ledger != nil && b.Tenancy != nil && b.Categories != nil && b.Receipts != nil && b.History != nil && b.Rules != nil && b.Pictures != nil && b.Uploads != nil
 }
 
 // --- the endpoints ----------------------------------------------------------------

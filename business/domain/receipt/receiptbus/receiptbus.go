@@ -87,6 +87,11 @@ const (
 // Accept is the kinds of file a receipt may be.
 var Accept = []string{filebus.JPEG, filebus.PNG, filebus.WebP, filebus.HEIC, filebus.PDF}
 
+// MaxFile is the most one file of a receipt may be. A phone's photo is
+// three to eight megabytes; a scanned PDF can be more. It is here rather
+// than with the upload pages because the API takes receipts too.
+const MaxFile = 20 << 20
+
 // The limits on what is typed about a receipt.
 const (
 	MaxMerchant = 100
@@ -190,9 +195,9 @@ type Storer interface {
 	// OnTransactions is the receipts attached to any of the transactions.
 	OnTransactions(ctx context.Context, ids []types.ID) ([]Receipt, error)
 
-	// HoldsContent reports whether a receipt in the inbox, not removed,
-	// has a file with these bytes.
-	HoldsContent(ctx context.Context, home types.Scope, sha256 string) (bool, error)
+	// WithContent is a receipt in the inbox, not removed, that has a file
+	// with these bytes, and whether there is one.
+	WithContent(ctx context.Context, home types.Scope, sha256 string) (Receipt, bool, error)
 
 	// Link attaches; attaching twice is attaching once.
 	Link(ctx context.Context, receiptID types.ID, l Link) error
@@ -430,22 +435,65 @@ func (b *Business) Add(ctx context.Context, now time.Time, actor types.ID, home 
 // is always safe. A receipt that was removed does not count, so that a
 // photo removed by mistake can be added again as well as brought back.
 func (b *Business) Holds(ctx context.Context, actor types.ID, home types.Scope, fileID types.ID) (bool, error) {
+	_, held, err := b.Holding(ctx, actor, home, fileID)
+
+	return held, err
+}
+
+// Holding is Holds with the receipt that holds the bytes, for a program
+// that sent a file again and needs the receipt it made the first time:
+// the API answers with it, so that the receipt can be attached rather
+// than sent a third time.
+func (b *Business) Holding(ctx context.Context, actor types.ID, home types.Scope, fileID types.ID) (Receipt, bool, error) {
 	if ok, err := b.can(ctx, actor, home, tenancybus.Read); err != nil {
-		return false, err
+		return Receipt{}, false, err
 	} else if !ok {
-		return false, ErrNotFound
+		return Receipt{}, false, ErrNotFound
 	}
 
-	f, err := b.files.ByID(ctx, fileID)
-	if errors.Is(err, filebus.ErrNotFound) || err == nil && f.UploadedBy != actor {
-		return false, ErrNotFound
-	}
-
+	f, err := b.ownFile(ctx, actor, fileID)
 	if err != nil {
-		return false, err
+		return Receipt{}, false, err
 	}
 
-	return b.store.HoldsContent(ctx, home, f.SHA256)
+	return b.store.WithContent(ctx, home, f.SHA256)
+}
+
+// HoldingFor is Holding for a file sent onto a transaction: a receipt
+// with the same bytes on the transaction already, or else waiting in its
+// account's inbox, which is where AddToTransaction would put it. The
+// account's inbox is looked in only when the actor may read it: somebody
+// given only a project sees the receipts on the project's charges, and is
+// not told what else the account holds.
+func (b *Business) HoldingFor(ctx context.Context, actor, transactionID, fileID types.ID) (Receipt, bool, error) {
+	t, _, err := b.transaction(ctx, actor, transactionID)
+	if err != nil {
+		return Receipt{}, false, err
+	}
+
+	f, err := b.ownFile(ctx, actor, fileID)
+	if err != nil {
+		return Receipt{}, false, err
+	}
+
+	on, err := b.store.OnTransactions(ctx, []types.ID{t.ID})
+	if err != nil {
+		return Receipt{}, false, err
+	}
+
+	for _, r := range on {
+		if !r.Removed() && slices.ContainsFunc(r.Files, func(g filebus.File) bool { return g.SHA256 == f.SHA256 }) {
+			return r, true, nil
+		}
+	}
+
+	account := types.AccountScope(t.AccountID)
+
+	if ok, err := b.can(ctx, actor, account, tenancybus.Read); err != nil || !ok {
+		return Receipt{}, false, err
+	}
+
+	return b.store.WithContent(ctx, account, f.SHA256)
 }
 
 // AddToTransaction puts uploaded files onto a transaction as receipts,

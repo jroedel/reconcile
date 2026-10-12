@@ -129,6 +129,68 @@ or **Keeping your books** to let it change what you may, and send it as `Authori
 lists everything it takes. The key reaches only what you may reach
 yourself; keep it out of any file that is shared or committed.
 
+### Receipts from your computer
+
+Claude on claude.ai cannot send a receipt: a file does not pass through a
+conversation. Claude Code on your computer can, because it reads your
+folders and sends the file straight from the disk. So when the receipts
+are in folders, downloads or exported email, let a Claude on your
+computer look through them, find the charges they justify, and send each
+one.
+
+1. **Make a key** on *Your API keys*, for **Keeping your books**. Keep it
+   in a file of your own, outside the folders Claude will look through,
+   such as `~/.config/reconcile/books-key`, readable by you alone; and in
+   your shell's profile:
+
+   ```sh
+   export RECONCILE_URL=https://books.example.invalid
+   export RECONCILE_BOOKS_KEY="$(cat ~/.config/reconcile/books-key)"
+   ```
+
+2. **Connect Claude Code to the site**, for the tools that read and keep
+   the books. In the folder you will work in, a `.mcp.json` holds no key,
+   only the names of the variables:
+
+   ```json
+   {
+     "mcpServers": {
+       "reconcile": {
+         "type": "http",
+         "url": "${RECONCILE_URL}/mcp",
+         "headers": { "Authorization": "Bearer ${RECONCILE_BOOKS_KEY}" }
+       }
+     }
+   }
+   ```
+
+3. **Give it the recipe**: copy `claude-skills/reconcile-receipts/` from
+   this repository into `~/.claude/skills/`. Then ask, in that folder,
+   "find the receipts for July's charges that have none".
+
+It proposes and you decide, as on claude.ai: it lists each charge with
+the file it found and what it read off it, and sends them when you say
+yes. One you agree on goes onto its charge, attached; one it is not sure
+of waits in the account's inbox with its date, amount and shop, for the
+site to suggest its charge. Sending the same file twice adds nothing.
+
+Each file is one request, as curl sends it:
+
+```sh
+curl --fail-with-body --max-time 60 \
+  -H "Authorization: Bearer $RECONCILE_BOOKS_KEY" \
+  --data-binary @hardware.jpg \
+  --url-query transaction=<id> --url-query name=hardware.jpg \
+  --url-query amount=18.40 --url-query spent_on=2026-07-14 \
+  --url-query "merchant=Hilltop Hardware" \
+  "$RECONCILE_URL/api/v1/receipts"
+```
+
+A receipt is a photo (JPEG, PNG, WebP, HEIC) or a PDF, of at most 20 MB.
+The site gives up on a request that takes it longer than about 15
+seconds, so on a slow connection make a large scan smaller before
+sending it.
+
 ## When something goes wrong
 
 - **"This site connects only to Claude."** The link came from another

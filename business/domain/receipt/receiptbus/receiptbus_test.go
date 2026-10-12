@@ -437,3 +437,55 @@ func TestAnInboxKnowsAPhotoSentAgain(t *testing.T) {
 		t.Errorf("a stranger: %v", err)
 	}
 }
+
+// A file sent onto a transaction is known again when a receipt with its
+// bytes is on the transaction, or waits in its account's inbox, which is
+// where it would go -- the API answers with that receipt rather than
+// making a second. Somebody given only a project that the charge is in is
+// told about the receipts on the charge and never about the account's
+// inbox; a stranger is told the charge is not there.
+func TestATransactionKnowsAReceiptSentAgain(t *testing.T) {
+	w := newWorld(t)
+
+	if _, err := w.ledger.SetSplits(w.ctx, now, w.owner, w.coffee.ID, []ledgerbus.Part{{Amount: w.coffee.Amount, ProjectID: w.project}}); err != nil {
+		t.Fatal(err)
+	}
+
+	account := types.AccountScope(w.account)
+
+	waiting, err := w.receipts.Add(w.ctx, now, w.owner, account, []types.ID{w.upload(w.owner, "till.jpg", photo+"till", receiptbus.Accept)}, false, receiptbus.Details{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	on, err := w.receipts.AddToTransaction(w.ctx, now, w.pilgrim, w.coffee.ID, []types.ID{w.upload(w.pilgrim, "cafe.jpg", photo+"cafe", receiptbus.Accept)}, false, receiptbus.Details{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for name, c := range map[string]struct {
+		actor types.ID
+		bytes string
+		want  types.ID
+	}{
+		"the owner, one on the charge":        {w.owner, "cafe", on[0].ID},
+		"the owner, one waiting in its inbox": {w.owner, "till", waiting[0].ID},
+		"the owner, another":                  {w.owner, "other", types.ID{}},
+		"the pilgrim, one on the charge":      {w.pilgrim, "cafe", on[0].ID},
+		"the pilgrim, the account's":          {w.pilgrim, "till", types.ID{}},
+	} {
+		got, held, err := w.receipts.HoldingFor(w.ctx, c.actor, w.coffee.ID, w.upload(c.actor, "x.jpg", photo+c.bytes, receiptbus.Accept))
+		if err != nil || held != !c.want.Zero() || got.ID != c.want {
+			t.Errorf("%s: %v %v, %v; want %v", name, got.ID, held, err, c.want)
+		}
+	}
+
+	if _, _, err := w.receipts.HoldingFor(w.ctx, w.stranger, w.coffee.ID, w.upload(w.stranger, "x.jpg", photo+"cafe", receiptbus.Accept)); !errors.Is(err, receiptbus.ErrNotFound) {
+		t.Errorf("a stranger: %v", err)
+	}
+
+	// Holding answers with the receipt, as Holds answers yes.
+	if got, held, err := w.receipts.Holding(w.ctx, w.owner, account, w.upload(w.owner, "again.jpg", photo+"till", receiptbus.Accept)); err != nil || !held || got.ID != waiting[0].ID {
+		t.Errorf("the account's inbox: %v %v, %v", got.ID, held, err)
+	}
+}
