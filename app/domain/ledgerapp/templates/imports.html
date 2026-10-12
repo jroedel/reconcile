@@ -50,7 +50,7 @@
     {{else}}<span class="badge warn">{{t "not checked"}}</span>{{end}}
     {{end}}
   </p>
-  {{if .Unattended}}<p><span class="badge ok">{{t "Ready to import"}}</span></p>
+  {{if .Unattended}}<p><span class="badge ok">{{t "Ready to import"}}</span>{{if not $d.Check.OK}} {{t "Every transaction in it is here already, so it needs no balances: importing it adds nothing, and gives the ones here what this file knows of them."}}{{end}}</p>
   {{else}}
   <p class="hint">
     {{if $d.Unproven}}{{t "Its own figures do not show it was read whole, so it cannot be imported."}}

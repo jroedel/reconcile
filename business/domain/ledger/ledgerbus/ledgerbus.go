@@ -466,6 +466,21 @@ func (d Draft) Ready() bool {
 		d.Statement.Locked == 0
 }
 
+// AddsNothing reports a draft whose every row is in the account already:
+// importing it adds no transaction and changes no amount -- nothing set
+// aside, no pending charge taking its posted form -- and at most lends the
+// rows here the bank's identifier or the whole of a description cut short
+// (ledgerdb's Import). Such a file needs no balances to be imported
+// without a person (Proposal.Unattended): nothing it brings is money the
+// books did not already have. A bank's CSV of the days its OFX brought in
+// is the one this is for.
+func (d Draft) AddsNothing() bool {
+	st := d.Statement
+
+	return len(d.Result.Records) > 0 && !d.Check.Failed() && st.Added == 0 && st.Posted == 0 && len(st.Doubts) == 0 &&
+		!st.ID.Zero()
+}
+
 // Quiet reports whether the draft is a statement of a period with no
 // activity: no rows, and the document's own opening and closing balance,
 // the same. Such a statement is imported with no transactions, because

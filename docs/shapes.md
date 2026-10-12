@@ -300,11 +300,16 @@ the books of are proposed.
 - **Read** for its account as its own preview reads it, and shown with its
   period, its count of transactions and new ones, and how it checked.
 - **Imported together** only when nothing in it needs a person: it checks
-  by the file's own figures, and the count rule set nothing aside, no row
+  by the file's own figures, or adds nothing at all -- every row already
+  in the account, so that it only lends them the bank's identifier or a
+  whole description (`Draft.AddsNothing`) -- and the count rule set nothing aside, no row
   was skipped or left unplaced, and no row waits to be told its
   holder (`Proposal.Unattended`). Each goes through the same `Import`
-  as a single file. Everything else stays on the list with a link to its
-  own preview, which asks what it needs.
+  as a single file, read again first if another file of the batch has
+  gone into its account since, and the batch is gone over until a pass
+  imports nothing: a CSV whose rows a statement of the same days brought
+  in is ready only once that statement is in. Everything else stays on
+  the list with a link to its own preview, which asks what it needs.
 - **The list keeps no state**: its files and the accounts chosen are in
   its address, and anybody else's files are left off it.
 
