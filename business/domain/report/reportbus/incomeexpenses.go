@@ -23,13 +23,18 @@ type Style struct {
 	Scopes []types.ScopeKind
 }
 
-// IncomeExpensesByMonth is the books' income and expenses, a month to a
-// column.
-const IncomeExpensesByMonth = "income-expenses-by-month"
+// The styles' keys. IncomeExpensesByMonth is the books' income and
+// expenses, a month to a column; ProjectStyle a project's every part with
+// its running balance, in runs of activity.
+const (
+	IncomeExpensesByMonth = "income-expenses-by-month"
+	ProjectStyle          = "project"
+)
 
 // Styles is every style, in the order a page lists them.
 var Styles = []Style{
 	{Key: IncomeExpensesByMonth, Scopes: []types.ScopeKind{types.ScopeOrg, types.ScopeAccount}},
+	{Key: ProjectStyle, Scopes: []types.ScopeKind{types.ScopeProject}},
 }
 
 // StyleOf is the style with a key.
@@ -163,7 +168,7 @@ const (
 
 // IncomeExpenses is the style's report.
 type IncomeExpenses struct {
-	Answer
+	Frame
 	Choices IncomeExpensesChoices
 
 	// Months is the report's columns, oldest first.
@@ -171,11 +176,6 @@ type IncomeExpenses struct {
 	Marks  []Mark
 
 	Sections []Section
-
-	// Presets is the periods the page offers; Before and After the same
-	// length either side, zero for every month.
-	Presets       []Preset
-	Before, After Period
 
 	// Partial reports that only some of the books' accounts were chosen,
 	// while what should come back to zero is reckoned across all of them:
@@ -186,6 +186,12 @@ type IncomeExpenses struct {
 // IncomeExpenses is the books' income and expenses by month, for anyone who
 // may read the scope. A zero period is the year to date.
 func (b *Business) IncomeExpenses(ctx context.Context, now time.Time, actor types.ID, scope types.Scope, p Period, c IncomeExpensesChoices) (IncomeExpenses, error) {
+	// A project's money is in lumps, not months, and its own style says
+	// so (ProjectReport).
+	if scope.Kind == types.ScopeProject {
+		return IncomeExpenses{}, ErrNotFound
+	}
+
 	books, err := b.Books(ctx, actor, scope)
 	if err != nil {
 		return IncomeExpenses{}, err
@@ -205,14 +211,9 @@ func (b *Business) IncomeExpenses(ctx context.Context, now time.Time, actor type
 		return IncomeExpenses{}, err
 	}
 
-	r := IncomeExpenses{
-		Answer: a, Choices: c, Months: p.Months(),
-		Presets: Presets(today, books.FiscalStart), Partial: len(a.Chosen) < len(a.Accounts),
-	}
+	r := IncomeExpenses{Frame: frame(a, today), Choices: c, Months: p.Months(), Partial: len(a.Chosen) < len(a.Accounts)}
 
-	if !p.All {
-		r.Before, r.After = p.Shifted(-1), p.Shifted(1)
-	} else if a.First != "" {
+	if p.All && a.First != "" {
 		r.Months = Period{From: a.First, To: a.Last}.Months()
 	}
 

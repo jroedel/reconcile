@@ -39,6 +39,7 @@ var ErrNotFound = tenancybus.ErrNotFound
 type Access interface {
 	Org(ctx context.Context, actor, id types.ID) (tenancybus.Org, tenancybus.Access, error)
 	Account(ctx context.Context, actor, id types.ID) (tenancybus.Account, tenancybus.Access, error)
+	Project(ctx context.Context, actor, id types.ID) (tenancybus.Project, tenancybus.Access, error)
 	Contents(ctx context.Context, actor, orgID types.ID) ([]tenancybus.Account, []tenancybus.Project, error)
 }
 
@@ -47,6 +48,7 @@ type Access interface {
 type Ledger interface {
 	OrgPeriod(ctx context.Context, actor, orgID types.ID, from, to types.Date) ([]ledgerbus.ProjectLine, []ledgerbus.Total, error)
 	AccountPeriod(ctx context.Context, actor, accountID types.ID, from, to types.Date) ([]ledgerbus.ProjectLine, error)
+	ProjectBook(ctx context.Context, actor, projectID types.ID) (ledgerbus.Book, error)
 	Settling(ctx context.Context, actor types.ID, owner types.Scope) (ledgerbus.Settling, error)
 	Coverage(ctx context.Context, actor, accountID types.ID, today types.Date) ([]ledgerbus.MonthCover, error)
 }
@@ -74,8 +76,9 @@ func NewBusiness(access Access, ledger Ledger, categories Categories, store Stor
 
 // --- the books a report is of ---------------------------------------------------
 
-// Books is a scope whose money a report adds up: an organization, or an
-// account on its own.
+// Books is a scope whose money a report adds up: an organization, an
+// account on its own, or a project, whose books are the parts sorted into
+// it from every account it draws on.
 type Books struct {
 	Scope  types.Scope
 	Name   string
@@ -86,7 +89,8 @@ type Books struct {
 	FiscalStart int
 
 	// Accounts is every account of the books, archived ones included,
-	// accounts for reference not: those a report may be of.
+	// accounts for reference not: those a report may be of. None for a
+	// project, whose accounts are whichever its parts are in.
 	Accounts []tenancybus.Account
 }
 
@@ -120,6 +124,16 @@ func (b *Business) Books(ctx context.Context, actor types.ID, scope types.Scope)
 		}
 
 		return Books{Scope: scope, Name: a.Name, Access: access, FiscalStart: 1, Accounts: []tenancybus.Account{a}}, nil
+	case types.ScopeProject:
+		// A project's year is January's: a role on a project need not
+		// reach its organization, and its reports are of its life rather
+		// than of a budget year.
+		p, access, err := b.access.Project(ctx, actor, scope.ID)
+		if err != nil {
+			return Books{}, err
+		}
+
+		return Books{Scope: scope, Name: p.Name, Access: access, FiscalStart: 1}, nil
 	}
 
 	return Books{}, ErrNotFound
@@ -211,6 +225,25 @@ type Answer struct {
 	groupOf map[types.ID]types.ID // a category's group
 }
 
+// Frame is what every style's report has around its figures: the books
+// and the period, and the periods a page offers beside it -- Before and
+// After the same length either side, zero for every month.
+type Frame struct {
+	Answer
+	Presets       []Preset
+	Before, After Period
+}
+
+// frame is the frame of an answer for a period, as of today.
+func frame(a Answer, today types.Date) Frame {
+	f := Frame{Answer: a, Presets: Presets(today, a.FiscalStart)}
+	if !a.Period.All {
+		f.Before, f.After = a.Period.Shifted(-1), a.Period.Shifted(1)
+	}
+
+	return f
+}
+
 // Sum answers a question, for anyone who may read the scope.
 func (b *Business) Sum(ctx context.Context, actor types.ID, q Question) (Answer, error) {
 	a, err := b.read(ctx, actor, q)
@@ -262,6 +295,8 @@ func (b *Business) read(ctx context.Context, actor types.ID, q Question) (Answer
 	switch q.Scope.Kind {
 	case types.ScopeOrg:
 		a.lines, _, err = b.ledger.OrgPeriod(ctx, actor, q.Scope.ID, from, to)
+	case types.ScopeProject:
+		a.lines, err = b.projectLines(ctx, actor, q.Scope.ID, from, to)
 	default:
 		a.lines, err = b.ledger.AccountPeriod(ctx, actor, q.Scope.ID, from, to)
 	}
@@ -270,6 +305,38 @@ func (b *Business) read(ctx context.Context, actor types.ID, q Question) (Answer
 		return Answer{}, err
 	}
 
+	a.Headings = map[types.ID]categorybus.Heading{}
+
+	if q.Scope.Kind != types.ScopeProject {
+		if err := b.accountsAndGroups(ctx, &a); err != nil {
+			return Answer{}, err
+		}
+	}
+
+	a.First, a.Last = months(a.lines)
+
+	return a, nil
+}
+
+// projectLines is a project's parts posted from from to before to: its
+// book's, which are the ones its page lists, from every account it draws
+// on.
+func (b *Business) projectLines(ctx context.Context, actor, projectID types.ID, from, to types.Date) ([]ledgerbus.ProjectLine, error) {
+	book, err := b.ledger.ProjectBook(ctx, actor, projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	return slices.DeleteFunc(book.Lines, func(l ledgerbus.ProjectLine) bool {
+		return l.PostedOn.Before(from) || !l.PostedOn.Before(to)
+	}), nil
+}
+
+// accountsAndGroups keeps only the chosen accounts' parts, and reads the
+// books' categories' groups. A project has neither: its accounts are
+// whichever its parts are in, and its categories are its organization's,
+// whose groups its report does not read by.
+func (b *Business) accountsAndGroups(ctx context.Context, a *Answer) error {
 	in := make(map[types.ID]bool, len(a.Chosen))
 	for _, acct := range a.Chosen {
 		in[acct.ID] = true
@@ -277,9 +344,9 @@ func (b *Business) read(ctx context.Context, actor types.ID, q Question) (Answer
 
 	a.lines = slices.DeleteFunc(a.lines, func(l ledgerbus.ProjectLine) bool { return !in[l.AccountID] })
 
-	cats, err := b.categories.Of(ctx, q.Scope)
+	cats, err := b.categories.Of(ctx, a.Scope)
 	if err != nil {
-		return Answer{}, err
+		return err
 	}
 
 	a.groupOf = make(map[types.ID]types.ID, len(cats))
@@ -289,26 +356,16 @@ func (b *Business) read(ctx context.Context, actor types.ID, q Question) (Answer
 		}
 	}
 
-	headings, err := b.categories.HeadingsOf(ctx, q.Scope)
+	headings, err := b.categories.HeadingsOf(ctx, a.Scope)
 	if err != nil {
-		return Answer{}, err
+		return err
 	}
 
-	a.Headings = make(map[types.ID]categorybus.Heading, len(headings))
 	for _, h := range headings {
 		a.Headings[h.ID] = h
 	}
 
-	for _, l := range a.lines {
-		m := l.PostedOn.String()[:7]
-		if a.First == "" || m < a.First {
-			a.First = m
-		}
-
-		a.Last = max(a.Last, m)
-	}
-
-	return a, nil
+	return nil
 }
 
 // kindOf is the kind a part counts as: its category's, or not sorted yet

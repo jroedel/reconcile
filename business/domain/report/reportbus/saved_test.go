@@ -238,7 +238,7 @@ func TestASavedReportOfAnotherRelease(t *testing.T) {
 	}
 
 	run, err := w.reports.Run(ctx, now, h.owner, gone.ID, reportbus.Period{})
-	if err != nil || run.Known || run.Report.Name != "Holy Family House" {
+	if err != nil || run.Known || run.Frame.Name != "Holy Family House" {
 		t.Errorf("a style no longer here: known %v, %v", run.Known, err)
 	}
 

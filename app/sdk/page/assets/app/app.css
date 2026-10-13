@@ -368,6 +368,8 @@ table.ledger { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
 .report td.money a { text-decoration: none; }
 .report td.money a:hover, .report td.money a:focus { text-decoration: underline; }
 .report-head .description { white-space: pre-line; }
+/* A project's report is its parts, a run at a time: a day stays on one line. */
+.runs td:first-child { white-space: nowrap; }
 .printed { display: none; }
 
 /*

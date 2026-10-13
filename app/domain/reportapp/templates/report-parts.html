@@ -1,5 +1,5 @@
-{{define "title"}}{{t "What a figure adds up"}} · {{.Data.Report.Report.Name}}{{end}}
-{{define "content"}}{{$p := .Data}}{{$v := $p.Report}}{{$r := $v.Report}}{{$cur := $p.Key.Currency}}
+{{define "title"}}{{t "What a figure adds up"}} · {{.Data.Report.Frame.Name}}{{end}}
+{{define "content"}}{{$p := .Data}}{{$v := $p.Report}}{{$r := $v.Frame}}{{$cur := $p.Key.Currency}}
 <p class="crumbs"><a href="{{$v.Base}}?{{$v.Query}}">{{template "style-name" $v.Style.Key}}</a></p>
 <h1>{{t "What a figure adds up"}}</h1>
 <p>

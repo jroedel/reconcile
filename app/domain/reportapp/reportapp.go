@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -82,7 +83,7 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	for _, s := range []struct {
 		prefix string
 		kind   types.ScopeKind
-	}{{"/orgs", types.ScopeOrg}, {"/accounts", types.ScopeAccount}} {
+	}{{"/orgs", types.ScopeOrg}, {"/accounts", types.ScopeAccount}, {"/projects", types.ScopeProject}} {
 		handle("GET "+s.prefix+"/{id}/reports", a.list(s.kind))
 		handle("POST "+s.prefix+"/{id}/reports", a.save(s.kind))
 		handle("GET "+s.prefix+"/{id}/reports/{style}", a.run(s.kind))
@@ -127,8 +128,11 @@ func (a app) failed(w http.ResponseWriter, r *http.Request, err error) {
 
 // scopePath is a scope's own page.
 func scopePath(s types.Scope) string {
-	if s.Kind == types.ScopeOrg {
+	switch s.Kind {
+	case types.ScopeOrg:
 		return "/orgs/" + s.ID.String()
+	case types.ScopeProject:
+		return "/projects/" + s.ID.String()
 	}
 
 	return "/accounts/" + s.ID.String()
@@ -204,13 +208,30 @@ func (a app) list(kind types.ScopeKind) http.HandlerFunc {
 
 // --- the address ---------------------------------------------------------------------
 
-// asked is what an address asks of a style: its period and its choices.
-// A period that is not one is no period, which the style defaults, and
-// the page says so.
+// asked is what an address asks of a style: its period and its choices,
+// each style reading its own. A period that is not one is no period, which
+// the style defaults, and the page says so.
 type asked struct {
 	period  reportbus.Period
 	choices reportbus.IncomeExpensesChoices
+	project reportbus.ProjectChoices
 	bad     bool
+}
+
+// gapOf reads a quiet gap as a form or an address writes it: nothing is
+// the default, and what is not a number is -1, which a saved report
+// refuses and a run defaults.
+func gapOf(s string) int {
+	if s = strings.TrimSpace(s); s == "" {
+		return 0
+	}
+
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return -1
+	}
+
+	return n
 }
 
 func askedOf(r *http.Request) asked {
@@ -234,6 +255,7 @@ func askedOf(r *http.Request) asked {
 
 	ask.choices.PassThrough = reportbus.PassThroughShown(q.Get("passthrough"))
 	ask.choices.Detail = reportbus.Detail(q.Get("detail"))
+	ask.project = reportbus.ProjectChoices{Gap: gapOf(q.Get("gap")), HideAccounts: q.Get("accounts") == "hidden"}
 
 	return ask
 }
@@ -255,6 +277,22 @@ func choiceValues(r reportbus.IncomeExpenses) url.Values {
 
 	if r.Choices.Detail == reportbus.EachGroupRow {
 		v.Set("detail", string(reportbus.EachGroupRow))
+	}
+
+	return v
+}
+
+// projectValues is a project report's choices in an address, as
+// choiceValues is the monthly one's.
+func projectValues(r reportbus.ProjectReport) url.Values {
+	v := url.Values{}
+
+	if r.Choices.Gap != reportbus.DefaultGap {
+		v.Set("gap", strconv.Itoa(r.Choices.Gap))
+	}
+
+	if r.Choices.HideAccounts {
+		v.Set("accounts", "hidden")
 	}
 
 	return v
@@ -286,7 +324,12 @@ func cloned(v url.Values) url.Values {
 // --- running it ----------------------------------------------------------------------
 
 type reportView struct {
+	// Frame is the books and the period, whichever the style; Report is
+	// income and expenses by month's run, and Project a project's, the
+	// other one zero.
+	Frame   reportbus.Frame
 	Report  reportbus.IncomeExpenses
+	Project reportbus.ProjectReport
 	Style   reportbus.Style
 	Path    string // the books' page
 	Base    string // the style's page for these books, or the saved report's
@@ -311,8 +354,8 @@ type reportView struct {
 
 // Preset is the key of the preset the period shown is, or "".
 func (v reportView) Preset() string {
-	for _, pr := range v.Report.Presets {
-		if pr.Period == v.Report.Period {
+	for _, pr := range v.Frame.Presets {
+		if pr.Period == v.Frame.Period {
 			return pr.Key
 		}
 	}
@@ -330,23 +373,23 @@ func (v reportView) NoteDate() types.Date {
 }
 
 // PeriodFields is the period shown, as the hidden fields of a form.
-func (v reportView) PeriodFields() url.Values { return periodValues(url.Values{}, v.Report.Period) }
+func (v reportView) PeriodFields() url.Values { return periodValues(url.Values{}, v.Frame.Period) }
 
 // Query is the report as it is in an address: its choices and period.
-func (v reportView) Query() string { return periodValues(v.choices, v.Report.Period).Encode() }
+func (v reportView) Query() string { return periodValues(v.choices, v.Frame.Period).Encode() }
 
 // For is the same report for another period, by preset key or as the
 // period before ("before") or after ("after").
 func (v reportView) For(which string) string {
-	p := v.Report.Period
+	p := v.Frame.Period
 
 	switch which {
 	case "before":
-		p = v.Report.Before
+		p = v.Frame.Before
 	case "after":
-		p = v.Report.After
+		p = v.Frame.After
 	default:
-		for _, pr := range v.Report.Presets {
+		for _, pr := range v.Frame.Presets {
 			if pr.Key == which {
 				p = pr.Period
 			}
@@ -358,9 +401,9 @@ func (v reportView) For(which string) string {
 
 // Current reports whether a preset is the period shown.
 func (v reportView) Current(key string) bool {
-	for _, pr := range v.Report.Presets {
+	for _, pr := range v.Frame.Presets {
 		if pr.Key == key {
-			return pr.Period == v.Report.Period
+			return pr.Period == v.Frame.Period
 		}
 	}
 
@@ -386,7 +429,7 @@ func (v reportView) Chosen(id types.ID) bool {
 // named, comma-separated, with the kind ("unsorted" for parts not sorted
 // yet), category and month a figure is of, "" for those it is not.
 func (v reportView) Figure(by, kind, category, month, currency string) string {
-	q := periodValues(v.choices, v.Report.Period)
+	q := periodValues(v.choices, v.Frame.Period)
 	q.Set("by", by)
 	q.Set("currency", currency)
 
@@ -456,23 +499,42 @@ func (a app) report(w http.ResponseWriter, r *http.Request, kind types.ScopeKind
 	ask := askedOf(r)
 	now := a.cfg.Now()
 
-	rep, err := a.cfg.Reports.IncomeExpenses(r.Context(), now, me.ID, scope, ask.period, ask.choices)
+	v := reportView{Style: style, Path: scopePath(scope), Base: scopePath(scope) + "/reports/" + style.Key, Today: types.DateOf(now)}
+
+	var err error
+
+	switch style.Key {
+	case reportbus.ProjectStyle:
+		v.Project, err = a.cfg.Reports.ProjectReport(r.Context(), now, me.ID, scope, ask.period, ask.project)
+		v.Frame, v.choices = v.Project.Frame, projectValues(v.Project)
+	default:
+		v.Report, err = a.cfg.Reports.IncomeExpenses(r.Context(), now, me.ID, scope, ask.period, ask.choices)
+		v.Frame, v.choices = v.Report.Frame, choiceValues(v.Report)
+	}
+
 	if err != nil {
 		a.failed(w, r, err)
 
 		return reportView{}, false
 	}
 
-	v := reportView{
-		Report: rep, Style: style, Path: scopePath(scope), Base: scopePath(scope) + "/reports/" + style.Key,
-		Today: types.DateOf(now), choices: choiceValues(rep), CanKeep: rep.Access.Can(tenancybus.Bookkeep),
-	}
-
-	if ask.bad {
-		v.Problem = "period"
-	}
+	v.CanKeep = v.Frame.Access.Can(tenancybus.Bookkeep)
+	v.Problem = v.badPeriod(ask.bad)
 
 	return v, true
+}
+
+// badPeriod is the problem of a period the address names that is not one,
+// which each style defaults in its own way, or "".
+func (v reportView) badPeriod(bad bool) string {
+	switch {
+	case !bad:
+		return ""
+	case v.Style.Key == reportbus.ProjectStyle:
+		return "project-period"
+	}
+
+	return "period"
 }
 
 func (a app) run(kind types.ScopeKind) http.HandlerFunc {
@@ -534,7 +596,7 @@ func (a app) parts(build builder) http.HandlerFunc {
 			k.GroupID = id
 		}
 
-		question := reportbus.Question{Scope: v.Report.Scope, Accounts: v.Report.Choices.Accounts, Period: v.Report.Period, By: by}
+		question := reportbus.Question{Scope: v.Frame.Scope, Accounts: v.Report.Choices.Accounts, Period: v.Frame.Period, By: by}
 
 		answer, lines, err := a.cfg.Reports.Parts(r.Context(), me.ID, question, k)
 		if err != nil {
@@ -564,6 +626,12 @@ func (a app) download(build builder) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		v, ok := build(w, r)
 		if !ok {
+			return
+		}
+
+		if v.Style.Key == reportbus.ProjectStyle {
+			a.projectSheet(w, r, v)
+
 			return
 		}
 
@@ -620,24 +688,29 @@ func (a app) download(build builder) http.HandlerFunc {
 			_ = cw.Write([]string{owed, s.PassThroughTotal.String()})
 		}
 
-		cw.Flush()
-
-		if err := cw.Error(); err != nil {
-			a.failed(w, r, err)
-
-			return
-		}
-
 		name := "report.csv"
 		if len(rep.Months) > 0 {
 			name = fmt.Sprintf("report_%s_%s.csv", rep.Months[0], rep.Months[len(rep.Months)-1])
 		}
 
-		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
-		w.Header().Set("Cache-Control", "private, no-store")
-		_, _ = w.Write(buf.Bytes())
+		a.sheet(w, r, cw, &buf, name)
 	}
+}
+
+// sheet sends a spreadsheet written into buf.
+func (a app) sheet(w http.ResponseWriter, r *http.Request, cw *csv.Writer, buf *bytes.Buffer, name string) {
+	cw.Flush()
+
+	if err := cw.Error(); err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
+	w.Header().Set("Cache-Control", "private, no-store")
+	_, _ = w.Write(buf.Bytes())
 }
 
 // lines is a text's lines, which must be n.
