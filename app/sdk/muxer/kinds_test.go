@@ -34,7 +34,7 @@ func TestKindsOfMoney(t *testing.T) {
 	wantBody(t, e.owner.get(e.account+"/transactions?month=2026-07"), "Income $0.00 · Expenses -$30.00 · Net -$30.00", "pass-through -$3.99")
 
 	// The project is short by the groceries only.
-	wantBody(t, e.owner.get(e.project+"/book"), "Short by $30.00", "Pass-through: -$3.99, which should come back to zero")
+	wantBody(t, e.owner.get(e.project+"/book"), "Short by $30.00", "Pass-through: $0.00 in, $3.99 out · <strong>$3.99 still to come back</strong>")
 
 	// The bulbs are owed until repaid.
 	wantBody(t, e.owner.get(e.org+"/categories"), "What should come back to zero", "Personal, repaid", "Still to come back: somebody has not repaid it yet.")

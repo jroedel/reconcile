@@ -11,5 +11,14 @@ for the lists on its own; change both together. */}}
 
 {{define "project-figures"}}{{$f := .}}
 {{if $f.Count}}<p class="hint figures">{{if eq $f.First.String $f.Last.String}}{{$f.First}}{{else}}{{t "{start} to {end}" "start" $f.First "end" $f.Last}}{{end}} · {{t "{n} transactions" "n" $f.Count}}</p>
-{{range $f.Totals}}<p class="figures">{{t "Income"}} <span class="money in">{{money .Income .Currency}}</span> · {{t "Expenses"}} <span class="money out">{{money .Expenses .Currency}}</span> · <strong>{{if lt .Net 0}}{{t "Short by {amount}" "amount" (money .Net.Abs .Currency)}}{{else if gt .Net 0}}{{t "{amount} in hand" "amount" (money .Net .Currency)}}{{else}}{{t "Even"}}{{end}}</strong>{{if .Unsorted}} <span class="badge">{{t "not all sorted yet"}}</span>{{end}}</p>{{end}}{{end}}
+{{range $f.Totals}}
+{{- if or .Operated (not .PassedThrough)}}<p class="figures">{{t "Income"}} <span class="money in">{{money .Income .Currency}}</span> · {{t "Expenses"}} <span class="money out">{{money .Expenses .Currency}}</span> · <strong>{{if lt .Net 0}}{{t "Short by {amount}" "amount" (money .Net.Abs .Currency)}}{{else if gt .Net 0}}{{t "{amount} in hand" "amount" (money .Net .Currency)}}{{else}}{{t "Even"}}{{end}}</strong>{{if .Unsorted}} <span class="badge">{{t "not all sorted yet"}}</span>{{end}}</p>{{end}}
+{{- if .PassedThrough}}<p class="figures">{{template "passed-through" .}}{{if and .Unsorted (not .Operated)}} <span class="badge">{{t "not all sorted yet"}}</span>{{end}}</p>{{end}}
+{{- end}}{{end}}
 {{end}}
+
+{{/* passed-through is a total's pass-through: both sides, and whether it is settled. */}}
+{{define "passed-through"}}{{t "Pass-through: {in} in, {out} out" "in" (money .PassThroughIn .Currency) "out" (money .PassThroughOut.Abs .Currency)}} · <strong>
+{{- if lt .PassThrough 0}}{{t "{amount} still to come back" "amount" (money .PassThrough.Abs .Currency)}}
+{{- else if gt .PassThrough 0}}{{t "{amount} still to pass on" "amount" (money .PassThrough .Currency)}}
+{{- else}}{{t "Settled"}}{{end}}</strong>{{end}}

@@ -1847,6 +1847,7 @@ func (a app) projectBook(w http.ResponseWriter, r *http.Request) {
 			out = append(out, map[string]any{
 				"key": t.Key, "currency": t.Currency, "in": t.In, "out": t.Out, "net": t.In + t.Out,
 				"income": t.Income, "expenses": t.Expenses, "transfers": t.Transfers, "pass_through": t.PassThrough, "unsorted": t.Unsorted,
+				"pass_through_in": t.PassThroughIn, "pass_through_out": t.PassThroughOut,
 				"net_with_transfers": t.WithTransfers(),
 			})
 		}
