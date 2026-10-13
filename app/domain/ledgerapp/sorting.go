@@ -9,6 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/jroedel/reconcile/app/sdk/page"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
 	"github.com/jroedel/reconcile/business/domain/rule/rulebus"
@@ -37,6 +38,11 @@ type transactionView struct {
 	// as, or that it did not: a bookkeeper's, outside a reconciled period.
 	CanPair bool
 	Back    string
+
+	// Return is the page the transaction was opened from, when that is
+	// not the account's month: a report's figure, a project's money, a
+	// payee. Saving goes back there (page.ReturnFrom).
+	Return *page.Return
 
 	// Receipts is those on it; Waiting is those it might be given, the
 	// ones for its amount first.
@@ -174,6 +180,7 @@ func (a app) transactionPage(w http.ResponseWriter, r *http.Request, status int,
 		CanReceipts: e.Access.Can(tenancybus.Receipts),
 		CanPair:     e.Access.Can(tenancybus.Bookkeep) && !e.Lock.Made(),
 		Back:        monthOf(e.Transaction),
+		Return:      page.ReturnFrom(r),
 		sortForm:    f,
 		Done:        r.URL.Query().Get("done"),
 		Uploaded:    uploadedFrom(r.URL.Query()),
@@ -382,12 +389,27 @@ func (a app) sortTransaction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		back(w, r, monthOf(t), "sorted-rule")
+		saved(w, r, t, "sorted-rule")
 
 		return
 	}
 
-	back(w, r, monthOf(t), "sorted")
+	saved(w, r, t, "sorted")
+}
+
+// saved sends a person on from a transaction they sorted: back to the
+// page they opened it from, where the change shows, or else to its month,
+// which says what was done. The page they came from is not told "sorted":
+// a report or a project's money has nothing to say about it but the new
+// figure.
+func saved(w http.ResponseWriter, r *http.Request, t ledgerbus.Transaction, done string) {
+	if ret := page.ReturnFrom(r); ret != nil {
+		http.Redirect(w, r, ret.Path, http.StatusSeeOther)
+
+		return
+	}
+
+	back(w, r, monthOf(t), done)
 }
 
 // postedRows reads the form's rows: amount-0, category-0, and so on. A row
@@ -491,6 +513,12 @@ type bookView struct {
 	// Receipts is those on the book's transactions: a role on a project is
 	// the right to see its parts with their receipts.
 	Receipts map[types.ID][]receiptbus.Receipt
+
+	// Readable is the accounts whose transactions the reader may open. A
+	// role on a project shows its parts, not the accounts they are in, so
+	// a part in any other account is not a link that would only answer
+	// "not found".
+	Readable map[types.ID]bool
 }
 
 // CanExport reports whether the reader may download the accountant's
@@ -527,5 +555,24 @@ func (a app) book(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.cfg.Render.Render(w, r, http.StatusOK, "project-book", bookView{Book: b, Path: "/projects/" + id.String(), Receipts: receipts})
+	readable := map[types.ID]bool{}
+	for _, l := range b.Lines {
+		if _, seen := readable[l.AccountID]; seen {
+			continue
+		}
+
+		_, _, err := a.cfg.Tenancy.Account(r.Context(), me.ID, l.AccountID)
+		switch {
+		case err == nil:
+			readable[l.AccountID] = true
+		case errors.Is(err, tenancybus.ErrNotFound):
+			readable[l.AccountID] = false
+		default:
+			a.failed(w, r, err)
+
+			return
+		}
+	}
+
+	a.cfg.Render.Render(w, r, http.StatusOK, "project-book", bookView{Book: b, Path: "/projects/" + id.String(), Receipts: receipts, Readable: readable})
 }

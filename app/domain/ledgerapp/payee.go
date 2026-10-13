@@ -3,7 +3,9 @@ package ledgerapp
 import (
 	"errors"
 	"net/http"
+	"net/url"
 
+	"github.com/jroedel/reconcile/app/sdk/page"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 )
 
@@ -28,16 +30,27 @@ func (a app) setPayee(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	to := "/transactions/" + id.String()
+	// Back to the transaction, still carrying the way back to wherever it
+	// was opened from.
+	q := url.Values{}
+	if ret := page.ReturnFrom(r); ret != nil {
+		q.Set("back", ret.Path)
+	}
+
+	to := func(k, v string) string {
+		q.Set(k, v)
+
+		return "/transactions/" + id.String() + "?" + q.Encode() + "#paid-to"
+	}
 
 	_, err := a.cfg.Ledger.SetPayee(r.Context(), a.cfg.Now(), me.ID, id, r.PostForm.Get("payee"))
 
 	switch {
 	case errors.Is(err, ledgerbus.ErrPayee):
-		http.Redirect(w, r, to+"?problem=payee#paid-to", http.StatusSeeOther)
+		http.Redirect(w, r, to("problem", "payee"), http.StatusSeeOther)
 	case err != nil:
 		a.failed(w, r, err)
 	default:
-		http.Redirect(w, r, to+"?done=payee#paid-to", http.StatusSeeOther)
+		http.Redirect(w, r, to("done", "payee"), http.StatusSeeOther)
 	}
 }

@@ -25,7 +25,7 @@
 <thead><tr>{{if $x.CanChange}}<th>{{t "Take out"}}</th>{{end}}<th>{{t "Date"}}</th><th>{{t "Description"}}</th><th class="money">{{t "Amount"}}</th></tr></thead>
 <tbody>
 {{range $g.Lines}}{{$l := .Transaction}}<tr>{{if $x.CanChange}}<td><input type="checkbox" name="remove" value="{{$l.ID}}" aria-label="{{t "Take out"}}"></td>{{end}}
-<td>{{$l.PostedOn}}</td><td><a href="/transactions/{{$l.ID}}">{{if $l.Shown}}{{$l.Shown}}{{else}}{{t "(no description)"}}{{end}}</a></td>
+<td>{{$l.PostedOn}}</td><td><a href="/transactions/{{$l.ID}}{{with $.Here}}?back={{.}}{{end}}">{{if $l.Shown}}{{$l.Shown}}{{else}}{{t "(no description)"}}{{end}}</a></td>
 <td class="money {{if lt $l.Amount 0}}out{{else}}in{{end}}">{{money $l.Amount $cur}}</td></tr>
 {{end}}</tbody>
 </table>

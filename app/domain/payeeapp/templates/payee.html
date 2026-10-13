@@ -91,7 +91,7 @@
 {{if $v.Payments}}
 <div class="scroll"><table class="ledger">
 <thead><tr><th>{{t "Date"}}</th><th>{{t "Description"}}</th><th>{{t "Account"}}</th><th class="money">{{t "Amount"}}</th></tr></thead>
-<tbody>{{range $v.Payments}}<tr><td>{{.PostedOn}}</td><td><a href="/transactions/{{.ID}}">{{if .Shown}}{{.Shown}}{{else}}{{t "(no description)"}}{{end}}</a>{{if ne .Payee $p.Name}}<br><span class="hint">{{t "Written as {payee}" "payee" .Payee}}</span>{{end}}</td><td>{{.AccountName}}</td><td class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount .Currency}}</td></tr>{{end}}</tbody>
+<tbody>{{range $v.Payments}}<tr><td>{{.PostedOn}}</td><td><a href="/transactions/{{.ID}}{{with $.Here}}?back={{.}}{{end}}">{{if .Shown}}{{.Shown}}{{else}}{{t "(no description)"}}{{end}}</a>{{if ne .Payee $p.Name}}<br><span class="hint">{{t "Written as {payee}" "payee" .Payee}}</span>{{end}}</td><td>{{.AccountName}}</td><td class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount .Currency}}</td></tr>{{end}}</tbody>
 </table></div>
 {{if $v.More}}<p class="hint">{{t "The most recent {count} are shown." "count" (len $v.Payments)}}</p>{{end}}
 {{else}}<p class="hint">{{t "No payments yet."}}</p>{{end}}

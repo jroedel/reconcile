@@ -314,6 +314,12 @@ code.key {
  * breadcrumb read like a line of details.
  */
 .crumbs { margin: 0 0 -0.5rem; font-size: 0.9rem; }
+
+/* The way back to where a person came from sits above the way up, and is
+ * the stronger of the two: it is what they were doing. */
+.return { margin: 0 0 0.35rem; font-size: 0.9rem; }
+.return a { font-weight: 600; text-decoration: none; }
+.return a:hover, .return a:focus-visible { text-decoration: underline; }
 .crumbs ol { display: flex; flex-wrap: wrap; gap: 0.15rem 0; margin: 0; padding: 0; list-style: none; }
 .crumbs li + li::before { content: "›"; margin: 0 0.45rem; color: var(--muted); }
 

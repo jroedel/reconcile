@@ -7,20 +7,20 @@
 
 <section class="card">
 <h2>{{t "Reported to the accountant"}}</h2>
-{{if $v.Reported}}{{range $v.Reported}}{{template "payee-year" (dict "Year" . "Checks" $v.Checks)}}{{end}}
+{{if $v.Reported}}{{range $v.Reported}}{{template "payee-year" (dict "Year" . "Checks" $v.Checks "Here" $.Here)}}{{end}}
 {{else}}<p class="hint">{{t "No payee is marked to be reported. A bookkeeper or an owner marks one on its page."}}</p>{{end}}
 </section>
 
 <section class="card">
 <h2>{{t "Everybody else"}}</h2>
 <p class="hint">{{t "Largest first, so that somebody who should be reported is seen. No amount is built in: what the law asks about differs by country and by year, and the accountant knows it."}}</p>
-{{if $v.Others}}{{range $v.Others}}{{template "payee-year" (dict "Year" . "Checks" $v.Checks)}}{{end}}
+{{if $v.Others}}{{range $v.Others}}{{template "payee-year" (dict "Year" . "Checks" $v.Checks "Here" $.Here)}}{{end}}
 {{else}}<p class="hint">{{t "Nobody else was paid this year."}}</p>{{end}}
 </section>
 {{end}}
 
 {{/* payee-year is one payee's year: its total, opened to its payments. */}}
-{{define "payee-year"}}{{$y := .Year}}{{$checks := .Checks}}{{$p := $y.Payee}}
+{{define "payee-year"}}{{$here := .Here}}{{$y := .Year}}{{$checks := .Checks}}{{$p := $y.Payee}}
 <details class="payee-year">
 <summary><a href="/payees/{{$p.ID}}">{{$p.Name}}</a>
 {{range $y.Sums}} · <span class="money out">{{money .Paid .Currency}}</span>{{if .Unsorted}} <span class="badge">{{t "not sorted yet: {amount}" "amount" (money .Unsorted .Currency)}}</span>{{end}}{{end}}
@@ -33,7 +33,7 @@
 <tbody>{{range $y.Payments}}<tr>
 <td>{{.On}}<br><span class="hint">{{if .Written}}{{tc "date of a payment" "day written"}}{{else}}{{tc "date of a payment" "day posted"}}{{end}}</span></td>
 <td>{{.AccountName}}</td>
-<td><a href="/transactions/{{.ID}}">{{if .Shown}}{{.Shown}}{{else}}{{t "(no description)"}}{{end}}</a>
+<td><a href="/transactions/{{.ID}}{{with $here}}?back={{.}}{{end}}">{{if .Shown}}{{.Shown}}{{else}}{{t "(no description)"}}{{end}}</a>
 {{- with .CheckNumber}}<br><span class="hint">{{t "Check number {number}" "number" .}}</span>{{end}}
 {{- with .CheckMemo}}<br><span class="hint">{{t "Memo: {memo}" "memo" .}}</span>{{end}}
 {{- if ne .Payee $p.Name}}<br><span class="hint">{{t "Written as {payee}" "payee" .Payee}}</span>{{end}}
