@@ -9,9 +9,9 @@
 <section class="card">
 {{range $b.Totals}}
 {{if or .Operated (not .PassedThrough)}}<p>{{t "Income"}} <span class="money in">{{money .Income .Currency}}</span> · {{t "Expenses"}} <span class="money out">{{money .Expenses .Currency}}</span></p>
-<p><strong>{{if lt .Net 0}}{{t "Short by {amount}" "amount" (money .Net.Abs .Currency)}}{{else if gt .Net 0}}{{t "{amount} in hand" "amount" (money .Net .Currency)}}{{else}}{{t "Even"}}{{end}}</strong></p>{{end}}
+<p><strong>{{if not $b.Project.BreakEven}}{{t "Net {amount}" "amount" (money .Net .Currency)}}{{else if lt .Net 0}}{{t "Short by {amount}" "amount" (money .Net.Abs .Currency)}}{{else if gt .Net 0}}{{t "{amount} in hand" "amount" (money .Net .Currency)}}{{else}}{{t "Even"}}{{end}}</strong></p>{{end}}
 {{if .Transfers}}<p class="hint">{{t "Transfers between our accounts: {amount}. Not income or an expense." "amount" (money .Transfers .Currency)}}</p>
-<p>{{if lt .WithTransfers 0}}{{t "Counting the transfers: short by {amount}" "amount" (money .WithTransfers.Abs .Currency)}}{{else if gt .WithTransfers 0}}{{t "Counting the transfers: {amount} in hand" "amount" (money .WithTransfers .Currency)}}{{else}}{{t "Counting the transfers: even"}}{{end}}</p>
+<p>{{if not $b.Project.BreakEven}}{{t "Counting the transfers: {amount}" "amount" (money .WithTransfers .Currency)}}{{else if lt .WithTransfers 0}}{{t "Counting the transfers: short by {amount}" "amount" (money .WithTransfers.Abs .Currency)}}{{else if gt .WithTransfers 0}}{{t "Counting the transfers: {amount} in hand" "amount" (money .WithTransfers .Currency)}}{{else}}{{t "Counting the transfers: even"}}{{end}}</p>
 <p class="hint">{{t "For costs another of our accounts pays back: what is still to be paid back, or what was paid back beyond them."}}</p>{{end}}
 {{if .PassedThrough}}<p>{{t "Pass-through: {in} in, {out} out" "in" (money .PassThroughIn .Currency) "out" (money .PassThroughOut.Abs .Currency)}} · <strong>
 {{- if lt .PassThrough 0}}{{t "{amount} still to come back" "amount" (money .PassThrough.Abs .Currency)}}

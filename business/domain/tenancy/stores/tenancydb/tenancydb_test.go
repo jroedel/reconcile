@@ -120,12 +120,90 @@ func TestInitGivesOldProjectsNoProgramsMark(t *testing.T) {
 	}
 
 	p, err := tenancydb.NewStore(db).ProjectByID(ctx, id)
-	if err != nil || p.Via != "" || p.Name != "Building fund" {
+	if err != nil || p.Via != "" || p.Name != "Building fund" || p.BreakEven {
 		t.Errorf("the project: %+v %v", p, err)
 	}
 
 	if err := sqldb.CheckSchema(ctx, db, tenancydb.Expected); err != nil {
 		t.Errorf("the schema after Init: %v", err)
+	}
+}
+
+// projectsBeforeBreakEven is the projects table as the release before
+// break-even projects made it, with the program's mark, written out for the
+// same reason.
+const projectsBeforeBreakEven = `
+CREATE TABLE IF NOT EXISTS projects (
+    id          TEXT    PRIMARY KEY,
+    org_id      TEXT    REFERENCES orgs (id),
+    name        TEXT    NOT NULL,
+    starts_on   TEXT    NOT NULL DEFAULT '',
+    ends_on     TEXT    NOT NULL DEFAULT '',
+    note        TEXT    NOT NULL DEFAULT '',
+    created_by  TEXT    NOT NULL,
+    created_at  INTEGER NOT NULL,
+    archived_at INTEGER,
+    via         TEXT    NOT NULL DEFAULT ''
+) STRICT;
+`
+
+// A project made before break-even projects is an ordinary one, however
+// often Init runs; made break-even, it reads back so.
+func TestInitKeepsOldProjectsOrdinary(t *testing.T) {
+	db, err := sqldb.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() { db.Close() })
+
+	ctx := t.Context()
+
+	for _, init := range []func() error{
+		func() error { return userdb.Init(ctx, db) },
+		func() error { return eventdb.Init(ctx, db) },
+	} {
+		if err := init(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, ddl := range []string{orgsBeforeBudgets, projectsBeforeBreakEven} {
+		if _, err := db.ExecContext(ctx, ddl); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	id := types.NewID()
+	if _, err := db.ExecContext(ctx, `INSERT INTO projects (id, name, created_by, created_at, via) VALUES (?, 'Spiritual exercises', ?, 1, 'claude.ai')`,
+		id.String(), types.NewID().String()); err != nil {
+		t.Fatal(err)
+	}
+
+	for range 2 {
+		if err := tenancydb.Init(ctx, db); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := sqldb.CheckSchema(ctx, db, tenancydb.Expected); err != nil {
+		t.Errorf("the schema after Init: %v", err)
+	}
+
+	store := tenancydb.NewStore(db)
+
+	p, err := store.ProjectByID(ctx, id)
+	if err != nil || p.BreakEven || p.Via != "claude.ai" || p.Name != "Spiritual exercises" {
+		t.Fatalf("the project: %+v %v", p, err)
+	}
+
+	p.BreakEven = true
+	if err := store.UpdateProject(ctx, p, eventbus.New(time.UnixMilli(2), types.NewID(), p.Scope(), eventbus.Edited, nil)); err != nil {
+		t.Fatal(err)
+	}
+
+	if again, _ := store.ProjectByID(ctx, id); !again.BreakEven {
+		t.Errorf("after: %+v", again)
 	}
 }
 

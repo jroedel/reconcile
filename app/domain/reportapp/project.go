@@ -49,7 +49,13 @@ func (a app) projectSheet(w http.ResponseWriter, r *http.Request, v reportView) 
 		}
 
 		for _, e := range s.Episodes {
-			run := e.From.String() + " – " + e.To.String()
+			// An ordinary project has one run, its whole period, which is
+			// no run at all: the column stays, empty, so that a sheet of
+			// either kind reads the same.
+			run := ""
+			if rep.BreakEven {
+				run = e.From.String() + " – " + e.To.String()
+			}
 
 			for _, p := range e.Parts {
 				description, category := p.Description, p.CategoryName

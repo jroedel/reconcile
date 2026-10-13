@@ -327,6 +327,14 @@ func TestAViewerSeesAndChangesNothing(t *testing.T) {
 		t.Errorf("a viewer renamed it: %d", rec.Code)
 	}
 
+	if rec := viewer.post(e.project+"/edit", url.Values{"name": {"World Youth Day"}, "break-even": {"1"}}); rec.Code != http.StatusForbidden {
+		t.Errorf("a viewer made the project break-even: %d", rec.Code)
+	}
+
+	if strings.Contains(viewer.get(e.project).Body.String(), `name="break-even"`) {
+		t.Error("a viewer is offered the break-even mark")
+	}
+
 	// Inherited: the account in it is readable, the personal one is not.
 	if rec := viewer.get(e.account); rec.Code != http.StatusOK {
 		t.Errorf("the organization's account: %d", rec.Code)

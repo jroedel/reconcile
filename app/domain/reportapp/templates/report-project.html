@@ -13,7 +13,7 @@
 {{if $s.Before}}<p>{{t "Brought forward from before these months: {amount}" "amount" (money $s.BroughtForward $cur)}}</p>{{end}}
 
 {{range $s.Episodes}}
-<h3>{{if eq .From .To}}{{.From}}{{else}}{{t "{from} to {to}" "from" .From "to" .To}}{{end}}</h3>
+{{if $r.BreakEven}}<h3>{{if eq .From .To}}{{.From}}{{else}}{{t "{from} to {to}" "from" .From "to" .To}}{{end}}</h3>{{end}}
 <div class="scroll">
 <table class="ledger report runs">
 <thead><tr><th scope="col">{{t "Date"}}</th>{{if $accounts}}<th scope="col">{{t "Account"}}</th>{{end}}<th scope="col">{{t "Description"}}</th><th scope="col">{{t "Category"}}</th><th scope="col" class="money">{{t "Amount"}}</th><th scope="col" class="money">{{t "Balance"}}</th></tr></thead>
@@ -26,17 +26,18 @@
 {{end}}</tbody>
 </table>
 </div>
-{{template "run-figures" (dict "F" .Figures "Cur" $cur "View" $v "Foot" false)}}
-<p>{{t "On its own it came to {amount}; the balance after it is {balance}." "amount" (money .Sum $cur) "balance" (money .Balance $cur)}}</p>
+{{if $r.BreakEven}}{{template "run-figures" (dict "F" .Figures "Cur" $cur "View" $v "Foot" false)}}
+<p>{{t "On its own it came to {amount}; the balance after it is {balance}." "amount" (money .Sum $cur) "balance" (money .Balance $cur)}}</p>{{end}}
 {{end}}
 
-<h3>{{t "All of it together"}}</h3>
+{{if $r.BreakEven}}<h3>{{t "All of it together"}}</h3>{{end}}
 {{template "run-figures" (dict "F" $s.Figures "Cur" $cur "View" $v "Foot" true)}}
-<p class="total"><strong>{{if $s.Balance}}{{t "The balance at the end is {amount}." "amount" (money $s.Balance $cur)}}{{else}}{{t "The balance at the end is zero: the project is back where it started."}}{{end}}</strong></p>
+<p class="total"><strong>{{if or $s.Balance (not $r.BreakEven)}}{{t "The balance at the end is {amount}." "amount" (money $s.Balance $cur)}}{{else}}{{t "The balance at the end is zero: the project is back where it started."}}{{end}}</strong></p>
 </section>
 {{end}}
 
-<p class="hint">{{t "The balance counts everything in the project: income, expenses, pass-through, transfers into it, and what is not sorted yet. A new run starts after a quiet gap, so that each retreat or trip shows whether it came out even."}}</p>
+<p class="hint">{{t "The balance counts everything in the project: income, expenses, pass-through, transfers into it, and what is not sorted yet."}}
+{{if $r.BreakEven}}{{t "A new run starts after a quiet gap, so that each retreat or trip shows whether it came out even."}}{{else}}{{t "A break-even project, such as a retreat, is also shown in runs, each saying whether it came out even; that is set on the project's page."}}{{end}}</p>
 
 <section class="card no-print">
 <h2>{{t "Change what it shows"}}</h2>
@@ -48,7 +49,7 @@
     <input id="to" name="to" type="month" value="{{if not $r.Period.All}}{{$r.Period.To}}{{end}}" placeholder="2026-07">
     <p class="hint">{{t "As year and month, such as 2026-07, where the browser asks for text."}}</p>
   </div>
-  {{if not $v.Saved}}{{template "project-choices" $r.Choices}}{{end}}
+  {{if not $v.Saved}}{{template "project-choices" (dict "C" $r.Choices "Runs" $r.BreakEven)}}{{end}}
   <button type="submit">{{t "Show"}}</button>
 </form>
 {{if and $v.Saved $v.CanKeep}}<p><a href="{{$v.Base}}/edit">{{t "Change its title, description or what it shows"}}</a></p>{{end}}
@@ -91,7 +92,8 @@
 {{define "run-figures"}}{{$f := .F}}{{$cur := .Cur}}{{$v := .View}}{{$foot := .Foot}}
 <ul class="list figures-list">
 {{if or $f.Operated (not (or $f.PassedThrough $f.Transfers $f.Unsorted))}}<li>{{t "Income {income} · Expenses {expenses} · Net {net}" "income" (money $f.Income $cur) "expenses" (money $f.Expenses $cur) "net" (money $f.Net $cur)}}
-{{- if $foot}} <span class="no-print">· {{template "parts-link" (dict "Href" ($v.Figure "kind" "income" "" "" $cur) "Kind" "income")}} · {{template "parts-link" (dict "Href" ($v.Figure "kind" "expense" "" "" $cur) "Kind" "expense")}}</span>{{end}}</li>{{end}}
+{{- if and $foot $f.Income}} <span class="no-print">· {{template "parts-link" (dict "Href" ($v.Figure "kind" "income" "" "" $cur) "Kind" "income")}}</span>{{end}}
+{{- if and $foot $f.Expenses}} <span class="no-print">· {{template "parts-link" (dict "Href" ($v.Figure "kind" "expense" "" "" $cur) "Kind" "expense")}}</span>{{end}}</li>{{end}}
 {{if $f.PassedThrough}}<li>{{template "passed-through" (dict "In" $f.PassThroughIn "Out" $f.PassThroughOut "Net" $f.PassThrough "Cur" $cur)}}
 {{- if $foot}} <span class="no-print">· {{template "parts-link" (dict "Href" ($v.Figure "kind" "passthrough" "" "" $cur) "Kind" "passthrough")}}</span>{{end}}</li>{{end}}
 {{if $f.Transfers}}<li>{{t "Transfers between our accounts: {amount}" "amount" (money $f.Transfers $cur)}}

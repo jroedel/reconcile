@@ -895,10 +895,11 @@ func (a app) newProject(w http.ResponseWriter, r *http.Request) {
 
 func projectFields(r *http.Request) tenancybus.ProjectFields {
 	return tenancybus.ProjectFields{
-		Name:     r.PostFormValue("name"),
-		StartsOn: r.PostFormValue("starts"),
-		EndsOn:   r.PostFormValue("ends"),
-		Note:     r.PostFormValue("note"),
+		Name:      r.PostFormValue("name"),
+		StartsOn:  r.PostFormValue("starts"),
+		EndsOn:    r.PostFormValue("ends"),
+		Note:      r.PostFormValue("note"),
+		BreakEven: r.PostFormValue("break-even") == "1",
 	}
 }
 
@@ -956,7 +957,7 @@ func (a app) projectPage(w http.ResponseWriter, r *http.Request, id types.ID, st
 		scopeView: a.scope(r, me, p.Scope(), "/projects/"+p.ID.String(), access),
 		Project:   p,
 		Fields: tenancybus.ProjectFields{
-			Name: p.Name, StartsOn: p.StartsOn.String(), EndsOn: p.EndsOn.String(), Note: p.Note,
+			Name: p.Name, StartsOn: p.StartsOn.String(), EndsOn: p.EndsOn.String(), Note: p.Note, BreakEven: p.BreakEven,
 		},
 	}
 

@@ -92,6 +92,10 @@ type Books struct {
 	// accounts for reference not: those a report may be of. None for a
 	// project, whose accounts are whichever its parts are in.
 	Accounts []tenancybus.Account
+
+	// BreakEven is a project whose money should cover itself
+	// (tenancybus.Project.BreakEven): its report is read in runs.
+	BreakEven bool
 }
 
 // Books is a scope's books, for anyone who may read the scope. An account
@@ -133,7 +137,7 @@ func (b *Business) Books(ctx context.Context, actor types.ID, scope types.Scope)
 			return Books{}, err
 		}
 
-		return Books{Scope: scope, Name: p.Name, Access: access, FiscalStart: 1}, nil
+		return Books{Scope: scope, Name: p.Name, Access: access, FiscalStart: 1, BreakEven: p.BreakEven}, nil
 	}
 
 	return Books{}, ErrNotFound

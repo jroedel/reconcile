@@ -29,7 +29,7 @@ func newRetreats(w *world) retreats {
 	ctx := w.t.Context()
 	r := retreats{house: newHouse(w)}
 
-	p, err := w.ten.CreateProject(ctx, now, r.owner, r.org, tenancybus.ProjectFields{Name: "Spiritual Exercises"})
+	p, err := w.ten.CreateProject(ctx, now, r.owner, r.org, tenancybus.ProjectFields{Name: "Spiritual Exercises", BreakEven: true})
 	if err != nil {
 		w.t.Fatal(err)
 	}
@@ -171,6 +171,21 @@ func TestAProjectsReport(t *testing.T) {
 
 	if g := got(rep.Sections[0]); len(g) != 2 || g[1].parts != 9 || g[1].from != "2025-10-03" || g[1].to != "2026-02-20" {
 		t.Errorf("with seventy days: %+v", g)
+	}
+
+	// An ordinary project -- a fund that spends over years -- is not read
+	// in runs: its parts are one, whatever the gap, with the same balances.
+	if _, err := w.ten.EditProject(ctx, now, r.owner, r.project, tenancybus.ProjectFields{Name: "Spiritual Exercises"}); err != nil {
+		t.Fatal(err)
+	}
+
+	rep, err = w.reports.ProjectReport(ctx, now, r.owner, scope, reportbus.Period{}, reportbus.ProjectChoices{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if s := rep.Sections[0]; rep.BreakEven || len(s.Episodes) != 1 || len(s.Episodes[0].Parts) != 11 || s.Balance != m("90.00") || s.Episodes[0].Parts[6].Balance != m("90.00") {
+		t.Errorf("an ordinary project: %+v", got(s))
 	}
 
 	// The engine reads a project too, and its parts are the report's.

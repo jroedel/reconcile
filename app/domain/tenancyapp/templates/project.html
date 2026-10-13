@@ -12,6 +12,7 @@
 <section class="card">
 <h2>{{t "Money in and out"}}</h2>
 <p class="hint">{{t "The parts of transactions put into this project, from every account it draws on, and whether it comes out even."}}</p>
+{{if .Project.BreakEven}}<p><span class="badge">{{t "Break-even project"}}</span> {{t "What comes in should cover what goes out, like a retreat or a pilgrimage."}}</p>{{end}}
 <p><a class="button" href="{{.Path}}/book">{{t "See the money"}}</a> <a class="button quiet" href="{{.Path}}/reports/project">{{t "Running balance"}}</a> <a class="button quiet" href="{{.Path}}/budget">{{t "Budget"}}</a> <a class="button quiet" href="{{.Path}}/reports">{{t "Every report"}}</a></p>
 </section>
 

@@ -46,4 +46,8 @@
   <label for="note">{{t "Note"}}</label>
   <textarea id="note" name="note" rows="3" maxlength="2000">{{.Fields.Note}}</textarea>
 </div>
+<div class="field">
+  <label class="choice"><input type="checkbox" name="break-even" value="1"{{if .Fields.BreakEven}} checked{{end}}> <span><strong>{{t "Break-even project."}}</strong> {{t "What comes in should cover what goes out, like a retreat or a pilgrimage."}}</span></label>
+  <p class="hint">{{t "Its lists then say whether it is short or has money in hand, and its report gathers its transactions into runs, one for each retreat or trip, each saying whether it came out even. Leave it off for a project that spends over years, such as a building or landscaping fund."}}</p>
+</div>
 {{end}}

@@ -71,6 +71,15 @@ func TestClaudeMakesAProject(t *testing.T) {
 		t.Error("the mark is still in the organization's list after an owner saved it")
 	}
 
+	// A person makes it a break-even project; renamed through the key,
+	// which knows nothing of that, it stays one.
+	wantRedirect(t, k.e.owner.post(page+"/edit", url.Values{"name": {"Costs repaid by the national account"}, "break-even": {"1"}}), page+"?done=saved")
+
+	renamed := s.change(t, http.MethodPut, "/api/v1"+page, k.key, map[string]string{"name": "National repayments"}, http.StatusOK)
+	if field(renamed, "project", "break_even") != true {
+		t.Errorf("renamed through the key: %v", renamed)
+	}
+
 	// With no organization, it is the person's own.
 	own := s.change(t, http.MethodPost, "/api/v1/projects", k.key, map[string]string{"name": "Retreat"}, http.StatusOK)
 	if field(own, "project", "organization") != nil {

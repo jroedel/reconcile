@@ -261,7 +261,8 @@ across the top: a project's money arrives in lumps, not in months.
   the project has done to the organization's accounts: the clearing
   account's balance. A part not sorted yet counts too and is marked, since
   it moved the money all the same.
-- **Episodes.** The parts fall into runs: a new one starts after a quiet
+- **Episodes**, for a break-even project only (below, "Break-even
+  projects"). The parts fall into runs: a new one starts after a quiet
   gap, a number of days with nothing in the project, 30 unless a saved
   report says otherwise. Two parts more than the gap apart are two runs:
   at 30, a part on the 29th of October and the next on the 28th of
@@ -308,6 +309,53 @@ across the top: a project's money arrives in lumps, not in months.
 | Account column | shown or left out (`accounts=hidden`) | shown |
 | Compare with | nothing, the budget | the budget, when it has one |
 | Period | the project's life, a period of it | the project's life |
+
+### Break-even projects
+
+Projects are of two kinds (decided 2026-10-12), and a person who was not
+there when the app was built thinks of the first when they hear
+"project":
+
+- **An ordinary project** spends over years and is never meant to reach
+  zero: a landscaping project such as Trail of the Saints, a building
+  fund. Costs accumulate and donations arrive to offset them.
+- **A break-even project**: what comes in should cover what goes out,
+  like a retreat or a pilgrimage. Spiritual Exercises takes four
+  retreats' registrations a year and hopes each one covers its costs.
+
+So a project is ordinary unless a person ticks **"Break-even project.
+What comes in should cover what goes out, like a retreat or a
+pilgrimage."** on its page (whoever may change its settings; Manage).
+The mark is the project's, not a saved report's, because the lists read
+it too. It changes three things:
+
+- **The lists and the book.** Only a break-even project is said to be
+  "Short by $40", "$40 in hand" or "Even", and "counting the transfers,
+  short by". An ordinary one says its net, so that a fund that has spent
+  $38,000 over three years is not called short in red on every page.
+- **The report.** Only a break-even project's parts are gathered into
+  runs by the quiet gap, each saying what it came to and the balance
+  after it, and only its report offers the gap. An ordinary project's
+  report is its parts with their running balance, which for a fund is
+  what it has spent to date net of what came in, and its foot. A saved
+  report keeps its gap either way, so that a project made break-even
+  later reads its runs as chosen.
+- **The ending.** A break-even project at zero is "back where it
+  started"; an ordinary one states its balance.
+
+Pass-through is the same for both: it should always come back to zero,
+whatever the project, so its line ("$250 in, $3.50 out · still to pass
+on") is unchanged.
+
+In code it is `tenancybus.Project.BreakEven`, saved with the rest of a
+project's settings (`ProjectFields`), on its page and on the form that
+makes one, so a retreat can be marked when it is made. The API changes a
+project starting from what it has, so a program renaming it through a
+key keeps the mark as it was; the API reads `break_even` and never sets
+it. `projects.break_even` arrives by `AddColumn`, with the old-schema
+test. The history says it in the line of the save that changed it
+("changed its details, and made it a break-even project"), and in the
+line that made the project.
 
 ### Pass-through at a glance
 
@@ -455,7 +503,9 @@ Six pull requests:
 4. **Pass-through at a glance.** In and out kept apart in a project's
    totals; the lists of projects and the project's book say them.
 5. **The project style.** "A project": every part with its running
-   balance, the episodes, the foot, the quiet gap as a choice.
+   balance, the episodes, the foot, the quiet gap as a choice. Then
+   break-even projects: the mark, and the runs and the judgment only
+   for them.
 6. **The comparisons.** The first style's "compare with" for the year
    before and the budget, and the project style's budget.
 
