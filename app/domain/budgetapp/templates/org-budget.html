@@ -1,6 +1,6 @@
 {{define "title"}}{{t "Budget for {year}" "year" .Data.Budget.Label}} · {{.Data.Budget.Org.Name}}{{end}}
 {{define "content"}}{{$v := .Data}}{{$c := $v.Budget}}
-<p class="crumbs"><a href="{{$v.Path}}">{{$c.Org.Name}}</a></p>
+{{template "crumbs" (trail $ $c.Org.Name $v.Path)}}
 <h1>{{t "Budget for {year}" "year" $c.Label}}</h1>
 <p class="hint">{{t "From {start} to {end}." "start" $c.Start "end" ($c.End.AddDays -1)}}
 {{if eq $c.Pace 0}}{{t "This year has not started."}}{{else if eq $c.Pace 100}}{{t "This year has ended."}}{{else}}{{t "{n}% of the year has gone by." "n" $c.Pace}}{{end}}</p>

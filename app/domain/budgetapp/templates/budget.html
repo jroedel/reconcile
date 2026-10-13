@@ -1,6 +1,6 @@
 {{define "title"}}{{t "Budget"}} · {{.Data.Budget.Project.Name}}{{end}}
 {{define "content"}}{{$v := .Data}}{{$c := $v.Budget}}
-<p class="crumbs"><a href="{{$v.Path}}">{{$c.Project.Name}}</a> · <a href="{{$v.Path}}/book">{{t "Income and expenses"}}</a></p>
+{{template "crumbs" (trail $ $c.Project.Name $v.Path)}}
 <h1>{{t "Budget"}}</h1>
 {{template "done" $v.Done}}
 {{template "problem" $v.Problem}}

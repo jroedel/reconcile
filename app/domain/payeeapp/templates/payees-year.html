@@ -1,6 +1,6 @@
 {{define "title"}}{{t "Payments by payee, {year}" "year" .Data.Year}} · {{.Data.OwnerName}}{{end}}
 {{define "content"}}{{$v := .Data}}
-<p class="crumbs"><a href="{{$v.OwnerPath}}">{{$v.OwnerName}}</a> · <a href="{{$v.ListPath}}">{{t "Payees"}}</a></p>
+{{template "crumbs" (trail $ $v.OwnerName $v.OwnerPath (t "Payees") $v.ListPath)}}
 <h1>{{t "Payments by payee, {year}" "year" $v.Year}}</h1>
 <p class="hint">{{t "What each payee was paid in the calendar year: the parts of each payment sorted as expenses, and apart, those not sorted yet. Transfers and pass-through are not counted. A check counts in the year it was written, where that is known; any other payment in the year it posted."}}</p>
 <p><a href="{{$v.ListPath}}/{{$v.Prev}}">← {{$v.Prev}}</a> · <a href="{{$v.ListPath}}/{{$v.Next}}">{{$v.Next}} →</a> · <a class="button quiet small" href="{{$v.Path}}/download">{{t "Download as a spreadsheet"}}</a></p>

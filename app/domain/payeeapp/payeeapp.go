@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/jroedel/reconcile/app/sdk/mid"
+	"github.com/jroedel/reconcile/app/sdk/page"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/user/userbus"
@@ -319,6 +320,7 @@ func (a app) create(kind types.ScopeKind) http.HandlerFunc {
 type payeeView struct {
 	Payee       ledgerbus.Payee
 	ListPath    string
+	OwnerPath   string
 	OwnerName   string
 	CanBookkeep bool
 
@@ -385,6 +387,7 @@ func (a app) payee(w http.ResponseWriter, r *http.Request) {
 	view := payeeView{
 		Payee:       p,
 		ListPath:    pathOf(p.Owner),
+		OwnerPath:   page.ScopePath(p.Owner),
 		OwnerName:   a.ownerName(r, me, p.Owner),
 		CanBookkeep: access.Can(tenancybus.Bookkeep),
 		Payments:    payments[:min(len(payments), paymentsShown)],

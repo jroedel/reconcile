@@ -1,6 +1,9 @@
 {{define "title"}}{{t "What a figure adds up"}} · {{.Data.Report.Frame.Name}}{{end}}
 {{define "content"}}{{$p := .Data}}{{$v := $p.Report}}{{$r := $v.Frame}}{{$cur := $p.Key.Currency}}
-<p class="crumbs"><a href="{{$v.Base}}?{{$v.Query}}">{{template "style-name" $v.Style.Key}}</a></p>
+<nav class="crumbs" aria-label="{{t "Where this page is"}}"><ol>
+{{range trail $ $v.Frame.Name $v.Path (t "Reports") (printf "%s/reports" $v.Path)}}<li><a href="{{.Path}}">{{.Name}}</a></li>
+{{end}}<li><a href="{{$v.Base}}?{{$v.Query}}">{{template "style-name" $v.Style.Key}}</a></li>
+</ol></nav>
 <h1>{{t "What a figure adds up"}}</h1>
 <p>
 {{- if eq $p.Kind "income"}}{{t "Income"}}{{else if eq $p.Kind "expense"}}{{t "Expenses"}}{{else if eq $p.Kind "unsorted"}}{{t "Not sorted yet"}}{{else if $p.Group}}{{$p.Group}}{{else if $p.Lines}}{{(index $p.Lines 0).CategoryName}}{{end}}

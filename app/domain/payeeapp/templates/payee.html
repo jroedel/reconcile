@@ -1,6 +1,6 @@
 {{define "title"}}{{.Data.Payee.Name}}{{end}}
 {{define "content"}}{{$v := .Data}}{{$p := $v.Payee}}
-<p class="crumbs">{{if $v.OwnerName}}<a href="{{$v.ListPath}}">{{t "Payees of {owner}" "owner" $v.OwnerName}}</a>{{else}}<a href="{{$v.ListPath}}">{{t "Payees"}}</a>{{end}}</p>
+{{template "crumbs" (trail $ $v.OwnerName $v.OwnerPath (t "Payees") $v.ListPath)}}
 <h1>{{$p.Name}}</h1>
 {{if $p.Archived}}<p class="notice">{{t "Archived: off the choices, and still the payee of the payments below."}}</p>{{end}}
 {{with $p.Via}}<p class="hint"><span class="badge">{{t "by {name}" "name" .}}</span> {{t "A program made, joined or split this payee through the API key “{name}”. The spellings it brought in are marked. Saving its name, changed or not, says a person has checked it." "name" .}}</p>{{end}}

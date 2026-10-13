@@ -1,6 +1,6 @@
 {{define "title"}}{{t "Layout draft"}}{{end}}
 {{define "content"}}{{$v := .Data}}
-<p class="crumbs"><a href="/admin#drafts">{{t "Site administration"}}</a></p>
+{{template "crumbs" (trail $ (t "Site administration") "/admin#drafts")}}
 <h1>{{t "Layout draft"}}</h1>
 <p>{{t "A description of one bank's statement layout, being written. Try it on a statement of your own: it is read by this draft and by what reads it now, side by side. The file is not kept, and a draft never reads anybody's import. When it reads well, copy it into a pull request, where it is reviewed and becomes built in."}}</p>
 

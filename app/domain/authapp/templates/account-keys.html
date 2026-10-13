@@ -1,6 +1,6 @@
 {{define "title"}}{{t "API keys"}}{{end}}
 {{define "content"}}{{with .Data}}
-<p class="crumbs"><a href="/account">{{t "Your account"}}</a></p>
+{{template "crumbs" (trail $ (t "Your account") "/account")}}
 <h1>{{t "API keys"}}</h1>
 <p>{{t "A key lets a program act as you, for the one thing you made it for. It reaches only what you may reach yourself."}}</p>
 

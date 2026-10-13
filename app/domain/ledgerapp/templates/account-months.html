@@ -1,6 +1,6 @@
 {{define "title"}}{{t "Month by month"}} · {{.Data.Account.Name}}{{end}}
 {{define "content"}}{{$v := .Data}}
-<p class="crumbs"><a href="{{$v.Path}}">{{$v.Account.Name}}</a> · <a href="{{$v.Path}}/transactions">{{t "Transactions"}}</a></p>
+{{template "crumbs" (trail $ $v.Account.Name $v.Path)}}
 <h1>{{t "Month by month"}}</h1>
 <p class="hint">{{t "A month is reconciled when every day of it is in a statement somebody has checked against the one the bank sent. A reconciled month is locked."}}</p>
 

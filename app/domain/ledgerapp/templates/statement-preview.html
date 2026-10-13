@@ -1,6 +1,6 @@
 {{define "title"}}{{t "Check the statement"}}{{end}}
 {{define "content"}}{{$v := .Data}}{{$d := $v.Draft}}{{$cur := $d.Account.Currency}}{{$m := $d.Mapping}}{{$pdf := eq (printf "%s" $d.Format) "pdf"}}
-<p class="crumbs"><a href="/accounts/{{$d.Account.ID}}/transactions">{{$d.Account.Name}}</a></p>
+{{template "crumbs" (trail $ $d.Account.Name (printf "/accounts/%s" $d.Account.ID) (t "Transactions") (printf "/accounts/%s/transactions" $d.Account.ID))}}
 <h1>{{t "Check the statement"}}</h1>
 <p class="hint">{{$d.File.Name}}</p>
 {{template "capabilities" $d.Capabilities}}

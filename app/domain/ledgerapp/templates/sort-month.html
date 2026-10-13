@@ -1,6 +1,6 @@
 {{define "title"}}{{t "Sort {month}" "month" .Data.Sort.Month}} · {{.Data.Sort.Account.Name}}{{end}}
 {{define "content"}}{{$v := .Data}}{{$m := $v.Sort}}{{$cur := $m.Account.Currency}}
-<p class="crumbs"><a href="{{$v.Path}}">{{$m.Account.Name}}</a> · <a href="{{$v.Path}}/transactions?month={{$m.Month}}">{{$m.Month}}</a></p>
+{{template "crumbs" (trail $ $m.Account.Name $v.Path $m.Month (printf "%s/transactions?month=%s" $v.Path $m.Month))}}
 <h1>{{t "Sort {month}" "month" $m.Month}}</h1>
 {{if eq $v.Done "sorted"}}<p class="notice ok" role="status">{{t "Saved {n}." "n" $v.Saved}}</p>
 {{else if $v.Saved}}<p class="notice ok" role="status">{{t "Saved {n}. The rest are below." "n" $v.Saved}}</p>{{end}}

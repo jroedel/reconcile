@@ -8,7 +8,7 @@
     <label for="name">{{t "Name"}}</label>
     <input id="name" name="name" type="text" required maxlength="100" autofocus value="{{.Name}}">
   </div>
-  <button type="submit">{{t "Make the organization"}}</button>
+  <p class="actions"><button type="submit">{{t "Make the organization"}}</button> <a class="button quiet" href="/">{{t "Cancel"}}</a></p>
 </form>
 <p class="aside">{{t "Just one account, outside any organization?"}} <a href="/accounts/new">{{t "Make an account on its own"}}</a></p>
 {{end}}{{end}}

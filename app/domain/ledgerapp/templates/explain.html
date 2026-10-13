@@ -1,6 +1,6 @@
 {{define "title"}}{{t "Explain this amount"}}{{end}}
 {{define "content"}}{{$v := .Data}}{{$x := $v.X}}{{$t := $x.Transaction}}{{$cur := $x.Account.Currency}}
-<p class="crumbs"><a href="/accounts/{{$x.Account.ID}}/transactions?month={{slice $t.PostedOn.String 0 7}}">{{$x.Account.Name}}</a> · <a href="{{$v.Back}}">{{if $t.Shown}}{{$t.Shown}}{{else}}{{t "A transaction with no description"}}{{end}}</a></p>
+{{template "crumbs" (trail $ $x.Account.Name (printf "/accounts/%s" $x.Account.ID) (slice $t.PostedOn.String 0 7) (printf "/accounts/%s/transactions?month=%s" $x.Account.ID (slice $t.PostedOn.String 0 7)) (or $t.Shown (t "A transaction with no description")) $v.Back)}}
 <h1>{{t "Explain this amount"}}</h1>
 <p>{{$t.PostedOn}} · {{$t.Shown}} · <span class="money {{if lt $t.Amount 0}}out{{else}}in{{end}}">{{money $t.Amount $cur}}</span></p>
 <p class="hint">{{t "Gather the transactions that together make up this amount, from this organization's accounts: the charges a card payment pays for, the gifts in a deposit. Nothing about them changes by being here."}}</p>

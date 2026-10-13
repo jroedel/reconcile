@@ -1,6 +1,6 @@
 {{define "title"}}{{t "Receipts waiting for a match"}}{{end}}
 {{define "content"}}{{$v := .Data}}
-<p class="crumbs"><a href="/">{{t "Your organizations"}}</a></p>
+{{template "crumbs" (trail $ (t "Your organizations") "/")}}
 <h1>{{t "Receipts waiting for a match"}}</h1>
 {{template "done" $v.Done}}
 <p class="hint">{{t "Every receipt you can see that is not yet attached to the charge it paid for. Where one has an amount and a date, the charges it might be are listed under it."}}</p>

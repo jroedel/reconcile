@@ -40,3 +40,9 @@
 </body>
 </html>
 {{end}}
+
+{{/* crumbs is a page's way up, from trail: nothing at all when every step
+   is the top bar's own. */}}
+{{define "crumbs"}}{{with .}}<nav class="crumbs" aria-label="{{t "Where this page is"}}"><ol>
+{{range .}}<li><a href="{{.Path}}">{{.Name}}</a></li>
+{{end}}</ol></nav>{{end}}{{end}}

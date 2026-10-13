@@ -1,6 +1,6 @@
 {{define "title"}}{{.Data.Account.Name}}{{end}}
 {{define "content"}}{{with .Data}}
-<p class="crumbs">{{if .Org.Name}}<a href="/orgs/{{.Org.ID}}">{{.Org.Name}}</a>{{else}}<a href="/">{{t "Your organizations"}}</a>{{end}}</p>
+{{template "crumbs" (trail $ .Org.Name (printf "/orgs/%s" .Org.ID))}}
 <h1>{{.Account.Name}}</h1>
 <p class="hint">{{template "kind" (printf "%s" .Account.Kind)}}{{if .Account.Last4}} ···{{.Account.Last4}}{{end}} · {{.Account.Currency}}{{if .Account.OpenedOn.String}} · {{t "opened {date}" "date" .Account.OpenedOn}}{{end}}</p>
 {{if .Account.Archived}}<p class="notice">{{t "This account is archived."}}</p>{{end}}
