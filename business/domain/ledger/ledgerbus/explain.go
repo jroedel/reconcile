@@ -508,6 +508,20 @@ func (c Clearing) State(id types.ID) string {
 	return "open"
 }
 
+// ClearedBy is what the transaction is a line of, or nil for one that is
+// a line of nothing: for a page. A template's {{with index .By id}} cannot
+// ask this, because index gives a missing key's zero Clearer, and with
+// counts every struct as present, so each transaction on the account's
+// page read as cleared by a transaction with no ID or date.
+func (c Clearing) ClearedBy(id types.ID) *Clearer {
+	by, ok := c.By[id]
+	if !ok {
+		return nil
+	}
+
+	return &by
+}
+
 // Clearer is the transaction a line explains, as a reader of the line sees
 // it: its date and amount, or, in an account they may not read, only that
 // there is one.
