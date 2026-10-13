@@ -31,8 +31,11 @@ func fields(r *http.Request) reportbus.Fields {
 		Choices: reportbus.IncomeExpensesChoices{
 			PassThrough: reportbus.PassThroughShown(r.PostForm.Get("passthrough")),
 			Detail:      reportbus.Detail(r.PostForm.Get("detail")),
+			Compare:     reportbus.Compared(r.PostForm.Get("compare")),
 		},
-		Project: reportbus.ProjectChoices{Gap: gapOf(r.PostForm.Get("gap")), HideAccounts: r.PostForm.Get("accounts") == "hidden"},
+		Project: reportbus.ProjectChoices{
+			Gap: gapOf(r.PostForm.Get("gap")), HideAccounts: r.PostForm.Get("accounts") == "hidden", HideBudget: r.PostForm.Get("budget") == "hidden",
+		},
 	}
 
 	for _, s := range r.PostForm["account"] {

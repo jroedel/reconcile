@@ -106,6 +106,7 @@ func newSite(t *testing.T, want sqldb.Expected, configure func(*Config)) (http.H
 	rules := rulebus.NewBusiness(log, ruledb.NewStore(db), tenancy, categories)
 	shapes := shapebus.NewBusiness(log, shapedb.NewStore(db))
 	ledger := ledgerbus.NewBusiness(log, ledgerdb.NewStore(db), tenancy, files, categories, rules, shapes)
+	budgets := budgetbus.NewBusiness(log, budgetdb.NewStore(db), tenancy, ledger, categories)
 	receipts := receiptbus.NewBusiness(log, receiptdb.NewStore(db), tenancy, ledger, files)
 	ledger.OnImport(receipts.AfterImport)
 
@@ -120,8 +121,8 @@ func newSite(t *testing.T, want sqldb.Expected, configure func(*Config)) (http.H
 
 		Categories: categories,
 		Rules:      rules,
-		Budgets:    budgetbus.NewBusiness(log, budgetdb.NewStore(db), tenancy, ledger, categories),
-		Reports:    reportbus.NewBusiness(tenancy, ledger, categories, reportdb.NewStore(db)),
+		Budgets:    budgets,
+		Reports:    reportbus.NewBusiness(tenancy, ledger, categories, budgets, reportdb.NewStore(db)),
 		Receipts:   receipts,
 		Export:     exportbus.NewBusiness(log, tenancy, ledger, receipts, categories, files),
 		BaseURL:    base,

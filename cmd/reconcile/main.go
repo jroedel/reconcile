@@ -209,7 +209,7 @@ func run() error {
 		Categories: categories,
 		Rules:      rules,
 		Budgets:    budgets,
-		Reports:    reportbus.NewBusiness(tenancy, ledger, categories, reportdb.NewStore(db)),
+		Reports:    reportbus.NewBusiness(tenancy, ledger, categories, budgets, reportdb.NewStore(db)),
 		Receipts:   receipts,
 		Export:     export,
 		BaseURL:    cfg.Server.BaseURL,

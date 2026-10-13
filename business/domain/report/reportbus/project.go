@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jroedel/reconcile/business/domain/budget/budgetbus"
 	"github.com/jroedel/reconcile/business/domain/category/categorybus"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/types"
@@ -30,6 +31,10 @@ type ProjectChoices struct {
 	// HideAccounts leaves the account column out, for a project that
 	// draws on one account and a sheet that needs the width.
 	HideAccounts bool
+
+	// HideBudget leaves the project's budget out of the foot, where it is
+	// shown by default when the project has one.
+	HideBudget bool
 }
 
 // The quiet gap's default and its bounds. A day is the shortest that
@@ -143,6 +148,13 @@ type ProjectReport struct {
 	Frame
 	Choices  ProjectChoices
 	Sections []ProjectSection
+
+	// Budget is the project's budget beside its whole life, as its budget
+	// page shows it (budgetbus.Project), when it has one and the report
+	// shows it. A project's budget is for its whole life, so it is
+	// compared with the whole of it whatever months the report is of.
+	Budget    budgetbus.Comparison
+	HasBudget bool
 }
 
 // ProjectReport is a project's every part, with its running balance, in
@@ -190,7 +202,17 @@ func (b *Business) ProjectReport(ctx context.Context, now time.Time, actor types
 	a.First, a.Last = months(during)
 	a.Cells = sum(during, []Dimension{ByKind, ByCategory, ByAccount, ByMonth}, nil, nil)
 
-	return ProjectReport{Frame: frame(a, types.DateOf(now)), Choices: c, Sections: projectSections(before, during, c.Gap, a.BreakEven)}, nil
+	r := ProjectReport{Frame: frame(a, types.DateOf(now)), Choices: c, Sections: projectSections(before, during, c.Gap, a.BreakEven)}
+
+	if !c.HideBudget {
+		if r.Budget, err = b.budgets.Project(ctx, actor, scope.ID); err != nil {
+			return ProjectReport{}, err
+		}
+
+		r.HasBudget = r.Budget.Set
+	}
+
+	return r, nil
 }
 
 // projectSections lays a project's parts out a currency at a time: what

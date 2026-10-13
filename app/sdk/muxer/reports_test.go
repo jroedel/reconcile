@@ -263,3 +263,63 @@ func TestAProjectsReport(t *testing.T) {
 	wantRedirect(t, e.owner.post(saved+"/note", url.Values{"period": {"all"}, "note": {"The electric bill was the youth hall's."}}), saved+"?done=noted&period=all#note")
 	wantBody(t, e.owner.get(saved), "The electric bill was the youth hall&#39;s.")
 }
+
+// The organization's July beside the July before and beside its 2026
+// budget: two columns beside the total, what they mean beneath, the same
+// in the spreadsheet; months across two budget years, or a year with no
+// budget, say so. A project's report has its budget beneath its foot.
+func TestAReportCompared(t *testing.T) {
+	t.Parallel()
+
+	e, txs, _, _ := sorted(t)
+
+	wantRedirect(t, e.owner.post(e.org+"/categories", url.Values{"name": {"Offerings"}, "kind": {"income"}}), e.org+"/categories?done=added")
+
+	choices := options(e.owner.get(txs["CORNER GROCERY"]).Body.String())
+
+	for name, category := range map[string]string{"CORNER GROCERY": choices["Groceries"], "PARISH OFFERTORY": choices["Offerings"]} {
+		wantRedirect(t, e.owner.post(txs[name], url.Values{
+			"action": {"save"}, "amount-0": {""}, "category-0": {category}, "project-0": {choices["World Youth Day"]}, "memo-0": {""},
+		}), e.account+"/transactions?month=2026-07&done=sorted")
+	}
+
+	report := e.org + "/reports/income-expenses-by-month"
+	july := report + "?from=2026-07&to=2026-07"
+
+	wantBody(t, e.owner.get(july), `name="compare" value="year-before"`, `name="compare" value="budget"`)
+
+	wantBody(t, e.owner.get(july+"&compare=year-before"), ">A year before</th>", ">Change</th>",
+		"the same months a year before, 2025-07 to 2025-07, and the change")
+
+	wantRedirect(t, e.owner.post(e.org+"/budget?year=2026", url.Values{"currency": {"USD"}, "expense-total": {"100"}}), e.org+"/budget?year=2026&done=set")
+
+	page := e.owner.get(july + "&compare=budget")
+	wantBody(t, page, ">Budget 2026</th>", ">Against the budget</th>", "-$100.00", "$66.01", "the budget for 2026, which is for the whole year", "of the year has gone by.")
+
+	rec := e.owner.get(report + "/download?from=2026-07&to=2026-07&compare=budget")
+	if !strings.Contains(rec.Body.String(), ",Total,Budget,Against the budget") || !strings.Contains(rec.Body.String(), "Total expenses,-33.99,-33.99,-100.00,66.01") {
+		t.Errorf("the spreadsheet against the budget:\n%s", rec.Body.String())
+	}
+
+	wantBody(t, e.owner.get(report+"?from=2025-12&to=2026-01&compare=budget"), "these months are in two")
+	wantBody(t, e.owner.get(report+"?from=2025-07&to=2025-07&compare=budget"), "There is no budget for 2025 yet.")
+
+	// An account on its own has no budget year to compare with.
+	if strings.Contains(e.owner.get(e.ownAccount+"/reports/income-expenses-by-month").Body.String(), `name="compare" value="budget"`) {
+		t.Error("an account on its own is offered the budget")
+	}
+
+	saved := saveReport(t, e.owner, e.org, url.Values{"style": {"income-expenses-by-month"}, "title": {"Against the budget"}, "compare": {"budget"}})
+	wantBody(t, e.owner.get(saved+"?from=2026-07&to=2026-07"), ">Budget 2026</th>")
+	wantBody(t, e.owner.get(saved+"/edit"), `name="compare" value="budget" checked`)
+
+	// The project's budget, beside the whole of its life.
+	wantRedirect(t, e.owner.post(e.project+"/budget", url.Values{"currency": {"USD"}, "income-total": {"300"}, "expense-total": {"50"}}), e.project+"/budget?done=set")
+
+	project := e.project + "/reports/project"
+	wantBody(t, e.owner.get(project), "Its budget", "For the project&#39;s whole life", "$300.00", "$250.00", "$16.01")
+
+	if strings.Contains(e.owner.get(project+"?budget=hidden").Body.String(), "Its budget") {
+		t.Error("the budget is beside a report that leaves it out")
+	}
+}

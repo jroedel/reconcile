@@ -241,6 +241,32 @@ Its choices:
 has a budget (`docs/budgets.md`); the budget's lines are for the year, so
 it is shown beside the year's total and never spread over the months.
 
+**As built (2026-10-12).** Either comparison is **two columns beside the
+period's total**, never one beside each month: a column per month would
+double the table, and a house's month would no longer fit on one sheet.
+
+- **The same months a year before**: each row's total for the months
+  twelve earlier, and the change. A category with money then and none
+  now is a row of its own, with nothing in the months. "Every month
+  there is" has no year before, and says so.
+- **The budget for the year** the months are in: each category's line on
+  its row (on its group's row, by group), each kind's total as the
+  budget page reckons it (the larger of the typed total and the lines),
+  the net's, and the total against it. A budgeted category with no money
+  yet is a row of its own. Months across two budget years (the last
+  twelve months) are compared with neither, and the page says so; a year
+  with no budget says that, with a link to it. Beneath the table: the
+  budget is for the whole year, and how much of it has gone by.
+- **The difference reads the same way in both**: the total less the
+  other, so above zero is better for the net -- more came in, or less
+  went out -- for income and expenses alike.
+- The choice is `compare=year-before|budget` in the address and
+  `compare` in a saved report's choices; the spreadsheet has the same
+  two columns. In code: `reportbus.Compared`, `Row.Before`,
+  `Row.Budget`, `Row.Change`, `Row.AgainstBudget`, and
+  `budgetbus.OrgExpected`, the budget year without its actuals, which
+  the report adds up itself from the same parts.
+
 ### A project
 
 For a project, and above all for one that works as a clearing account:
@@ -284,8 +310,11 @@ across the top: a project's money arrives in lumps, not in months.
 - A period is optional: the project's life by default. A period that
   starts after the project did opens with the balance brought forward,
   the running balance of everything before it, on a line of its own.
-- Budget and groups: its budget beside the foot when it has one; groups
-  are not offered, since a project's lines are its transactions.
+- Budget and groups: its budget beneath the foot when it has one, as its
+  budget page reckons it -- income and expenses budgeted, so far, and
+  left, and the net -- beside the project's whole life whatever months
+  are shown, since a project's budget is for its whole life; groups are
+  not offered, since a project's lines are its transactions.
 - **The spreadsheet** is a row per part, with the run it is in and the
   balance after it, so that it can be filtered to one retreat and still
   say where the project stood; a currency's block opens with what was
@@ -307,7 +336,7 @@ across the top: a project's money arrives in lumps, not in months.
 |---|---|---|
 | Quiet gap | a number of days, 1 to 365 (`gap=` in the address) | 30 |
 | Account column | shown or left out (`accounts=hidden`) | shown |
-| Compare with | nothing, the budget | the budget, when it has one |
+| Budget | shown or left out (`budget=hidden`) | shown, when it has one |
 | Period | the project's life, a period of it | the project's life |
 
 ### Break-even projects

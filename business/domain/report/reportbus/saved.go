@@ -111,14 +111,16 @@ type storedChoices struct {
 	Accounts    []string `json:"accounts,omitempty"`
 	PassThrough string   `json:"passthrough,omitempty"`
 	Detail      string   `json:"detail,omitempty"`
+	Compare     string   `json:"compare,omitempty"`
 
 	Gap          int  `json:"gap,omitempty"`
 	HideAccounts bool `json:"hide_accounts,omitempty"`
+	HideBudget   bool `json:"hide_budget,omitempty"`
 }
 
 func encodeChoices(c IncomeExpensesChoices) string {
 	c = c.normal()
-	sc := storedChoices{PassThrough: string(c.PassThrough), Detail: string(c.Detail)}
+	sc := storedChoices{PassThrough: string(c.PassThrough), Detail: string(c.Detail), Compare: string(c.Compare)}
 	for _, id := range c.Accounts {
 		sc.Accounts = append(sc.Accounts, id.String())
 	}
@@ -131,7 +133,7 @@ func encodeChoices(c IncomeExpensesChoices) string {
 func encodeProject(c ProjectChoices) string {
 	c = c.normal()
 
-	b, _ := json.Marshal(storedChoices{Gap: c.Gap, HideAccounts: c.HideAccounts})
+	b, _ := json.Marshal(storedChoices{Gap: c.Gap, HideAccounts: c.HideAccounts, HideBudget: c.HideBudget})
 
 	return string(b)
 }
@@ -143,7 +145,7 @@ func (s Saved) ProjectChoices() ProjectChoices {
 
 	_ = json.Unmarshal([]byte(s.Choices), &sc)
 
-	return ProjectChoices{Gap: sc.Gap, HideAccounts: sc.HideAccounts}.normal()
+	return ProjectChoices{Gap: sc.Gap, HideAccounts: sc.HideAccounts, HideBudget: sc.HideBudget}.normal()
 }
 
 // IncomeExpensesChoices is the report's choices, as its style reads them.
@@ -154,7 +156,7 @@ func (s Saved) IncomeExpensesChoices() IncomeExpensesChoices {
 
 	_ = json.Unmarshal([]byte(s.Choices), &sc)
 
-	c := IncomeExpensesChoices{PassThrough: PassThroughShown(sc.PassThrough), Detail: Detail(sc.Detail)}
+	c := IncomeExpensesChoices{PassThrough: PassThroughShown(sc.PassThrough), Detail: Detail(sc.Detail), Compare: Compared(sc.Compare)}
 
 	for _, a := range sc.Accounts {
 		if id, err := types.ParseID(a); err == nil {

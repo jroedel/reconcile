@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/jroedel/reconcile/business/domain/budget/budgetbus"
 	"github.com/jroedel/reconcile/business/domain/category/categorybus"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/report/reportbus"
@@ -186,6 +187,31 @@ func TestAProjectsReport(t *testing.T) {
 
 	if s := rep.Sections[0]; rep.BreakEven || len(s.Episodes) != 1 || len(s.Episodes[0].Parts) != 11 || s.Balance != m("90.00") || s.Episodes[0].Parts[6].Balance != m("90.00") {
 		t.Errorf("an ordinary project: %+v", got(s))
+	}
+
+	// No budget, none beside the foot; with one, its whole life beside it
+	// whatever the months, unless the report leaves it out.
+	if rep.HasBudget {
+		t.Error("a budget with no lines is beside the foot")
+	}
+
+	if err := w.budgets.SetProject(ctx, now, r.owner, r.project, "USD", []budgetbus.Entry{
+		{Kind: categorybus.Income, Amount: m("2400.00")}, {Kind: categorybus.Expense, Amount: m("2400.00")},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rep, err = w.reports.ProjectReport(ctx, now, r.owner, scope, from, reportbus.ProjectChoices{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if b := rep.Budget; !rep.HasBudget || b.Income.Total.Budget != m("2400.00") || b.Income.Total.Actual != m("2200.00") || b.Expenses.Total.Actual != m("2160.00") || b.ExpectedNet() != 0 {
+		t.Errorf("the budget beside the foot: %v %+v %+v", rep.HasBudget, b.Income.Total, b.Expenses.Total)
+	}
+
+	if rep, err = w.reports.ProjectReport(ctx, now, r.owner, scope, from, reportbus.ProjectChoices{HideBudget: true}); err != nil || rep.HasBudget {
+		t.Errorf("the budget left out: %v %v", rep.HasBudget, err)
 	}
 
 	// The engine reads a project too, and its parts are the report's.

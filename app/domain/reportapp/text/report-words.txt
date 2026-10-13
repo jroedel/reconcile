@@ -9,3 +9,7 @@
 {{t "Total"}}
 {{t "Currency"}}
 {{t "Pass-through still owed at the end"}}
+{{t "A year before"}}
+{{t "Change"}}
+{{t "Budget"}}
+{{t "Against the budget"}}

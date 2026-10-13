@@ -1,9 +1,13 @@
 {{define "title"}}{{with .Data.Saved}}{{.Saved.Title}}{{else}}{{template "style-name" .Data.Style.Key}}{{end}} · {{.Data.Frame.Name}}{{end}}
-{{define "content"}}{{$v := .Data}}{{$r := $v.Report}}{{$cols := inc (inc (len $r.Months))}}
+{{define "content"}}{{$v := .Data}}{{$r := $v.Report}}{{$cols := $v.Columns}}
 <div class="report-page">
 <p class="crumbs no-print"><a href="{{$v.Path}}">{{$r.Name}}</a> · <a href="{{$v.Path}}/reports">{{t "Reports"}}</a></p>
 
 {{template "report-head" $v}}
+{{if eq (printf "%s" $r.Choices.Compare) "budget"}}
+{{- if not $r.Budget.Fits}}<p class="notice">{{t "A budget is for one year, and these months are in two. Choose months within one budget year to see the budget beside them."}}</p>
+{{- else if not $r.Budget.Set}}<p class="notice">{{t "There is no budget for {year} yet." "year" $r.Budget.Label}} <a href="{{$v.Path}}/budget?year={{$r.Budget.Year}}">{{t "The budget"}}</a></p>{{end}}
+{{- else if and (eq (printf "%s" $r.Choices.Compare) "year-before") $r.Period.All}}<p class="notice">{{t "Every month there is has no year before it. Choose months to compare them with the same months a year before."}}</p>{{end}}
 
 {{if not $r.Sections}}<p>{{t "No money in these months."}}</p>{{end}}
 
@@ -12,7 +16,9 @@
 {{if gt (len $r.Sections) 1}}<h2>{{$cur}}</h2>{{end}}
 <div class="scroll">
 <table class="ledger report">
-<thead><tr><th scope="col">{{if eq (printf "%s" $r.Choices.Detail) "group"}}{{t "Group or category"}}{{else}}{{t "Category"}}{{end}}</th>{{range $r.Months}}<th scope="col" class="money">{{template "month" .}}</th>{{end}}<th scope="col" class="money">{{t "Total"}}</th></tr></thead>
+<thead><tr><th scope="col">{{if eq (printf "%s" $r.Choices.Detail) "group"}}{{t "Group or category"}}{{else}}{{t "Category"}}{{end}}</th>{{range $r.Months}}<th scope="col" class="money">{{template "month" .}}</th>{{end}}<th scope="col" class="money">{{t "Total"}}</th>
+{{- if eq $v.Comparing "year-before"}}<th scope="col" class="money">{{t "A year before"}}</th><th scope="col" class="money">{{t "Change"}}</th>
+{{- else if eq $v.Comparing "budget"}}<th scope="col" class="money">{{t "Budget {year}" "year" $r.Budget.Label}}</th><th scope="col" class="money">{{t "Against the budget"}}</th>{{end}}</tr></thead>
 <tbody>
 <tr class="kind"><th scope="rowgroup" colspan="{{$cols}}">{{t "Income"}}</th></tr>
 {{range $s.Income}}{{template "category-row" (dict "Row" . "View" $v "Cur" $cur)}}{{end}}
@@ -20,13 +26,15 @@
 <tr class="kind"><th scope="rowgroup" colspan="{{$cols}}">{{t "Expenses"}}</th></tr>
 {{range $s.Expenses}}{{template "category-row" (dict "Row" . "View" $v "Cur" $cur)}}{{end}}
 {{template "kind-row" (dict "Row" $s.ExpensesTotal "View" $v "Cur" $cur "Kind" "expense")}}
-<tr class="total"><th scope="row">{{t "Net"}}</th>{{range $s.Net.Months}}<td class="money{{if lt . 0}} out{{else if gt . 0}} in{{end}}">{{if .}}{{money . $cur}}{{end}}</td>{{end}}<td class="money{{if lt $s.Net.Total 0}} out{{else}} in{{end}}">{{money $s.Net.Total $cur}}</td></tr>
+<tr class="total"><th scope="row">{{t "Net"}}</th>{{range $s.Net.Months}}<td class="money{{if lt . 0}} out{{else if gt . 0}} in{{end}}">{{if .}}{{money . $cur}}{{end}}</td>{{end}}<td class="money{{if lt $s.Net.Total 0}} out{{else}} in{{end}}">{{money $s.Net.Total $cur}}</td>{{template "compare-cells" (dict "Row" $s.Net "View" $v "Cur" $cur)}}</tr>
 {{template "kind-row" (dict "Row" $s.Unsorted "View" $v "Cur" $cur "Kind" "unsorted")}}
-<tr class="below"><th scope="row">{{t "Sorted"}}</th>{{range $s.Sorted}}<td class="money">{{if ge . 0}}{{t "{n}%" "n" .}}{{end}}</td>{{end}}<td class="money">{{if ge $s.SortedTotal 0}}{{t "{n}%" "n" $s.SortedTotal}}{{end}}</td></tr>
-<tr class="below"><th scope="row">{{t "Reconciled"}}</th>{{range $r.Marks}}<td class="money">{{template "mark" (printf "%s" .)}}</td>{{end}}<td></td></tr>
+<tr class="below"><th scope="row">{{t "Sorted"}}</th>{{range $s.Sorted}}<td class="money">{{if ge . 0}}{{t "{n}%" "n" .}}{{end}}</td>{{end}}<td class="money">{{if ge $s.SortedTotal 0}}{{t "{n}%" "n" $s.SortedTotal}}{{end}}</td>{{if $v.Comparing}}<td></td><td></td>{{end}}</tr>
+<tr class="below"><th scope="row">{{t "Reconciled"}}</th>{{range $r.Marks}}<td class="money">{{template "mark" (printf "%s" .)}}</td>{{end}}<td></td>{{if $v.Comparing}}<td></td><td></td>{{end}}</tr>
 </tbody>
 </table>
 </div>
+{{if eq $v.Comparing "year-before"}}<p class="hint">{{t "Beside the total: the same months a year before, {from} to {to}, and the change. A change above zero is better for the net: more came in, or less went out." "from" $r.YearBefore.From "to" $r.YearBefore.To}}</p>
+{{else if eq $v.Comparing "budget"}}{{if eq $r.Budget.Currency $cur}}<p class="hint">{{t "Beside the total: the budget for {year}, which is for the whole year, and the total against it. Above zero is better for the net: more came in, or less went out." "year" $r.Budget.Label}} {{t "{pace}% of the year has gone by." "pace" $r.Budget.Pace}}</p>{{end}}{{end}}
 
 <h3>{{t "What should come back to zero"}}</h3>
 <ul class="list">
@@ -67,7 +75,8 @@
     <legend>{{t "A row for"}}</legend>
     <label class="choice"><input type="radio" name="detail" value="category"{{if ne (printf "%s" $r.Choices.Detail) "group"}} checked{{end}}> {{t "Each category"}}</label>
     <label class="choice"><input type="radio" name="detail" value="group"{{if eq (printf "%s" $r.Choices.Detail) "group"}} checked{{end}}> {{t "Each group, and each category under none"}}</label>
-  </fieldset>{{end}}{{end}}
+  </fieldset>{{end}}
+  {{template "compare-choice" (dict "Compare" (printf "%s" $r.Choices.Compare) "Org" (eq (printf "%s" $r.Scope.Kind) "org"))}}{{end}}
   <button type="submit">{{t "Show"}}</button>
 </form>
 {{if and $v.Saved $v.CanKeep}}<p><a href="{{$v.Base}}/edit">{{t "Change its title, description or what it shows"}}</a></p>{{end}}
@@ -86,6 +95,7 @@
   {{if $r.Partial}}{{range $r.Chosen}}<input type="hidden" name="account" value="{{.ID}}">{{end}}{{end}}
   <input type="hidden" name="passthrough" value="{{$r.Choices.PassThrough}}">
   <input type="hidden" name="detail" value="{{$r.Choices.Detail}}">
+  <input type="hidden" name="compare" value="{{$r.Choices.Compare}}">
   <div class="field">
     <label for="title">{{t "Title"}}</label>
     <input id="title" name="title" maxlength="100" required value="{{$v.Typed.Title}}" placeholder="{{t "Profit and loss"}}">
@@ -108,7 +118,7 @@
 {{define "category-row"}}{{$row := .Row}}{{$v := .View}}{{$cur := .Cur}}
 <tr><th scope="row">{{$row.Name}}</th>
 {{- range $i, $m := $v.Report.Months}}<td class="money">{{template "figure" (dict "Amount" (index $row.Months $i) "Cur" $cur "Href" ($v.RowFigure $row $m $cur))}}</td>{{end -}}
-<td class="money">{{template "figure" (dict "Amount" $row.Total "Cur" $cur "Href" ($v.RowFigure $row "" $cur))}}</td></tr>
+<td class="money">{{template "figure" (dict "Amount" $row.Total "Cur" $cur "Href" ($v.RowFigure $row "" $cur))}}</td>{{template "compare-cells" (dict "Row" $row "View" $v "Cur" $cur)}}</tr>
 {{end}}
 
 {{/* kind-row is a kind's total, or what is not sorted yet. */}}
@@ -116,5 +126,14 @@
 <tr class="{{if eq $kind "unsorted"}}below{{else}}total{{end}}"><th scope="row">
 {{- if eq $kind "income"}}{{t "Total income"}}{{else if eq $kind "expense"}}{{t "Total expenses"}}{{else}}{{t "Not sorted yet"}}{{end}}</th>
 {{- range $i, $m := $v.Report.Months}}<td class="money">{{template "figure" (dict "Amount" (index $row.Months $i) "Cur" $cur "Href" ($v.Figure "kind,month" $kind "" $m $cur))}}</td>{{end -}}
-<td class="money">{{template "figure" (dict "Amount" $row.Total "Cur" $cur "Href" ($v.Figure "kind" $kind "" "" $cur))}}</td></tr>
+<td class="money">{{template "figure" (dict "Amount" $row.Total "Cur" $cur "Href" ($v.Figure "kind" $kind "" "" $cur))}}</td>{{template "compare-cells" (dict "Row" $row "View" $v "Cur" $cur)}}</tr>
 {{end}}
+
+{{/* compare-cells is a row's two comparison cells, when the table has
+     them: the year before and the change, or the budget and the total
+     against it. A row with no budget line leaves both empty, and what is
+     not sorted yet is never budgeted. */}}
+{{define "compare-cells"}}{{$row := .Row}}{{$cur := .Cur}}{{$c := .View.Comparing}}
+{{- if eq $c "year-before"}}<td class="money">{{money $row.Before $cur}}</td><td class="money {{if lt $row.Change 0}}out{{else if gt $row.Change 0}}in{{end}}">{{money $row.Change $cur}}</td>
+{{- else if eq $c "budget"}}<td class="money">{{if $row.Budgeted}}{{money $row.Budget $cur}}{{end}}</td><td class="money {{if $row.Budgeted}}{{if lt $row.AgainstBudget 0}}out{{else if gt $row.AgainstBudget 0}}in{{end}}{{end}}">{{if $row.Budgeted}}{{money $row.AgainstBudget $cur}}{{end}}</td>{{end}}
+{{- end}}
