@@ -1,0 +1,105 @@
+{{define "title"}}{{with .Data.Saved}}{{.Saved.Title}}{{else}}{{template "style-name" .Data.Style.Key}}{{end}} · {{.Data.Frame.Name}}{{end}}
+{{define "content"}}{{$v := .Data}}{{$r := $v.Project}}{{$accounts := not $r.Choices.HideAccounts}}
+<div class="report-page">
+<p class="crumbs no-print"><a href="{{$v.Path}}">{{$r.Name}}</a> · <a href="{{$v.Path}}/reports">{{t "Reports"}}</a></p>
+
+{{template "report-head" $v}}
+
+{{if not $r.Sections}}<p>{{t "Nothing in the project in these months."}}</p>{{end}}
+
+{{range $s := $r.Sections}}{{$cur := $s.Currency}}
+<section class="card">
+{{if gt (len $r.Sections) 1}}<h2>{{$cur}}</h2>{{end}}
+{{if $s.Before}}<p>{{t "Brought forward from before these months: {amount}" "amount" (money $s.BroughtForward $cur)}}</p>{{end}}
+
+{{range $s.Episodes}}
+<h3>{{if eq .From .To}}{{.From}}{{else}}{{t "{from} to {to}" "from" .From "to" .To}}{{end}}</h3>
+<div class="scroll">
+<table class="ledger report runs">
+<thead><tr><th scope="col">{{t "Date"}}</th>{{if $accounts}}<th scope="col">{{t "Account"}}</th>{{end}}<th scope="col">{{t "Description"}}</th><th scope="col">{{t "Category"}}</th><th scope="col" class="money">{{t "Amount"}}</th><th scope="col" class="money">{{t "Balance"}}</th></tr></thead>
+<tbody>
+{{range .Parts}}<tr><td>{{.PostedOn}}</td>{{if $accounts}}<td>{{.AccountName}}</td>{{end}}
+<td><a href="/transactions/{{.Split.TransactionID}}">{{if .OwnDescription}}{{.OwnDescription}}{{else}}{{.Description}}{{end}}</a>{{with .Split.Memo}} <span class="hint">{{.}}</span>{{end}}</td>
+<td>{{if .Split.CategoryID.Zero}}<span class="badge warn">{{t "not sorted yet"}}</span>{{else}}{{.CategoryName}}{{if eq (printf "%s" .Kind) "passthrough"}} <span class="badge">{{t "Pass-through"}}</span>{{else if eq (printf "%s" .Kind) "transfer"}} <span class="badge">{{t "Transfer"}}</span>{{else if eq (printf "%s" .Kind) ""}} <span class="badge warn">{{t "kind not said yet"}}</span>{{end}}{{end}}</td>
+<td class="money {{if lt .Split.Amount 0}}out{{else}}in{{end}}">{{money .Split.Amount $cur}}</td>
+<td class="money">{{money .Balance $cur}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+{{template "run-figures" (dict "F" .Figures "Cur" $cur "View" $v "Foot" false)}}
+<p>{{t "On its own it came to {amount}; the balance after it is {balance}." "amount" (money .Sum $cur) "balance" (money .Balance $cur)}}</p>
+{{end}}
+
+<h3>{{t "All of it together"}}</h3>
+{{template "run-figures" (dict "F" $s.Figures "Cur" $cur "View" $v "Foot" true)}}
+<p class="total"><strong>{{if $s.Balance}}{{t "The balance at the end is {amount}." "amount" (money $s.Balance $cur)}}{{else}}{{t "The balance at the end is zero: the project is back where it started."}}{{end}}</strong></p>
+</section>
+{{end}}
+
+<p class="hint">{{t "The balance counts everything in the project: income, expenses, pass-through, transfers into it, and what is not sorted yet. A new run starts after a quiet gap, so that each retreat or trip shows whether it came out even."}}</p>
+
+<section class="card no-print">
+<h2>{{t "Change what it shows"}}</h2>
+<form method="get" action="{{$v.Base}}">
+  <div class="field">
+    <label for="from">{{t "From the month"}}</label>
+    <input id="from" name="from" type="month" value="{{if not $r.Period.All}}{{$r.Period.From}}{{end}}" placeholder="2026-01">
+    <label for="to">{{t "to the month"}}</label>
+    <input id="to" name="to" type="month" value="{{if not $r.Period.All}}{{$r.Period.To}}{{end}}" placeholder="2026-07">
+    <p class="hint">{{t "As year and month, such as 2026-07, where the browser asks for text."}}</p>
+  </div>
+  {{if not $v.Saved}}{{template "project-choices" $r.Choices}}{{end}}
+  <button type="submit">{{t "Show"}}</button>
+</form>
+{{if and $v.Saved $v.CanKeep}}<p><a href="{{$v.Base}}/edit">{{t "Change its title, description or what it shows"}}</a></p>{{end}}
+</section>
+
+{{template "report-note-form" $v}}
+
+{{if and (not $v.Saved) $v.CanKeep}}
+<section class="card no-print">
+<h2>{{t "Save this report"}}</h2>
+<p class="hint">{{t "Keep it under a title of your own, with what it shows now, to run it again and write a note for each period."}}</p>
+<form method="post" action="{{$v.Path}}/reports">
+  <input type="hidden" name="style" value="{{$v.Style.Key}}">
+  <input type="hidden" name="query" value="{{$v.Query}}">
+  <input type="hidden" name="default" value="{{$v.Preset}}">
+  <input type="hidden" name="gap" value="{{$r.Choices.Gap}}">
+  {{if $r.Choices.HideAccounts}}<input type="hidden" name="accounts" value="hidden">{{end}}
+  <div class="field">
+    <label for="title">{{t "Title"}}</label>
+    <input id="title" name="title" maxlength="100" required value="{{$v.Typed.Title}}" placeholder="{{$r.Name}}">
+  </div>
+  <div class="field">
+    <label for="description">{{t "What it is, for whoever reads it"}}</label>
+    <textarea id="description" name="description" rows="3" maxlength="2000">{{$v.Typed.Description}}</textarea>
+  </div>
+  <button type="submit">{{t "Save this report"}}</button>
+</form>
+</section>
+{{end}}
+
+<p class="no-print"><a class="button quiet" href="{{$v.Base}}/download?{{$v.Query}}">{{t "Download as a spreadsheet"}}</a></p>
+<p class="hint no-print">{{t "To hand it out, print this page, or save it as a PDF from the browser's print window."}}</p>
+</div>
+{{end}}
+
+{{/* run-figures is what a run of parts came to, each kind apart: income
+     and expenses, pass-through's two sides, transfers, what is not sorted
+     yet. At the foot each figure opens the parts it adds up; in a run
+     they are the lines just above. */}}
+{{define "run-figures"}}{{$f := .F}}{{$cur := .Cur}}{{$v := .View}}{{$foot := .Foot}}
+<ul class="list figures-list">
+{{if or $f.Operated (not (or $f.PassedThrough $f.Transfers $f.Unsorted))}}<li>{{t "Income {income} · Expenses {expenses} · Net {net}" "income" (money $f.Income $cur) "expenses" (money $f.Expenses $cur) "net" (money $f.Net $cur)}}
+{{- if $foot}} <span class="no-print">· {{template "parts-link" (dict "Href" ($v.Figure "kind" "income" "" "" $cur) "Kind" "income")}} · {{template "parts-link" (dict "Href" ($v.Figure "kind" "expense" "" "" $cur) "Kind" "expense")}}</span>{{end}}</li>{{end}}
+{{if $f.PassedThrough}}<li>{{template "passed-through" (dict "In" $f.PassThroughIn "Out" $f.PassThroughOut "Net" $f.PassThrough "Cur" $cur)}}
+{{- if $foot}} <span class="no-print">· {{template "parts-link" (dict "Href" ($v.Figure "kind" "passthrough" "" "" $cur) "Kind" "passthrough")}}</span>{{end}}</li>{{end}}
+{{if $f.Transfers}}<li>{{t "Transfers between our accounts: {amount}" "amount" (money $f.Transfers $cur)}}
+{{- if $foot}} <span class="no-print">· {{template "parts-link" (dict "Href" ($v.Figure "kind" "transfer" "" "" $cur) "Kind" "transfer")}}</span>{{end}}</li>{{end}}
+{{if $f.Unsorted}}<li><span class="badge warn">{{t "Not sorted yet: {amount}" "amount" (money $f.Unsorted $cur)}}</span>
+{{- if $foot}} <span class="no-print">· {{template "parts-link" (dict "Href" ($v.Figure "kind" "unsorted" "" "" $cur) "Kind" "unsorted")}}</span>{{end}}</li>{{end}}
+</ul>
+{{end}}
+
+{{define "parts-link"}}<a href="{{.Href}}">
+{{- if eq .Kind "income"}}{{t "the income"}}{{else if eq .Kind "expense"}}{{t "the expenses"}}{{else if eq .Kind "passthrough"}}{{t "the pass-through"}}{{else if eq .Kind "transfer"}}{{t "the transfers"}}{{else}}{{t "what is not sorted yet"}}{{end}}</a>{{end}}

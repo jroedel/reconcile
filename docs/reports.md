@@ -263,10 +263,13 @@ across the top: a project's money arrives in lumps, not in months.
   it moved the money all the same.
 - **Episodes.** The parts fall into runs: a new one starts after a quiet
   gap, a number of days with nothing in the project, 30 unless a saved
-  report says otherwise. An episode is named by its dates ("Oct 3 to Oct
-  29, 2025"), and nobody labels anything while sorting; a retreat whose
-  deposits trickle in for six weeks wants a longer gap, and that is the
-  saved report's choice, not the counter volunteer's.
+  report says otherwise. Two parts more than the gap apart are two runs:
+  at 30, a part on the 29th of October and the next on the 28th of
+  November are one. An episode is named by its first and last day
+  ("2025-10-03 to 2025-11-28"), and nobody labels anything while
+  sorting; a retreat whose deposits trickle in for six weeks wants a
+  longer gap, and that is the saved report's choice, not the counter
+  volunteer's.
 - **Each episode's line** says what came in and went out of it apart:
   income and expenses, and their net; pass-through in and out, and their
   net; transfers; what is not sorted yet; what the episode came to on its
@@ -274,18 +277,35 @@ across the top: a project's money arrives in lumps, not in months.
   pass-through says so, and one that is $40 short shows the $40 and
   whether it was real money or a repayment not yet in.
 - **At the foot**, the same figures for the period, and whether the
-  project comes back to zero. Every figure opens the parts it adds up, as
-  in the first style.
+  project comes back to zero. Each of the foot's figures opens the parts
+  it adds up, as in the first style; a run's figures need no link, since
+  its parts are the lines just above them.
 - A period is optional: the project's life by default. A period that
   starts after the project did opens with the balance brought forward,
   the running balance of everything before it, on a line of its own.
 - Budget and groups: its budget beside the foot when it has one; groups
   are not offered, since a project's lines are its transactions.
+- **The spreadsheet** is a row per part, with the run it is in and the
+  balance after it, so that it can be filtered to one retreat and still
+  say where the project stood; a currency's block opens with what was
+  brought forward and closes with its balance.
+- **In code** (built 2026-10-12): the style is `reportbus.ProjectStyle`
+  (`project`), run by `ProjectReport`; the engine reads a project's
+  parts from its book (`ledgerbus.ProjectBook`), so a project is a scope
+  `Books` and `Sum` take like any other, with no accounts to choose and
+  no groups. Every style's report embeds a `Frame` -- the answer, the
+  period and the periods offered -- which is what the pages around the
+  figures (the head, the periods, the note) read. A note's fingerprint
+  of a project's report includes what was brought forward, so sorting a
+  part before the period says the figures changed; the quiet gap is not
+  in it, since where the runs fall is a way of reading, not money.
+  `/projects/{id}/reports` and `/projects/{id}/reports/project` are the
+  pages, linked from the project's page.
 
 | Choice | Values | Default |
 |---|---|---|
-| Quiet gap | a number of days, 1 to 365 | 30 |
-| Show accounts | yes or no | yes |
+| Quiet gap | a number of days, 1 to 365 (`gap=` in the address) | 30 |
+| Account column | shown or left out (`accounts=hidden`) | shown |
 | Compare with | nothing, the budget | the budget, when it has one |
 | Period | the project's life, a period of it | the project's life |
 

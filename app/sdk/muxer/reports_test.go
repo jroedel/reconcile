@@ -168,3 +168,86 @@ func TestASavedReport(t *testing.T) {
 		t.Errorf("a removed report: %d", rec.Code)
 	}
 }
+
+// World Youth Day's report: its parts with the balance after each, in one
+// run at thirty days of quiet and two at ten; pass-through apart from
+// income and expenses; the balance brought into a later period; its parts
+// behind the foot's figures; the spreadsheet; and saved with its gap.
+func TestAProjectsReport(t *testing.T) {
+	t.Parallel()
+
+	e, txs, _, _ := sorted(t)
+
+	wantRedirect(t, e.owner.post(e.org+"/categories", url.Values{"name": {"Offerings"}, "kind": {"income"}}), e.org+"/categories?done=added")
+	wantRedirect(t, e.owner.post(e.org+"/categories", url.Values{"name": {"Lent and repaid"}, "kind": {"passthrough"}}), e.org+"/categories?done=added")
+
+	choices := options(e.owner.get(txs["CORNER GROCERY"]).Body.String())
+
+	for name, category := range map[string]string{
+		"CORNER GROCERY": choices["Groceries"], "COFFEE CART": choices["Lent and repaid"],
+		"PARISH OFFERTORY": choices["Offerings"], "ELECTRIC CO": choices["Utilities"],
+	} {
+		wantRedirect(t, e.owner.post(txs[name], url.Values{
+			"action": {"save"}, "amount-0": {""}, "category-0": {category}, "project-0": {choices["World Youth Day"]}, "memo-0": {""},
+		}), e.account+"/transactions?month=2026-07&done=sorted")
+	}
+
+	report := e.project + "/reports/project"
+	wantBody(t, e.owner.get(e.project), `href="`+report+`"`)
+	wantBody(t, e.owner.get(e.project+"/reports"), "A project, with its running balance", `href="`+report+`"`)
+
+	wantBody(t, e.owner.get(report), "World Youth Day", "From its first transaction to its last", "2026-07-03 to 2026-07-28",
+		"CORNER GROCERY", "-$33.99", "-$37.49", "$212.51",
+		"Income $250.00 · Expenses -$153.99 · Net $96.01",
+		"Pass-through: $0.00 in, $3.50 out · <strong>$3.50 still to come back</strong>",
+		"On its own it came to $92.51; the balance after it is $92.51.", "The balance at the end is $92.51.")
+
+	// Ten days of quiet: the 10th and the 28th are two runs.
+	page := e.owner.get(report + "?period=all&gap=10").Body.String()
+	if !strings.Contains(page, "2026-07-03 to 2026-07-10") || !strings.Contains(page, "<h3>2026-07-28</h3>") {
+		t.Errorf("with ten days of quiet:\n%s", page)
+	}
+
+	wantBody(t, e.owner.get(report+"?from=2026-08&to=2026-09"), "Brought forward from before these months: $92.51", "The balance at the end is $92.51.")
+
+	income := report + "/parts?" + url.Values{"period": {"all"}, "by": {"kind"}, "kind": {"income"}, "currency": {"USD"}}.Encode()
+	if !strings.Contains(e.owner.get(report).Body.String(), "by=kind&amp;currency=USD&amp;kind=income") {
+		t.Error("the foot's income does not open its parts")
+	}
+
+	if body := e.owner.get(income).Body.String(); !strings.Contains(body, "PARISH OFFERTORY") || strings.Contains(body, "CORNER GROCERY") {
+		t.Errorf("the project's income:\n%s", body)
+	}
+
+	rec := e.owner.get(report + "/download")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "2026-07-03 – 2026-07-28,2026-07-28,Parish checking,ELECTRIC CO,Utilities,-120.00,92.51") ||
+		!strings.Contains(rec.Body.String(), "Balance at the end,,,,,,92.51") {
+		t.Errorf("the spreadsheet: %d\n%s", rec.Code, rec.Body.String())
+	}
+
+	wantBody(t, e.owner.get(report+"?from=2026-13&to=July"), "so the whole project is shown")
+
+	// The monthly style is the books', not a project's.
+	if rec := e.owner.get(e.project + "/reports/income-expenses-by-month"); rec.Code != http.StatusNotFound {
+		t.Errorf("a project by month = %d, want 404", rec.Code)
+	}
+
+	saved := saveReport(t, e.owner, e.project, url.Values{"style": {"project"}, "title": {"Youth Day"}, "gap": {"10"}, "default": {"all"}})
+	wantBody(t, e.owner.get(saved), "Youth Day", "A project, with its running balance", "2026-07-03 to 2026-07-10", "<h3>2026-07-28</h3>")
+	wantBody(t, e.owner.get(saved+"/edit"), `name="gap" type="number" min="1" max="365" value="10"`)
+
+	rec = e.owner.post(saved+"/edit", url.Values{"title": {"Youth Day"}, "gap": {"a fortnight"}})
+	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "The quiet gap is a number of days, from 1 to 365.") {
+		t.Errorf("a gap that is not a number: %d\n%s", rec.Code, rec.Body.String())
+	}
+
+	wantRedirect(t, e.owner.post(saved+"/edit", url.Values{"title": {"Youth Day"}, "gap": {"30"}, "accounts": {"hidden"}}), saved+"?done=changed")
+
+	page = e.owner.get(saved).Body.String()
+	if !strings.Contains(page, "2026-07-03 to 2026-07-28") || strings.Contains(page, "<th scope=\"col\">Account</th>") {
+		t.Errorf("changed to thirty days and no accounts:\n%s", page)
+	}
+
+	wantRedirect(t, e.owner.post(saved+"/note", url.Values{"period": {"all"}, "note": {"The electric bill was the youth hall's."}}), saved+"?done=noted&period=all#note")
+	wantBody(t, e.owner.get(saved), "The electric bill was the youth hall&#39;s.")
+}

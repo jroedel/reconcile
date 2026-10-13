@@ -130,6 +130,7 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 	}
 
 	report := saveReport(t, e.owner, e.org, url.Values{"style": {"income-expenses-by-month"}, "title": {"P&L"}})
+	projectReport := saveReport(t, e.owner, e.project, url.Values{"style": {"project"}, "title": {"Retreats"}, "gap": {"45"}})
 
 	// A group of each list, and a category of each to put under it.
 	for _, list := range []string{e.org + "/categories", e.ownAccount + "/categories"} {
@@ -164,6 +165,10 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		e.org + "/reports/income-expenses-by-month/parts?by=kind&kind=unsorted", e.ownAccount + "/reports/income-expenses-by-month/parts?by=kind",
 		e.org + "/reports/income-expenses-by-month/download", e.ownAccount + "/reports/income-expenses-by-month/download",
 		report, report + "?period=all", report + "/edit", report + "/parts?by=kind", report + "/download",
+		e.project + "/reports", e.ownProject + "/reports",
+		e.project + "/reports/project", e.ownProject + "/reports/project?period=all&gap=10",
+		e.project + "/reports/project/parts?by=kind&kind=income", e.ownProject + "/reports/project/download",
+		projectReport, projectReport + "/edit", projectReport + "/parts?by=kind", projectReport + "/download",
 	}
 
 	type write struct {
@@ -192,6 +197,11 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		{report + "/edit", url.Values{"title": {"Mine now"}}},
 		{report + "/note", url.Values{"from": {"2026-07"}, "to": {"2026-07"}, "note": {"Mine now"}}},
 		{report + "/remove", nil},
+		{e.project + "/reports", url.Values{"style": {"project"}, "title": {"Mine now"}}},
+		{e.ownProject + "/reports", url.Values{"style": {"project"}, "title": {"Mine now"}}},
+		{projectReport + "/edit", url.Values{"title": {"Mine now"}, "gap": {"10"}}},
+		{projectReport + "/note", url.Values{"period": {"all"}, "note": {"Mine now"}}},
+		{projectReport + "/remove", nil},
 		{inboxed(t, h, e.owner), nil},
 		{check + "/file", url.Values{"account": {accountID}}},
 		{check + "/remove", url.Values{"removed": {"1"}}},

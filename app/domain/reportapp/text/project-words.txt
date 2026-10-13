@@ -1,0 +1,14 @@
+{{/* What a project report's spreadsheet says, one to a line, in the
+     order reportapp's projectSheet reads them: its header row, then the
+     words of its own lines. */ -}}
+{{t "Run"}}
+{{t "Date"}}
+{{t "Account"}}
+{{t "Description"}}
+{{t "Category"}}
+{{t "Amount"}}
+{{t "Balance"}}
+{{t "Currency"}}
+{{t "Not sorted yet"}}
+{{t "Brought forward"}}
+{{t "Balance at the end"}}

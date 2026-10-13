@@ -22,6 +22,7 @@
       {{range $r.Presets}}<option value="{{.Key}}"{{if eq .Key $f.Period}} selected{{end}}>{{template "preset" .Key}}</option>{{end}}
     </select>
   </div>
+  {{if eq $v.Style.Key "project"}}{{template "project-choices" $f.Project}}{{else}}
   {{if gt (len $r.Accounts) 1}}<fieldset class="field">
     <legend>{{t "Accounts"}}</legend>
     {{range $r.Accounts}}<label class="choice"><input type="checkbox" name="account" value="{{.ID}}"{{if $e.Chosen .ID}} checked{{end}}> {{.Name}}{{if .Archived}} <span class="badge">{{t "archived"}}</span>{{end}}</label>
@@ -38,6 +39,7 @@
     <label class="choice"><input type="radio" name="detail" value="category"{{if ne (printf "%s" $f.Choices.Detail) "group"}} checked{{end}}> {{t "Each category"}}</label>
     <label class="choice"><input type="radio" name="detail" value="group"{{if eq (printf "%s" $f.Choices.Detail) "group"}} checked{{end}}> {{t "Each group, and each category under none"}}</label>
   </fieldset>{{end}}
+  {{end}}
   <button type="submit">{{t "Save"}}</button>
 </form>
 </section>

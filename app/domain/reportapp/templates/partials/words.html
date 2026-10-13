@@ -5,10 +5,12 @@
 
 {{define "style-name"}}
 {{- if eq . "income-expenses-by-month"}}{{t "Income and expenses by month"}}
+{{- else if eq . "project"}}{{t "A project, with its running balance"}}
 {{- else}}{{.}}{{end}}{{end}}
 
 {{define "style-about"}}
 {{- if eq . "income-expenses-by-month"}}{{t "What came in and what went out, by category, a month to a column. Transfers between your own accounts and money that only passed through are not in it, and what is not sorted yet is shown on a line of its own."}}
+{{- else if eq . "project"}}{{t "Every transaction in the project, from every account, with the balance after each, gathered into runs of activity: a retreat, a trip, a collection. Each run says what was income and expenses and what only passed through, and whether it came out even."}}
 {{- end}}{{end}}
 
 {{/* month is "2026-07" as a column's heading. */}}
@@ -35,6 +37,8 @@
 
 {{define "report-problem"}}{{if .}}<p class="notice" role="alert">
 {{- if eq . "period"}}{{t "That period could not be read, so the year so far is shown. Choose a first and a last month, the first not after the last."}}
+{{- else if eq . "project-period"}}{{t "That period could not be read, so the whole project is shown. Choose a first and a last month, the first not after the last."}}
+{{- else if eq . "gap"}}{{t "The quiet gap is a number of days, from 1 to {max}." "max" 365}}
 {{- else if eq . "title"}}{{t "Give the report a title, of at most {max} characters." "max" 100}}
 {{- else if eq . "description"}}{{t "The description can be at most {max} characters." "max" 2000}}
 {{- else if eq . "note"}}{{t "A note can be at most {max} characters." "max" 4000}}
@@ -48,3 +52,22 @@
 {{- else if eq . "note-removed"}}{{t "The note is removed."}}
 {{- else if eq . "removed"}}{{t "The report is removed. Its notes are kept in the history."}}
 {{- end}}</p>{{end}}{{end}}
+
+{{/* passed-through is pass-through's two sides and whether it is settled,
+     as the lists of projects say it: In, Out (negative), Net and Cur. */}}
+{{define "passed-through"}}{{t "Pass-through: {in} in, {out} out" "in" (money .In .Cur) "out" (money .Out.Abs .Cur)}} · <strong>
+{{- if lt .Net 0}}{{t "{amount} still to come back" "amount" (money .Net.Abs .Cur)}}
+{{- else if gt .Net 0}}{{t "{amount} still to pass on" "amount" (money .Net .Cur)}}
+{{- else}}{{t "Settled"}}{{end}}</strong>{{end}}
+
+{{/* project-choices is a project report's choices, as fields of a form. */}}
+{{define "project-choices"}}
+  <div class="field">
+    <label for="gap">{{t "A new run starts after this many days with nothing"}}</label>
+    <input id="gap" name="gap" type="number" min="1" max="365" value="{{.Gap}}">
+    <p class="hint">{{t "Thirty unless you choose otherwise. A retreat whose payments trickle in over six weeks wants a longer gap; a project with a run every week, a shorter one."}}</p>
+  </div>
+  <div class="field">
+    <label class="choice"><input type="checkbox" name="accounts" value="hidden"{{if .HideAccounts}} checked{{end}}> {{t "Leave out the account column"}}</label>
+  </div>
+{{end}}

@@ -24,7 +24,7 @@ func parsed(w http.ResponseWriter, r *http.Request) bool {
 }
 
 // fields is what a form says of a saved report: its words, its default
-// period and its choices.
+// period and its choices, every style's, of which its own are kept.
 func fields(r *http.Request) reportbus.Fields {
 	f := reportbus.Fields{
 		Title: r.PostForm.Get("title"), Description: r.PostForm.Get("description"), Period: r.PostForm.Get("default"),
@@ -32,6 +32,7 @@ func fields(r *http.Request) reportbus.Fields {
 			PassThrough: reportbus.PassThroughShown(r.PostForm.Get("passthrough")),
 			Detail:      reportbus.Detail(r.PostForm.Get("detail")),
 		},
+		Project: reportbus.ProjectChoices{Gap: gapOf(r.PostForm.Get("gap")), HideAccounts: r.PostForm.Get("accounts") == "hidden"},
 	}
 
 	for _, s := range r.PostForm["account"] {
@@ -133,8 +134,8 @@ func (a app) saved(w http.ResponseWriter, r *http.Request) (reportView, bool) {
 	}
 
 	v := reportView{
-		Report: run.Report, Path: scopePath(run.Saved.Scope), Base: "/reports/" + id.String(),
-		Today: types.DateOf(now), Saved: &run, CanKeep: run.Report.Access.Can(tenancybus.Bookkeep),
+		Frame: run.Frame, Report: run.Report, Project: run.Project, Path: scopePath(run.Saved.Scope), Base: "/reports/" + id.String(),
+		Today: types.DateOf(now), Saved: &run, CanKeep: run.Frame.Access.Can(tenancybus.Bookkeep),
 		Done: r.URL.Query().Get("done"), choices: url.Values{},
 	}
 
@@ -145,10 +146,7 @@ func (a app) saved(w http.ResponseWriter, r *http.Request) (reportView, bool) {
 	}
 
 	v.Style, _ = reportbus.StyleOf(run.Saved.Style)
-
-	if ask.bad {
-		v.Problem = "period"
-	}
+	v.Problem = v.badPeriod(ask.bad)
 
 	if run.HasNote {
 		if u, err := a.cfg.Users.ByID(r.Context(), run.Note.By); err == nil {
@@ -208,7 +206,7 @@ func (a app) editPage(w http.ResponseWriter, r *http.Request, status int, typed 
 	}
 
 	s := v.Saved.Saved
-	f := reportbus.Fields{Title: s.Title, Description: s.Description, Period: s.Period, Choices: s.IncomeExpensesChoices()}
+	f := reportbus.Fields{Title: s.Title, Description: s.Description, Period: s.Period, Choices: s.IncomeExpensesChoices(), Project: s.ProjectChoices()}
 
 	if typed != nil {
 		f = *typed
