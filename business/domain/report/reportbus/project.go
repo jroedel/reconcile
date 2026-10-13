@@ -15,8 +15,10 @@ import (
 
 // --- a project ------------------------------------------------------------------------
 
-// ProjectChoices is what a person chooses of a project's report. A field
-// added later gets a default here, as IncomeExpensesChoices' do.
+// ProjectChoices is what a person chooses of a project's report. Gap is
+// kept for an ordinary project too, which has no runs, so that making it a
+// break-even one later reads its runs as its keeper chose. A field added
+// later gets a default here, as IncomeExpensesChoices' do.
 type ProjectChoices struct {
 	// Gap is how many days with nothing in the project end a run of its
 	// activity (an Episode): 30 unless chosen. A retreat whose deposits
@@ -105,7 +107,10 @@ type Part struct {
 }
 
 // Episode is a run of the project's activity: parts with no quiet gap
-// between them, named by their first and last day. Balance is the running
+// between them, named by their first and last day. Only a break-even
+// project is read in runs; an ordinary one's parts are all one, since a
+// fund that spends over years is not meant to come out even in any of
+// them. Balance is the running
 // balance after its last part, which is the question of a retreat: whether
 // the project was back where it started when it was over.
 type Episode struct {
@@ -185,12 +190,13 @@ func (b *Business) ProjectReport(ctx context.Context, now time.Time, actor types
 	a.First, a.Last = months(during)
 	a.Cells = sum(during, []Dimension{ByKind, ByCategory, ByAccount, ByMonth}, nil, nil)
 
-	return ProjectReport{Frame: frame(a, types.DateOf(now)), Choices: c, Sections: projectSections(before, during, c.Gap)}, nil
+	return ProjectReport{Frame: frame(a, types.DateOf(now)), Choices: c, Sections: projectSections(before, during, c.Gap, a.BreakEven)}, nil
 }
 
 // projectSections lays a project's parts out a currency at a time: what
-// came before the period as one balance, and the period's in episodes.
-func projectSections(before, during []ledgerbus.ProjectLine, gap int) []ProjectSection {
+// came before the period as one balance, and the period's in episodes, or
+// in one when runs is false.
+func projectSections(before, during []ledgerbus.ProjectLine, gap int, runs bool) []ProjectSection {
 	byCurrency := map[string]*ProjectSection{}
 
 	section := func(cur string) *ProjectSection {
@@ -219,7 +225,7 @@ func projectSections(before, during []ledgerbus.ProjectLine, gap int) []ProjectS
 
 		// More than gap days since the last part: a quiet gap, and a new
 		// run. Thirty days from the 1st is the 31st, still the same run.
-		if n := len(s.Episodes); n == 0 || s.Episodes[n-1].To.AddDays(gap).Before(l.PostedOn) {
+		if n := len(s.Episodes); n == 0 || runs && s.Episodes[n-1].To.AddDays(gap).Before(l.PostedOn) {
 			s.Episodes = append(s.Episodes, Episode{From: l.PostedOn})
 		}
 

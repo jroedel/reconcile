@@ -9,10 +9,13 @@ for the lists on its own; change both together. */}}
 {{if $f.HasBalance}}<p class="hint figures">{{t "Balance on {date}: {amount}" "date" $f.BalanceOn "amount" (money $f.Balance $cur)}}</p>{{end}}
 {{end}}
 
-{{define "project-figures"}}{{$f := .}}
+{{/* project-figures is given the project (P) and its figures (F). Only a
+     break-even project is said to be short or in hand: an ordinary one,
+     a fund that spends over years, says its net and nothing more. */}}
+{{define "project-figures"}}{{$f := .F}}{{$even := .P.BreakEven}}
 {{if $f.Count}}<p class="hint figures">{{if eq $f.First.String $f.Last.String}}{{$f.First}}{{else}}{{t "{start} to {end}" "start" $f.First "end" $f.Last}}{{end}} · {{t "{n} transactions" "n" $f.Count}}</p>
 {{range $f.Totals}}
-{{- if or .Operated (not .PassedThrough)}}<p class="figures">{{t "Income"}} <span class="money in">{{money .Income .Currency}}</span> · {{t "Expenses"}} <span class="money out">{{money .Expenses .Currency}}</span> · <strong>{{if lt .Net 0}}{{t "Short by {amount}" "amount" (money .Net.Abs .Currency)}}{{else if gt .Net 0}}{{t "{amount} in hand" "amount" (money .Net .Currency)}}{{else}}{{t "Even"}}{{end}}</strong>{{if .Unsorted}} <span class="badge">{{t "not all sorted yet"}}</span>{{end}}</p>{{end}}
+{{- if or .Operated (not .PassedThrough)}}<p class="figures">{{t "Income"}} <span class="money in">{{money .Income .Currency}}</span> · {{t "Expenses"}} <span class="money out">{{money .Expenses .Currency}}</span> · {{if $even}}<strong>{{if lt .Net 0}}{{t "Short by {amount}" "amount" (money .Net.Abs .Currency)}}{{else if gt .Net 0}}{{t "{amount} in hand" "amount" (money .Net .Currency)}}{{else}}{{t "Even"}}{{end}}</strong>{{else}}{{t "Net"}} <span class="money">{{money .Net .Currency}}</span>{{end}}{{if .Unsorted}} <span class="badge">{{t "not all sorted yet"}}</span>{{end}}</p>{{end}}
 {{- if .PassedThrough}}<p class="figures">{{template "passed-through" .}}{{if and .Unsorted (not .Operated)}} <span class="badge">{{t "not all sorted yet"}}</span>{{end}}</p>{{end}}
 {{- end}}{{end}}
 {{end}}

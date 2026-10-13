@@ -169,6 +169,15 @@ type Project struct {
 	EndsOn   types.Date
 	Note     string
 
+	// BreakEven is a project whose money should cover itself: what comes
+	// in should cover what goes out, like a retreat or a pilgrimage
+	// (docs/reports.md, "Break-even projects"). Its lists say whether it is
+	// short or in hand, and its report gathers its parts into runs. An
+	// ordinary project -- a landscaping fund that spends for years and is
+	// never meant to reach zero -- says only what came in and went out.
+	// Saved with the rest of its settings (ProjectFields).
+	BreakEven bool
+
 	// Via is the API key that created it or last changed what was typed
 	// about it ("claude.ai"), until a person saves it on its page; "" for
 	// one a person made or has looked at since. Shown on the site as made
@@ -647,6 +656,11 @@ type ProjectFields struct {
 	StartsOn string
 	EndsOn   string
 	Note     string
+
+	// BreakEven is whether it should break even (Project.BreakEven). A
+	// program changing a project starts from what it has (apiapp), so a
+	// change of its name through a key keeps it as it was.
+	BreakEven bool
 }
 
 func (f ProjectFields) apply(p *Project) error {
@@ -674,7 +688,7 @@ func (f ProjectFields) apply(p *Project) error {
 		return Invalid{Field: "note", Err: fmt.Errorf("a note of at most %d characters", MaxNote)}
 	}
 
-	p.Name, p.StartsOn, p.EndsOn, p.Note = name, starts, ends, note
+	p.Name, p.StartsOn, p.EndsOn, p.Note, p.BreakEven = name, starts, ends, note, f.BreakEven
 
 	return nil
 }
@@ -703,8 +717,12 @@ func (b *Business) CreateProject(ctx context.Context, now time.Time, actor, orgI
 		owner = &Grant{ID: types.NewID(), Scope: p.Scope(), UserID: actor, Role: Owner, GrantedBy: actor, CreatedAt: now}
 	}
 
-	if err := b.store.CreateProject(ctx, p, owner,
-		eventbus.New(now, actor, p.Scope(), eventbus.Created, map[string]string{"name": p.Name})); err != nil {
+	detail := map[string]string{"name": p.Name}
+	if p.BreakEven {
+		detail["break_even"] = "true"
+	}
+
+	if err := b.store.CreateProject(ctx, p, owner, eventbus.New(now, actor, p.Scope(), eventbus.Created, detail)); err != nil {
 		return Project{}, err
 	}
 
@@ -751,7 +769,14 @@ func (b *Business) EditProject(ctx context.Context, now time.Time, actor, id typ
 
 	p.Via = via
 
-	return p, b.store.UpdateProject(ctx, p, eventbus.New(now, actor, p.Scope(), eventbus.Edited, map[string]string{"name": p.Name}))
+	// Whether it should break even changes how its lists read it, so the
+	// history says so when it changes.
+	detail := map[string]string{"name": p.Name}
+	if p.BreakEven != was.BreakEven {
+		detail["break_even"] = strconv.FormatBool(p.BreakEven)
+	}
+
+	return p, b.store.UpdateProject(ctx, p, eventbus.New(now, actor, p.Scope(), eventbus.Edited, detail))
 }
 
 // SetProjectArchived puts a project away, or brings it back.

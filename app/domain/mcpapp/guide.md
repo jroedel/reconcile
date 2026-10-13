@@ -186,7 +186,12 @@ account will repay together":
    organization's, and the accountant reads the kinds. A project that
    only passes money on has no income or expenses; its `pass_through_in`
    and `pass_through_out` say how much went through, and `pass_through`,
-   their net, is what is still to come back or to pass on.
+   their net, is what is still to come back or to pass on. A project
+   marked `break_even` (a retreat, a pilgrimage) should come out even,
+   and being short is worth a question; one that is not (a building or
+   landscaping fund) spends over years and is never meant to reach zero,
+   so do not call it short. The mark is set by a person on the project's
+   page.
 
 ### Payees
 

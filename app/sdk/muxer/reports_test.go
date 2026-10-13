@@ -196,6 +196,18 @@ func TestAProjectsReport(t *testing.T) {
 	wantBody(t, e.owner.get(e.project), `href="`+report+`"`)
 	wantBody(t, e.owner.get(e.project+"/reports"), "A project, with its running balance", `href="`+report+`"`)
 
+	// An ordinary project: its parts and their balance, and no runs, and
+	// no gap to choose.
+	ordinary := e.owner.get(report)
+	wantBody(t, ordinary, "-$37.49", "$212.51", "Income $250.00 · Expenses -$153.99 · Net $96.01", "The balance at the end is $92.51.",
+		"A break-even project, such as a retreat, is also shown in runs")
+
+	if body := ordinary.Body.String(); strings.Contains(body, "<h3>2026") || strings.Contains(body, `name="gap" type="number"`) || strings.Contains(body, "On its own it came to") {
+		t.Errorf("an ordinary project's report is read in runs:\n%s", body)
+	}
+
+	wantRedirect(t, e.owner.post(e.project+"/edit", url.Values{"name": {"World Youth Day"}, "starts": {"2027-08-01"}, "break-even": {"1"}}), e.project+"?done=saved")
+
 	wantBody(t, e.owner.get(report), "World Youth Day", "From its first transaction to its last", "2026-07-03 to 2026-07-28",
 		"CORNER GROCERY", "-$33.99", "-$37.49", "$212.51",
 		"Income $250.00 · Expenses -$153.99 · Net $96.01",

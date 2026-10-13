@@ -24,7 +24,17 @@ func TestTheListsFigures(t *testing.T) {
 		"From 2026-07-01 to 2026-07-28: 6 transactions, money in $1,250.00, money out -$160.99.",
 		"Balance on 2026-07-28: $1,089.01",
 		"2026-07-28 · 1 transactions",
-		"Short by $120.00")
+		`Net <span class="money">-$120.00</span>`)
+
+	// World Youth Day is an ordinary project until it is said to be a
+	// break-even one: only then is it short.
+	if strings.Contains(page.Body.String(), "Short by") {
+		t.Errorf("an ordinary project reads as short:\n%s", page.Body.String())
+	}
+
+	wantRedirect(t, e.owner.post(e.project+"/edit", url.Values{"name": {"World Youth Day"}, "starts": {"2027-08-01"}, "break-even": {"1"}}), e.project+"?done=saved")
+	wantBody(t, e.owner.get(e.project), `name="break-even" value="1" checked`, "Break-even project", "changed its details, and made it a break-even project")
+	wantBody(t, e.owner.get(e.org), "Short by $120.00")
 
 	// A collection passed on to the diocese: pass-through only, so its
 	// line says what went through and what is still to pass on, and

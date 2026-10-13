@@ -32,13 +32,14 @@ type projectOut struct {
 	Ends         string `json:"ends,omitempty"`
 	Note         string `json:"note,omitempty"`
 	Through      string `json:"through,omitempty"`
+	BreakEven    bool   `json:"break_even,omitempty"`
 	URL          string `json:"url"`
 	BookURL      string `json:"book_url"`
 }
 
 func (rd *reader) projectOut(p tenancybus.Project) projectOut {
 	out := projectOut{
-		ID: p.ID.String(), Name: p.Name, Starts: p.StartsOn.String(), Ends: p.EndsOn.String(), Note: p.Note, Through: p.Via,
+		ID: p.ID.String(), Name: p.Name, Starts: p.StartsOn.String(), Ends: p.EndsOn.String(), Note: p.Note, Through: p.Via, BreakEven: p.BreakEven,
 		URL: rd.url("/projects/" + p.ID.String()), BookURL: rd.url("/projects/" + p.ID.String() + "/book"),
 	}
 
@@ -143,7 +144,7 @@ func (a app) changeProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	f := tenancybus.ProjectFields{Name: p.Name, StartsOn: p.StartsOn.String(), EndsOn: p.EndsOn.String(), Note: p.Note}
+	f := tenancybus.ProjectFields{Name: p.Name, StartsOn: p.StartsOn.String(), EndsOn: p.EndsOn.String(), Note: p.Note, BreakEven: p.BreakEven}
 
 	p, err = a.books.Tenancy.EditProject(ctx, time.Now(), rd.me, id, in.over(f))
 	if errors.Is(err, tenancybus.ErrForbidden) {

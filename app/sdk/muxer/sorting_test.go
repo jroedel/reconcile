@@ -114,7 +114,7 @@ func TestSortingATransaction(t *testing.T) {
 
 	// The project's book and history.
 	wantBody(t, e.owner.get(e.project), `href="`+e.project+`/book"`, "put -$30.00 of CORNER GROCERY (2026-07-03, Parish checking) into it")
-	wantBody(t, e.owner.get(e.project+"/book"), "Short by $30.00", "Groceries", "Parish checking", "CORNER GROCERY")
+	wantBody(t, e.owner.get(e.project+"/book"), "Net -$30.00", "Groceries", "Parish checking", "CORNER GROCERY")
 }
 
 // A part that goes the other way from its transaction is typed with its
@@ -282,5 +282,10 @@ func TestAProjectCountingItsTransfers(t *testing.T) {
 		"amount-1": {"900.00"}, "category-1": {transfer}, "project-1": {""}, "memo-1": {""},
 	}), e.account+"/transactions?month=2026-07&done=sorted")
 
-	wantBody(t, e.owner.get(e.project+"/book"), "Short by $120.00", "Transfers between our accounts: $100.00", "Counting the transfers: short by $20.00")
+	wantBody(t, e.owner.get(e.project+"/book"), "Net -$120.00", "Transfers between our accounts: $100.00", "Counting the transfers: -$20.00")
+
+	// Said to be a break-even project, it is short, by less counting the
+	// repayment.
+	wantRedirect(t, e.owner.post(e.project+"/edit", url.Values{"name": {"World Youth Day"}, "starts": {"2027-08-01"}, "break-even": {"1"}}), e.project+"?done=saved")
+	wantBody(t, e.owner.get(e.project+"/book"), "Short by $120.00", "Counting the transfers: short by $20.00")
 }

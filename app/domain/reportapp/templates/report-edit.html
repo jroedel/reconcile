@@ -22,7 +22,7 @@
       {{range $r.Presets}}<option value="{{.Key}}"{{if eq .Key $f.Period}} selected{{end}}>{{template "preset" .Key}}</option>{{end}}
     </select>
   </div>
-  {{if eq $v.Style.Key "project"}}{{template "project-choices" $f.Project}}{{else}}
+  {{if eq $v.Style.Key "project"}}{{template "project-choices" (dict "C" $f.Project "Runs" $v.Project.BreakEven)}}{{else}}
   {{if gt (len $r.Accounts) 1}}<fieldset class="field">
     <legend>{{t "Accounts"}}</legend>
     {{range $r.Accounts}}<label class="choice"><input type="checkbox" name="account" value="{{.ID}}"{{if $e.Chosen .ID}} checked{{end}}> {{.Name}}{{if .Archived}} <span class="badge">{{t "archived"}}</span>{{end}}</label>

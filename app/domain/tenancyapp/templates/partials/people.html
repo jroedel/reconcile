@@ -68,9 +68,9 @@
 <ol class="history">
 {{range .History}}
 <li><time>{{.At}}</time> <strong>{{if .Who}}{{.Who}}{{else}}{{t "Reconcile"}}{{end}}</strong>:
-{{- if eq .Action "created"}} {{t "made it, as {name}" "name" .Detail.name}}
+{{- if eq .Action "created"}} {{if .Detail.break_even}}{{t "made it, as {name}, a break-even project" "name" .Detail.name}}{{else}}{{t "made it, as {name}" "name" .Detail.name}}{{end}}
 {{- else if eq .Action "renamed"}} {{t "renamed it from {from} to {name}" "from" .Detail.from "name" .Detail.name}}
-{{- else if eq .Action "edited"}} {{t "changed its details"}}
+{{- else if eq .Action "edited"}} {{if eq .Detail.break_even "true"}}{{t "changed its details, and made it a break-even project: what comes in should cover what goes out"}}{{else if eq .Detail.break_even "false"}}{{t "changed its details, and made it an ordinary project, not one that should break even"}}{{else}}{{t "changed its details"}}{{end}}
 {{- else if eq .Action "archived"}} {{t "archived it"}}
 {{- else if eq .Action "restored"}} {{t "brought it back"}}
 {{- else if eq .Action "grant.added"}} {{t "gave {who} a role" "who" .Detail.email}} — {{template "role" .Detail.role}}

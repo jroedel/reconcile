@@ -10,7 +10,7 @@
 
 {{define "style-about"}}
 {{- if eq . "income-expenses-by-month"}}{{t "What came in and what went out, by category, a month to a column. Transfers between your own accounts and money that only passed through are not in it, and what is not sorted yet is shown on a line of its own."}}
-{{- else if eq . "project"}}{{t "Every transaction in the project, from every account, with the balance after each, gathered into runs of activity: a retreat, a trip, a collection. Each run says what was income and expenses and what only passed through, and whether it came out even."}}
+{{- else if eq . "project"}}{{t "Every transaction in the project, from every account, with the balance after each, and what was income and expenses apart from what only passed through. A break-even project's transactions are gathered into runs, one for each retreat or trip, each saying whether it came out even."}}
 {{- end}}{{end}}
 
 {{/* month is "2026-07" as a column's heading. */}}
@@ -60,14 +60,17 @@
 {{- else if gt .Net 0}}{{t "{amount} still to pass on" "amount" (money .Net .Cur)}}
 {{- else}}{{t "Settled"}}{{end}}</strong>{{end}}
 
-{{/* project-choices is a project report's choices, as fields of a form. */}}
+{{/* project-choices is a project report's choices (C), as fields of a
+     form. The quiet gap is asked only of a break-even project (Runs), and
+     kept as it is for any other, so that it reads as chosen if the project
+     becomes one. */}}
 {{define "project-choices"}}
-  <div class="field">
+  {{if .Runs}}<div class="field">
     <label for="gap">{{t "A new run starts after this many days with nothing"}}</label>
-    <input id="gap" name="gap" type="number" min="1" max="365" value="{{.Gap}}">
+    <input id="gap" name="gap" type="number" min="1" max="365" value="{{.C.Gap}}">
     <p class="hint">{{t "Thirty unless you choose otherwise. A retreat whose payments trickle in over six weeks wants a longer gap; a project with a run every week, a shorter one."}}</p>
-  </div>
+  </div>{{else}}<input type="hidden" name="gap" value="{{.C.Gap}}">{{end}}
   <div class="field">
-    <label class="choice"><input type="checkbox" name="accounts" value="hidden"{{if .HideAccounts}} checked{{end}}> {{t "Leave out the account column"}}</label>
+    <label class="choice"><input type="checkbox" name="accounts" value="hidden"{{if .C.HideAccounts}} checked{{end}}> {{t "Leave out the account column"}}</label>
   </div>
 {{end}}
