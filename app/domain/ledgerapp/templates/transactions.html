@@ -108,7 +108,7 @@
 {{else}}{{range .Splits}}{{with index $v.Categories .CategoryID}}{{.}}{{else}}<span class="badge">{{t "not sorted yet"}}</span>{{end}}{{with index $v.Projects .ProjectID}} · {{.}}{{end}}{{if not .RuleID.Zero}} <span class="badge">{{t "by rule"}}</span>{{else}}{{with .Via}} <span class="badge">{{t "by {name}" "name" .}}</span>{{end}}{{end}}{{end}}{{end}}
 {{- if gt (len .Splits) 1}}{{with .Through}} <span class="badge">{{t "by {name}" "name" .}}</span>{{end}}{{end}}</td>
 <td class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount $cur}}{{with index $v.Receipts .ID}}<br><span class="hint">{{t "{n} receipts" "n" .}}</span>{{end}}
-{{- with index $v.Clearing.By .ID}}<br>{{if .Hidden}}<span class="badge">{{t "cleared"}}</span>{{else}}<a href="/transactions/{{.Transaction.ID}}/explain" class="badge">{{t "cleared {date}" "date" .Transaction.PostedOn}}</a>{{end}}{{end}}
+{{- with $v.Clearing.ClearedBy .ID}}<br>{{if .Hidden}}<span class="badge">{{t "cleared"}}</span>{{else}}<a href="/transactions/{{.Transaction.ID}}/explain" class="badge">{{t "cleared {date}" "date" .Transaction.PostedOn}}</a>{{end}}{{end}}
 {{- $state := $v.Clearing.State .ID}}{{if $state}}<br><a href="/transactions/{{.ID}}/explain" class="badge{{if eq $state "explained"}} ok{{end}}">{{if eq $state "explained"}}{{t "explained"}}{{else}}{{t "open"}}{{end}}</a>{{end}}</td></tr>
 {{end}}</tbody>
 </table>

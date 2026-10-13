@@ -194,9 +194,7 @@ func (a app) transactionPage(w http.ResponseWriter, r *http.Request, status int,
 	}
 
 	view.Settled, view.Explained = c.Explains[id]
-	if by, ok := c.By[id]; ok {
-		view.ClearedBy = &by
-	}
+	view.ClearedBy = c.ClearedBy(id)
 
 	if view.CanReceipts {
 		if view.Waiting, err = a.waitingFor(r, me.ID, e.Transaction); err != nil {

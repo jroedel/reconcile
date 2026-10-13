@@ -18,6 +18,14 @@ func TestExplainingAnAmount(t *testing.T) {
 	offertory, grocery := txs["PARISH OFFERTORY"], txs["CORNER GROCERY"]
 	accountID := strings.TrimPrefix(e.account, "/accounts/")
 
+	// Before anything is explained, nothing in the month is cleared by
+	// anything. A missing entry once read as a line of a transaction with
+	// no ID, and every row said "cleared", linking to /transactions//explain.
+	month := e.owner.get(e.account + "/transactions?month=2026-07").Body.String()
+	if strings.Contains(month, `class="badge">cleared`) || strings.Contains(month, "/transactions//") {
+		t.Errorf("the month, with nothing explained, shows something cleared:\n%s", month)
+	}
+
 	wantBody(t, e.owner.get(offertory), "Explain this amount", offertory+"/explain")
 	wantBody(t, e.owner.get(offertory+"/explain"), "Explain this amount", "Nothing yet.", "Parish checking", "Add what no statement has")
 
@@ -35,7 +43,10 @@ func TestExplainingAnAmount(t *testing.T) {
 	wantBody(t, e.owner.get(offertory+"/explain"), "2 lines come to $250.00", ">explained<")
 
 	// The month says which is explained and which are its lines.
-	wantBody(t, e.owner.get(e.account+"/transactions?month=2026-07"), ">explained<", "cleared 2026-07-10")
+	month = e.owner.get(e.account + "/transactions?month=2026-07").Body.String()
+	if !strings.Contains(month, ">explained<") || strings.Count(month, `class="badge">cleared 2026-07-10<`) != 2 || strings.Contains(month, "/transactions//") {
+		t.Errorf("the month should show the offertory explained and its two count sheets cleared, and nothing else:\n%s", month)
+	}
 
 	// Gathering from the account's month offers what no explanation has,
 	// the count sheets not among them.
