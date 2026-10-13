@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/jroedel/reconcile/app/sdk/mid"
+	"github.com/jroedel/reconcile/app/sdk/page"
 	"github.com/jroedel/reconcile/business/domain/file/filebus"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
@@ -193,16 +194,6 @@ func back(w http.ResponseWriter, r *http.Request, fallback, done string) {
 	}
 
 	http.Redirect(w, r, to, http.StatusSeeOther)
-}
-
-// homePath is an inbox's page.
-func homePath(home types.Scope) string {
-	kind := "accounts"
-	if home.Kind == types.ScopeProject {
-		kind = "projects"
-	}
-
-	return "/" + kind + "/" + home.ID.String()
 }
 
 // --- uploading --------------------------------------------------------------
@@ -385,7 +376,7 @@ func (a app) addReceipts(w http.ResponseWriter, r *http.Request, me types.ID, ho
 		added = len(receipts)
 	}
 
-	http.Redirect(w, r, homePath(home)+"/receipts?"+got.report(added).Encode(), http.StatusSeeOther)
+	http.Redirect(w, r, page.ScopePath(home)+"/receipts?"+got.report(added).Encode(), http.StatusSeeOther)
 }
 
 // uploadOnto is the transaction page's form: receipts straight onto it.
@@ -490,7 +481,7 @@ func (a app) addChecks(w http.ResponseWriter, r *http.Request, me, id types.ID, 
 		q.Set("waiting", strconv.Itoa(waiting))
 	}
 
-	http.Redirect(w, r, homePath(home)+"/receipts?"+q.Encode(), http.StatusSeeOther)
+	http.Redirect(w, r, page.ScopePath(home)+"/receipts?"+q.Encode(), http.StatusSeeOther)
 }
 
 // uploaded is what the page an upload lands on says about it, read from
@@ -556,7 +547,7 @@ func (a app) inbox(kind types.ScopeKind) http.HandlerFunc {
 
 		q := r.URL.Query()
 		view := inboxView{
-			Path: homePath(home), Done: q.Get("done"), Uploaded: uploadedFrom(q),
+			Path: page.ScopePath(home), Done: q.Get("done"), Uploaded: uploadedFrom(q),
 			Checks: kind == types.ScopeAccount, CheckProblem: q.Get("check"),
 		}
 
@@ -695,6 +686,9 @@ type receiptView struct {
 	Typed detailsForm
 }
 
+// PageScope is the inbox the receipt was put in, for the top bar.
+func (v receiptView) PageScope() types.Scope { return v.View.Receipt.Home }
+
 type detailsForm struct {
 	SpentOn, Amount, Merchant, Note string
 
@@ -747,7 +741,7 @@ func (a app) receiptPage(w http.ResponseWriter, r *http.Request, status int, typ
 	// The inbox is named only for a reader of it: somebody who sees the
 	// receipt through its transaction may not know the project's name.
 	if access, err := a.cfg.Tenancy.AccessTo(ctx, me.ID, v.Receipt.Home); err == nil && access.Can(tenancybus.Read) {
-		view.HomePath = homePath(v.Receipt.Home)
+		view.HomePath = page.ScopePath(v.Receipt.Home)
 
 		if v.Receipt.Home.Kind == types.ScopeAccount {
 			acct, _, _ := a.cfg.Tenancy.Account(ctx, me.ID, v.Receipt.Home.ID)
@@ -1153,5 +1147,5 @@ func (a app) remove(w http.ResponseWriter, r *http.Request) {
 		done = "removed"
 	}
 
-	back(w, r, homePath(rec.Home)+"/receipts", done)
+	back(w, r, page.ScopePath(rec.Home)+"/receipts", done)
 }

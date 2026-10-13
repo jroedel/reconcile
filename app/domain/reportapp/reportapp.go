@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/jroedel/reconcile/app/sdk/mid"
+	"github.com/jroedel/reconcile/app/sdk/page"
 	"github.com/jroedel/reconcile/business/domain/category/categorybus"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/report/reportbus"
@@ -126,18 +127,6 @@ func (a app) failed(w http.ResponseWriter, r *http.Request, err error) {
 	a.cfg.Render.Render(w, r, http.StatusInternalServerError, "report-missing", "server")
 }
 
-// scopePath is a scope's own page.
-func scopePath(s types.Scope) string {
-	switch s.Kind {
-	case types.ScopeOrg:
-		return "/orgs/" + s.ID.String()
-	case types.ScopeProject:
-		return "/projects/" + s.ID.String()
-	}
-
-	return "/accounts/" + s.ID.String()
-}
-
 // scope is the books a request names, of a kind.
 func (a app) scope(w http.ResponseWriter, r *http.Request, kind types.ScopeKind) (types.Scope, bool) {
 	id, err := types.ParseID(r.PathValue("id"))
@@ -200,7 +189,7 @@ func (a app) list(kind types.ScopeKind) http.HandlerFunc {
 		}
 
 		a.cfg.Render.Render(w, r, http.StatusOK, "reports", listView{
-			Books: books, Path: scopePath(scope), Styles: reportbus.StylesFor(kind), Saved: saved,
+			Books: books, Path: page.ScopePath(scope), Styles: reportbus.StylesFor(kind), Saved: saved,
 			CanKeep: books.Access.Can(tenancybus.Bookkeep), Done: r.URL.Query().Get("done"),
 		})
 	}
@@ -360,6 +349,10 @@ type reportView struct {
 
 	choices url.Values
 }
+
+// PageScope is the books the report adds up, for the top bar: a saved
+// report's address names only the report.
+func (v reportView) PageScope() types.Scope { return v.Frame.Books.Scope }
 
 // Preset is the key of the preset the period shown is, or "".
 func (v reportView) Preset() string {
@@ -536,7 +529,7 @@ func (a app) report(w http.ResponseWriter, r *http.Request, kind types.ScopeKind
 	ask := askedOf(r)
 	now := a.cfg.Now()
 
-	v := reportView{Style: style, Path: scopePath(scope), Base: scopePath(scope) + "/reports/" + style.Key, Today: types.DateOf(now)}
+	v := reportView{Style: style, Path: page.ScopePath(scope), Base: page.ScopePath(scope) + "/reports/" + style.Key, Today: types.DateOf(now)}
 
 	var err error
 
@@ -597,6 +590,9 @@ type partsView struct {
 	Group  string // the group's name, for a group's figure
 	Sum    money.Amount
 }
+
+// PageScope is the report's books.
+func (v partsView) PageScope() types.Scope { return v.Report.PageScope() }
 
 func (a app) parts(build builder) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

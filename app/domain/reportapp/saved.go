@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/jroedel/reconcile/app/sdk/page"
 	"github.com/jroedel/reconcile/business/domain/report/reportbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/types"
@@ -137,7 +138,7 @@ func (a app) saved(w http.ResponseWriter, r *http.Request) (reportView, bool) {
 	}
 
 	v := reportView{
-		Frame: run.Frame, Report: run.Report, Project: run.Project, Path: scopePath(run.Saved.Scope), Base: "/reports/" + id.String(),
+		Frame: run.Frame, Report: run.Report, Project: run.Project, Path: page.ScopePath(run.Saved.Scope), Base: "/reports/" + id.String(),
 		Today: types.DateOf(now), Saved: &run, CanKeep: run.Frame.Access.Can(tenancybus.Bookkeep),
 		Done: r.URL.Query().Get("done"), choices: url.Values{},
 	}
@@ -173,6 +174,9 @@ type editView struct {
 	Typed   reportbus.Fields
 	Problem string
 }
+
+// PageScope is the report's books.
+func (v editView) PageScope() types.Scope { return v.Report.PageScope() }
 
 // Chosen reports whether an account is ticked in the form.
 func (v editView) Chosen(id types.ID) bool {
@@ -280,7 +284,7 @@ func (a app) remove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = a.cfg.Reports.Remove(r.Context(), a.cfg.Now(), me.ID, id)
-	a.keep(w, r, err, func(string) { a.failed(w, r, err) }, scopePath(s.Scope)+"/reports?done=removed")
+	a.keep(w, r, err, func(string) { a.failed(w, r, err) }, page.ScopePath(s.Scope)+"/reports?done=removed")
 }
 
 // note writes the note for the period the form was sent from.

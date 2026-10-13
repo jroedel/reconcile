@@ -45,6 +45,9 @@ type statementView struct {
 	Form statementForm
 }
 
+// PageScope is the statement's account, for the top bar.
+func (v statementView) PageScope() types.Scope { return v.Review.Account.Scope() }
+
 // statementForm is what was typed into the statement's forms, kept when
 // the page is shown again with a problem.
 type statementForm struct {

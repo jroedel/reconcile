@@ -46,6 +46,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/translation/translationbus"
 	"github.com/jroedel/reconcile/business/domain/user/userbus"
+	"github.com/jroedel/reconcile/business/types"
 	"github.com/jroedel/reconcile/foundation/jobs"
 	"github.com/jroedel/reconcile/foundation/mail"
 	"github.com/jroedel/reconcile/foundation/oauth"
@@ -142,6 +143,22 @@ func New(cfg Config) (http.Handler, error) {
 	mux.HandleFunc("GET "+cfg.Render.StylesheetPath(), cfg.Render.Stylesheet())
 	mux.HandleFunc("GET /static/js/{file}", cfg.Render.Scripts())
 	mux.HandleFunc("GET /static/img/{file}", cfg.Render.Images())
+
+	// Where each page belongs, for the top bar: asked of tenancybus as the
+	// reader, so a stranger's page names nothing, and somebody given one
+	// account sees the account rather than the organization it lives in.
+	cfg.Render.Placing(func(ctx context.Context, actor types.ID, s types.Scope) (page.Place, bool) {
+		home, name, err := cfg.Tenancy.Home(ctx, actor, s)
+		if err != nil {
+			if !errors.Is(err, tenancybus.ErrNotFound) {
+				cfg.Log.Warn("a page's place could not be found", "scope", s.String(), "err", err)
+			}
+
+			return page.Place{}, false
+		}
+
+		return page.Place{Name: name, Path: page.ScopePath(home)}, true
+	})
 
 	homeapp.Routes(mux, cfg.Log, cfg.Render, cfg.Tenancy, cfg.Receipts, cfg.Ledger)
 

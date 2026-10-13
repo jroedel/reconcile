@@ -37,6 +37,9 @@ type explainView struct {
 	Done    string
 }
 
+// PageScope is the explained transaction's account, for the top bar.
+func (v explainView) PageScope() types.Scope { return v.X.Account.Scope() }
+
 type lineGroup struct {
 	Account string
 	Lines   []ledgerbus.Line

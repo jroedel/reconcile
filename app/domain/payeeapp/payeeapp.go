@@ -339,6 +339,9 @@ type payeeView struct {
 	Done    string
 }
 
+// PageScope is whose list the payee is on, for the top bar.
+func (v payeeView) PageScope() types.Scope { return v.Payee.Owner }
+
 func (a app) payee(w http.ResponseWriter, r *http.Request) {
 	me, ok := actor(w, r)
 	if !ok {

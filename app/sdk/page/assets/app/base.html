@@ -13,7 +13,8 @@
 <body>
 <header class="masthead">
 <a class="wordmark" href="/">Reconcile</a>
-{{if not .SignedIn}}<a class="masthead-signin" href="/sign-in">{{t "Sign in"}}</a>
+{{with .Place}}<a class="place" href="{{.Path}}">{{.Name}}</a>
+{{end}}{{if not .SignedIn}}<a class="masthead-signin" href="/sign-in">{{t "Sign in"}}</a>
 {{end}}<details class="menu">
 <summary aria-label="{{t "Menu"}}"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></summary>
 <div class="menu-panel">

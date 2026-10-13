@@ -57,6 +57,10 @@ type transactionView struct {
 	sortForm
 }
 
+// PageScope is the transaction's account, for the top bar: its address
+// names only the transaction.
+func (v transactionView) PageScope() types.Scope { return v.Editor.Account.Scope() }
+
 // sortForm is the parts form as typed, and what was wrong with it.
 type sortForm struct {
 	Rows []partRow
