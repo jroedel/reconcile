@@ -1,5 +1,6 @@
 {{define "title"}}{{.Data.Editor.Transaction.Shown}}{{end}}
 {{define "content"}}{{$v := .Data}}{{$e := $v.Editor}}{{$t := $e.Transaction}}{{$cur := $e.Account.Currency}}
+{{template "return" $v.Return}}
 {{template "crumbs" (trail $ $e.Account.Name (printf "/accounts/%s" $e.Account.ID) (slice $t.PostedOn.String 0 7) $v.Back)}}
 <h1>{{if $t.Shown}}{{$t.Shown}}{{else}}{{t "A transaction with no description"}}{{end}}</h1>
 {{if $t.OwnDescription}}<p class="hint">{{if $t.Description}}{{t "The bank calls it {description}." "description" $t.Description}}{{else}}{{t "The bank gave it no description."}}{{end}}</p>{{end}}
@@ -32,7 +33,7 @@
 {{if $t.Payee}}<p>{{if and $e.PayeesReadable (not $t.PayeeID.Zero)}}<a href="/payees/{{$t.PayeeID}}">{{$t.Payee}}</a>{{else}}{{$t.Payee}}{{end}}</p>{{end}}
 {{with $t.PayeeVia}}<p class="hint"><span class="badge">{{t "by {name}" "name" .}}</span> {{t "A program wrote whom it was paid to through the API key “{name}”. Saving it, changed or not, says a person has checked it." "name" .}}</p>{{end}}
 {{if $v.CanReceipts}}
-<form method="post" action="/transactions/{{$t.ID}}/payee">
+<form method="post" action="/transactions/{{$t.ID}}/payee{{with $v.Return}}?back={{.Path}}{{end}}">
   <div class="field">
     <label for="payee">{{t "Whom it was paid to"}}</label>
     <input id="payee" name="payee" type="text" maxlength="100" list="payee-choices" value="{{$t.Payee}}" autocomplete="off">
@@ -50,12 +51,12 @@
 {{if $v.Receipts}}
 <ul class="receipts">
 {{range $v.Receipts}}<li>{{template "receipt-line" .}}
-{{if $v.CanReceipts}}<form method="post" action="/receipts/{{.ID}}/detach" class="inline"><input type="hidden" name="transaction" value="{{$t.ID}}"><input type="hidden" name="back" value="/transactions/{{$t.ID}}"><button type="submit" class="link">{{t "Take it off"}}</button></form>{{end}}</li>
+{{if $v.CanReceipts}}<form method="post" action="/receipts/{{.ID}}/detach" class="inline"><input type="hidden" name="transaction" value="{{$t.ID}}"><input type="hidden" name="back" value="/transactions/{{$t.ID}}{{with $v.Return}}?{{.Query}}{{end}}"><button type="submit" class="link">{{t "Take it off"}}</button></form>{{end}}</li>
 {{end}}</ul>
 {{else}}<p class="hint">{{t "No receipt yet. Receipts are welcome, and never required."}}</p>{{end}}
 
 {{if $v.CanReceipts}}
-<form method="post" action="/transactions/{{$t.ID}}/receipts" enctype="multipart/form-data" class="upload">
+<form method="post" action="/transactions/{{$t.ID}}/receipts{{with $v.Return}}?back={{.Path}}{{end}}" enctype="multipart/form-data" class="upload">
   <div class="field">
     <label for="files">{{t "Add a photo or PDF of its receipt"}}</label>
     <input id="files" name="files" type="file" multiple required accept="image/*,application/pdf">
@@ -67,7 +68,7 @@
 <details{{if and $v.Waiting (index $v.Waiting 0).HasAmount (eq (index $v.Waiting 0).Amount $t.Amount.Abs)}} open{{end}}><summary>{{t "Or attach one that is waiting for a match"}}</summary>
 <ul class="receipts">
 {{range $v.Waiting}}<li>{{template "receipt-line" .}}
-<form method="post" action="/receipts/{{.ID}}/attach" class="inline"><input type="hidden" name="transaction" value="{{$t.ID}}"><input type="hidden" name="back" value="/transactions/{{$t.ID}}"><button type="submit" class="quiet">{{t "Attach"}}</button></form></li>
+<form method="post" action="/receipts/{{.ID}}/attach" class="inline"><input type="hidden" name="transaction" value="{{$t.ID}}"><input type="hidden" name="back" value="/transactions/{{$t.ID}}{{with $v.Return}}?{{.Query}}{{end}}"><button type="submit" class="quiet">{{t "Attach"}}</button></form></li>
 {{end}}</ul>
 </details>
 {{end}}
@@ -75,7 +76,7 @@
 </section>
 
 {{if $v.CanSort}}
-<form method="post" action="/transactions/{{$t.ID}}">
+<form method="post" action="/transactions/{{$t.ID}}{{with $v.Return}}?back={{.Path}}{{end}}">
 {{if $v.Guess.Made}}<p class="notice"><span class="badge">{{t "not saved yet"}}</span> {{template "guess" (dict "Guess" $v.Guess "Category" ($e.CategoryName $v.Guess.CategoryID))}}</p>{{end}}
 <div class="card">
   <div class="field">
@@ -107,6 +108,7 @@
       <option value="">{{t "(none)"}}</option>
       {{range $e.Projects}}<option value="{{.ID}}"{{if eq .ID.String $row.ProjectID}} selected{{end}}>{{if .Name}}{{.Name}}{{else}}{{t "a project you have no role on"}}{{end}}</option>{{end}}
     </select>
+    {{range $e.Projects}}{{if and .Name (eq .ID.String $row.ProjectID)}}<p class="hint"><a href="/projects/{{.ID}}/book">{{t "See the money of {project}" "project" .Name}}</a></p>{{end}}{{end}}
   </div>
   {{end}}
   <div class="field">
@@ -137,9 +139,9 @@
 {{else}}
 <section class="card">
 <ul class="list">
-{{range $t.Splits}}<li><span class="money">{{money .Amount $cur}}</span> ·
+{{range $part := $t.Splits}}<li><span class="money">{{money .Amount $cur}}</span> ·
 {{with $e.CategoryName .CategoryID}}{{.}}{{else}}<span class="badge">{{t "not sorted yet"}}</span>{{end}}
-{{if not .ProjectID.Zero}} · {{with $e.ProjectName .ProjectID}}{{.}}{{else}}{{t "a project you have no role on"}}{{end}}{{end}}
+{{if not .ProjectID.Zero}} · {{with $e.ProjectName .ProjectID}}<a href="/projects/{{$part.ProjectID}}/book">{{.}}</a>{{else}}{{t "a project you have no role on"}}{{end}}{{end}}
 {{if .Memo}}<br><span class="hint">{{.Memo}}</span>{{end}}</li>
 {{end}}</ul>
 </section>

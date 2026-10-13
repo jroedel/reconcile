@@ -19,7 +19,7 @@
 <thead><tr><th scope="col">{{t "Date"}}</th>{{if $accounts}}<th scope="col">{{t "Account"}}</th>{{end}}<th scope="col">{{t "Description"}}</th><th scope="col">{{t "Category"}}</th><th scope="col" class="money">{{t "Amount"}}</th><th scope="col" class="money">{{t "Balance"}}</th></tr></thead>
 <tbody>
 {{range .Parts}}<tr><td>{{.PostedOn}}</td>{{if $accounts}}<td>{{.AccountName}}</td>{{end}}
-<td><a href="/transactions/{{.Split.TransactionID}}">{{if .OwnDescription}}{{.OwnDescription}}{{else}}{{.Description}}{{end}}</a>{{with .Split.Memo}} <span class="hint">{{.}}</span>{{end}}</td>
+<td><a href="/transactions/{{.Split.TransactionID}}{{with $.Here}}?back={{.}}{{end}}">{{if .OwnDescription}}{{.OwnDescription}}{{else}}{{.Description}}{{end}}</a>{{with .Split.Memo}} <span class="hint">{{.}}</span>{{end}}</td>
 <td>{{if .Split.CategoryID.Zero}}<span class="badge warn">{{t "not sorted yet"}}</span>{{else}}{{.CategoryName}}{{if eq (printf "%s" .Kind) "passthrough"}} <span class="badge">{{t "Pass-through"}}</span>{{else if eq (printf "%s" .Kind) "transfer"}} <span class="badge">{{t "Transfer"}}</span>{{else if eq (printf "%s" .Kind) ""}} <span class="badge warn">{{t "kind not said yet"}}</span>{{end}}{{end}}</td>
 <td class="money {{if lt .Split.Amount 0}}out{{else}}in{{end}}">{{money .Split.Amount $cur}}</td>
 <td class="money">{{money .Balance $cur}}</td></tr>

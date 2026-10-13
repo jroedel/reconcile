@@ -414,6 +414,12 @@ func (a app) uploadOnto(w http.ResponseWriter, r *http.Request) {
 	q := got.report(added)
 	q.Set("done", "receipts")
 
+	// The transaction's page keeps its way back to where it was opened
+	// from; it came in the form's address, never its body (page.ReturnFrom).
+	if ret := page.ReturnFrom(r); ret != nil {
+		q.Set("back", ret.Path)
+	}
+
 	http.Redirect(w, r, "/transactions/"+id.String()+"?"+q.Encode(), http.StatusSeeOther)
 }
 

@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	transactionLink = regexp.MustCompile(`href="(/transactions/[0-9a-f]+)">([^<]*)<`)
+	transactionLink = regexp.MustCompile(`href="(/transactions/[0-9a-f]+)(?:\?back=[^"]*)?">([^<]*)<`)
 	categoryOption  = regexp.MustCompile(`<option value="([0-9a-f]{32})"[^>]*>([^<]+)</option>`)
 	renameForm      = regexp.MustCompile(`action="(/categories/[0-9a-f]+)/rename"`)
 )

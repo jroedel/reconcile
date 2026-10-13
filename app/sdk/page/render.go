@@ -130,6 +130,10 @@ type Shell struct {
 	// because a template's with counts every struct as present.
 	Place *Place
 
+	// Here is the page's own address, for a link that offers a way back to
+	// it (?back=, see ReturnFrom); empty on a page answering a form.
+	Here string
+
 	// Manifest and AppScript are the installable app, on the pages of
 	// somebody signed in alone, and empty on everybody else's: see
 	// OfferApp.
@@ -467,6 +471,7 @@ func (rn *Renderer) Render(w http.ResponseWriter, r *http.Request, status int, n
 		Lang:       lang,
 		Langs:      links,
 		Place:      place,
+		Here:       here(r),
 		User:       user,
 		SignedIn:   signedIn,
 		Manifest:   manifest,

@@ -46,3 +46,7 @@
 {{define "crumbs"}}{{with .}}<nav class="crumbs" aria-label="{{t "Where this page is"}}"><ol>
 {{range .}}<li><a href="{{.Path}}">{{.Name}}</a></li>
 {{end}}</ol></nav>{{end}}{{end}}
+
+{{/* return is the way back to the page a person came from, when it is not
+   the one above (page.Return): one sentence for each kind of page. */}}
+{{define "return"}}{{with .}}<p class="return no-print"><a href="{{.Path}}"><span aria-hidden="true">←</span> {{if eq .Kind "report"}}{{t "Back to the report"}}{{else if eq .Kind "book"}}{{t "Back to the project's money"}}{{else if eq .Kind "sort"}}{{t "Back to sorting the month"}}{{else if eq .Kind "statement"}}{{t "Back to the statement"}}{{else if eq .Kind "payees-year"}}{{t "Back to payments by payee"}}{{else if eq .Kind "payee"}}{{t "Back to the payee"}}{{else if eq .Kind "explain"}}{{t "Back to the explanation"}}{{else if eq .Kind "receipt"}}{{t "Back to the receipt"}}{{else}}{{t "Back to the receipts waiting for a match"}}{{end}}</a></p>{{end}}{{end}}
