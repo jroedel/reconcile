@@ -144,6 +144,55 @@ func (b *Business) OrgYear(ctx context.Context, now time.Time, actor, orgID type
 	return form(c, cats, parts), nil
 }
 
+// Expected is an organization's budget year as a report reads it beside
+// its own figures (docs/reports.md, "The comparisons"): each kind's lines
+// and total, reckoned as the budget page reckons them, and no actuals,
+// which the report adds up itself from the same parts.
+type Expected struct {
+	Year       int
+	Label      string
+	Start, End types.Date
+	Pace       int
+
+	Currency string
+	Set      bool
+
+	// Income and Expenses are the budget's two sides. Their rows' and
+	// totals' Budget is what is expected, positive, the way the kind runs;
+	// their Actual is zero.
+	Income, Expenses Side
+}
+
+// OrgExpected is an organization's budget for a year, for anyone who may
+// read the organization. Year zero is the year today is in.
+func (b *Business) OrgExpected(ctx context.Context, now time.Time, actor, orgID types.ID, year int) (Expected, error) {
+	o, _, year, err := b.org(ctx, now, actor, orgID, year)
+	if err != nil {
+		return Expected{}, err
+	}
+
+	lines, err := b.store.Lines(ctx, o.Scope(), year)
+	if err != nil {
+		return Expected{}, err
+	}
+
+	cats, err := b.choices(ctx, orgID, nil)
+	if err != nil {
+		return Expected{}, err
+	}
+
+	c := Comparison{Currency: currencyOf(lines)}
+	compare(&c, lines, nil, cats)
+
+	e := Expected{
+		Year: year, Label: Label(year, o.FiscalStart), Pace: pace(now, year, o.FiscalStart),
+		Currency: c.Currency, Set: len(lines) > 0, Income: c.Income, Expenses: c.Expenses,
+	}
+	e.Start, e.End = Span(year, o.FiscalStart)
+
+	return e, nil
+}
+
 // SetOrgYear makes an organization's budget for a year these entries, in
 // this currency: an owner's. Each change is a line in its history, saying
 // which year.

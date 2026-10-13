@@ -90,9 +90,14 @@ type IncomeExpensesChoices struct {
 	Accounts    []types.ID // none: every account of the books
 	PassThrough PassThroughShown
 	Detail      Detail
+	Compare     Compared
 }
 
 func (c IncomeExpensesChoices) normal() IncomeExpensesChoices {
+	if c.Compare != WithYearBefore && c.Compare != WithBudget {
+		c.Compare = WithNothing
+	}
+
 	if c.PassThrough != EachCategory {
 		c.PassThrough = OneTotal
 	}
@@ -114,7 +119,22 @@ type Row struct {
 	Name       string
 	Months     []money.Amount
 	Total      money.Amount
+
+	// Before is the same row's total the same months a year before, and
+	// Budget its budget for the year, signed as the row is (an expense's
+	// negative), when the report compares with either (Compared).
+	Before   money.Amount
+	Budget   money.Amount
+	Budgeted bool
 }
+
+// Change is the total less the year before's: above zero is better for
+// the net -- more came in, or less went out.
+func (r Row) Change() money.Amount { return r.Total - r.Before }
+
+// AgainstBudget is the total less the budget, read the same way: above
+// zero is more in, or less out, than the whole year's budget.
+func (r Row) AgainstBudget() money.Amount { return r.Total - r.Budget }
 
 // Section is the report in one currency. Nothing is added across
 // currencies, so a report with two has two sections.
@@ -177,6 +197,11 @@ type IncomeExpenses struct {
 
 	Sections []Section
 
+	// YearBefore is the months the year before compares with, when it is
+	// the comparison; Budget is the budget year, when the budget is.
+	YearBefore Period
+	Budget     Budget
+
 	// Partial reports that only some of the books' accounts were chosen,
 	// while what should come back to zero is reckoned across all of them:
 	// a transfer to an account left out is still a transfer.
@@ -223,6 +248,10 @@ func (b *Business) IncomeExpenses(ctx context.Context, now time.Time, actor type
 	}
 
 	r.Sections = sections(a.Cells, r.Months, settling)
+
+	if err := b.compare(ctx, now, actor, &r, by); err != nil {
+		return IncomeExpenses{}, err
+	}
 
 	if r.Marks, err = b.marks(ctx, actor, today, a, r.Months); err != nil {
 		return IncomeExpenses{}, err

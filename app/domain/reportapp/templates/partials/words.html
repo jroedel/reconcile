@@ -72,5 +72,18 @@
   </div>{{else}}<input type="hidden" name="gap" value="{{.C.Gap}}">{{end}}
   <div class="field">
     <label class="choice"><input type="checkbox" name="accounts" value="hidden"{{if .C.HideAccounts}} checked{{end}}> {{t "Leave out the account column"}}</label>
+    <label class="choice"><input type="checkbox" name="budget" value="hidden"{{if .C.HideBudget}} checked{{end}}> {{t "Leave out the budget"}}</label>
   </div>
+{{end}}
+
+{{/* compare-choice is the choice of what a table of income and expenses
+     is compared with: Compare is the one made, Org whether the books have
+     a budget year, which only an organization's do. */}}
+{{define "compare-choice"}}
+  <fieldset class="field">
+    <legend>{{t "Compare with"}}</legend>
+    <label class="choice"><input type="radio" name="compare" value=""{{if not .Compare}} checked{{end}}> {{t "Nothing"}}</label>
+    <label class="choice"><input type="radio" name="compare" value="year-before"{{if eq .Compare "year-before"}} checked{{end}}> {{t "The same months a year before"}}</label>
+    {{if .Org}}<label class="choice"><input type="radio" name="compare" value="budget"{{if eq .Compare "budget"}} checked{{end}}> {{t "The budget for the year"}}</label>{{end}}
+  </fieldset>
 {{end}}

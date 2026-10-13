@@ -23,7 +23,9 @@ import (
 	"context"
 	"slices"
 	"strings"
+	"time"
 
+	"github.com/jroedel/reconcile/business/domain/budget/budgetbus"
 	"github.com/jroedel/reconcile/business/domain/category/categorybus"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
@@ -61,17 +63,25 @@ type Categories interface {
 	HeadingsOf(ctx context.Context, owner types.Scope) ([]categorybus.Heading, error)
 }
 
+// Budgets is what owners expect of the money (budgetbus), which a report
+// may show beside its own figures.
+type Budgets interface {
+	OrgExpected(ctx context.Context, now time.Time, actor, orgID types.ID, year int) (budgetbus.Expected, error)
+	Project(ctx context.Context, actor, projectID types.ID) (budgetbus.Comparison, error)
+}
+
 // Business is the reports.
 type Business struct {
 	access     Access
 	ledger     Ledger
 	categories Categories
+	budgets    Budgets
 	store      Storer
 }
 
 // NewBusiness constructs one.
-func NewBusiness(access Access, ledger Ledger, categories Categories, store Storer) *Business {
-	return &Business{access: access, ledger: ledger, categories: categories, store: store}
+func NewBusiness(access Access, ledger Ledger, categories Categories, budgets Budgets, store Storer) *Business {
+	return &Business{access: access, ledger: ledger, categories: categories, budgets: budgets, store: store}
 }
 
 // --- the books a report is of ---------------------------------------------------

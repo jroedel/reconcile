@@ -39,6 +39,7 @@
     <label class="choice"><input type="radio" name="detail" value="category"{{if ne (printf "%s" $f.Choices.Detail) "group"}} checked{{end}}> {{t "Each category"}}</label>
     <label class="choice"><input type="radio" name="detail" value="group"{{if eq (printf "%s" $f.Choices.Detail) "group"}} checked{{end}}> {{t "Each group, and each category under none"}}</label>
   </fieldset>{{end}}
+  {{template "compare-choice" (dict "Compare" (printf "%s" $f.Choices.Compare) "Org" (eq (printf "%s" $r.Scope.Kind) "org"))}}
   {{end}}
   <button type="submit">{{t "Save"}}</button>
 </form>

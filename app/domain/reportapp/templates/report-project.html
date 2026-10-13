@@ -33,6 +33,7 @@
 {{if $r.BreakEven}}<h3>{{t "All of it together"}}</h3>{{end}}
 {{template "run-figures" (dict "F" $s.Figures "Cur" $cur "View" $v "Foot" true)}}
 <p class="total"><strong>{{if or $s.Balance (not $r.BreakEven)}}{{t "The balance at the end is {amount}." "amount" (money $s.Balance $cur)}}{{else}}{{t "The balance at the end is zero: the project is back where it started."}}{{end}}</strong></p>
+{{if and $r.HasBudget (eq $r.Budget.Currency $cur)}}{{template "project-budget" (dict "B" $r.Budget "Cur" $cur "Path" $v.Path)}}{{end}}
 </section>
 {{end}}
 
@@ -67,6 +68,7 @@
   <input type="hidden" name="default" value="{{$v.Preset}}">
   <input type="hidden" name="gap" value="{{$r.Choices.Gap}}">
   {{if $r.Choices.HideAccounts}}<input type="hidden" name="accounts" value="hidden">{{end}}
+  {{if $r.Choices.HideBudget}}<input type="hidden" name="budget" value="hidden">{{end}}
   <div class="field">
     <label for="title">{{t "Title"}}</label>
     <input id="title" name="title" maxlength="100" required value="{{$v.Typed.Title}}" placeholder="{{$r.Name}}">
@@ -102,6 +104,28 @@
 {{- if $foot}} <span class="no-print">· {{template "parts-link" (dict "Href" ($v.Figure "kind" "unsorted" "" "" $cur) "Kind" "unsorted")}}</span>{{end}}</li>{{end}}
 </ul>
 {{end}}
+
+{{/* project-budget is the project's budget beside the whole of its life
+     (B, a budgetbus.Comparison), as its budget page reckons it: income and
+     expenses each the way it runs, so an expense is a positive amount
+     here, as it is there. */}}
+{{define "project-budget"}}{{$b := .B}}{{$cur := .Cur}}
+<h3>{{t "Its budget"}}</h3>
+<p class="hint">{{t "For the project's whole life, beside all of it so far, whatever months are shown above."}}</p>
+<div class="scroll"><table class="ledger">
+<thead><tr><th scope="col"></th><th scope="col" class="money">{{t "Budget"}}</th><th scope="col" class="money">{{t "So far"}}</th><th scope="col" class="money">{{t "Left"}}</th></tr></thead>
+<tbody>
+{{template "budget-side" (dict "Total" $b.Income.Total "Cur" $cur "Income" true)}}
+{{template "budget-side" (dict "Total" $b.Expenses.Total "Cur" $cur "Income" false)}}
+<tr class="total"><th scope="row">{{t "Net"}}</th><td class="money">{{money $b.ExpectedNet $cur}}</td><td class="money">{{money $b.ActualNet $cur}}</td><td></td></tr>
+</tbody>
+</table></div>
+<p class="no-print"><a href="{{.Path}}/budget">{{t "The budget, beside what happened"}}</a></p>
+{{end}}
+
+{{define "budget-side"}}{{$cur := .Cur}}{{with .Total}}<tr><th scope="row">{{if $.Income}}{{t "Income"}}{{else}}{{t "Expenses"}}{{end}}</th>
+<td class="money">{{if .Budgeted}}{{money .Budget $cur}}{{end}}</td><td class="money">{{money .Actual $cur}}</td>
+<td class="money{{if .Over}} out{{end}}">{{if .Budgeted}}{{money .Left $cur}}{{end}}</td></tr>{{end}}{{end}}
 
 {{define "parts-link"}}<a href="{{.Href}}">
 {{- if eq .Kind "income"}}{{t "the income"}}{{else if eq .Kind "expense"}}{{t "the expenses"}}{{else if eq .Kind "passthrough"}}{{t "the pass-through"}}{{else if eq .Kind "transfer"}}{{t "the transfers"}}{{else}}{{t "what is not sorted yet"}}{{end}}</a>{{end}}

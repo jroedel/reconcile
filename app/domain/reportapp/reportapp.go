@@ -255,7 +255,8 @@ func askedOf(r *http.Request) asked {
 
 	ask.choices.PassThrough = reportbus.PassThroughShown(q.Get("passthrough"))
 	ask.choices.Detail = reportbus.Detail(q.Get("detail"))
-	ask.project = reportbus.ProjectChoices{Gap: gapOf(q.Get("gap")), HideAccounts: q.Get("accounts") == "hidden"}
+	ask.choices.Compare = reportbus.Compared(q.Get("compare"))
+	ask.project = reportbus.ProjectChoices{Gap: gapOf(q.Get("gap")), HideAccounts: q.Get("accounts") == "hidden", HideBudget: q.Get("budget") == "hidden"}
 
 	return ask
 }
@@ -279,6 +280,10 @@ func choiceValues(r reportbus.IncomeExpenses) url.Values {
 		v.Set("detail", string(reportbus.EachGroupRow))
 	}
 
+	if r.Choices.Compare != reportbus.WithNothing {
+		v.Set("compare", string(r.Choices.Compare))
+	}
+
 	return v
 }
 
@@ -293,6 +298,10 @@ func projectValues(r reportbus.ProjectReport) url.Values {
 
 	if r.Choices.HideAccounts {
 		v.Set("accounts", "hidden")
+	}
+
+	if r.Choices.HideBudget {
+		v.Set("budget", "hidden")
 	}
 
 	return v
@@ -464,6 +473,34 @@ func (v reportView) RowFigure(row reportbus.Row, month, currency string) string 
 	return u + "&" + url.Values{"group": {row.GroupID.String()}}.Encode()
 }
 
+// Comparing is the comparison the table shows beside its total:
+// "year-before", "budget", or "" -- also when the budget was asked for and
+// there is none for the year, or the months are in two years, which the
+// page says instead.
+func (v reportView) Comparing() string {
+	r := v.Report
+
+	switch {
+	case r.Choices.Compare == reportbus.WithYearBefore && !r.YearBefore.Zero():
+		return "year-before"
+	case r.Choices.Compare == reportbus.WithBudget && r.Budget.Set && r.Budget.Fits:
+		return "budget"
+	}
+
+	return ""
+}
+
+// Columns is how many columns the table has: the row's name, a month to a
+// column, the total, and two for a comparison.
+func (v reportView) Columns() int {
+	n := len(v.Report.Months) + 2
+	if v.Comparing() != "" {
+		n += 2
+	}
+
+	return n
+}
+
 // Grouped reports whether the books have groups of categories, or the
 // report shows them: the choice of rows is worth offering only then.
 func (v reportView) Grouped() bool {
@@ -617,7 +654,7 @@ func (a app) parts(build builder) http.HandlerFunc {
 // --- as a spreadsheet ---------------------------------------------------------------
 
 // words is how many lines the report-words text has, in its order.
-const words = 9
+const words = 13
 
 // download is the report as a CSV: a block per currency, a row per line of
 // the table, the months across, with a byte-order mark so that a
@@ -644,6 +681,16 @@ func (a app) download(build builder) http.HandlerFunc {
 
 		income, expenses, totalIncome, totalExpenses, net, unsorted, total, currency, owed := said[0], said[1], said[2], said[3], said[4], said[5], said[6], said[7], said[8]
 
+		// The comparison's two columns, beside the total, as on the page.
+		var compared []string
+
+		switch v.Comparing() {
+		case "year-before":
+			compared = said[9:11]
+		case "budget":
+			compared = said[11:13]
+		}
+
 		var buf bytes.Buffer
 
 		buf.WriteString("\ufeff")
@@ -653,13 +700,24 @@ func (a app) download(build builder) http.HandlerFunc {
 
 		rep := v.Report
 
-		row := func(name string, months []money.Amount, sum money.Amount) {
+		row := func(name string, ln reportbus.Row) {
 			out := []string{cell(name)}
-			for _, m := range months {
+			for _, m := range ln.Months {
 				out = append(out, m.String())
 			}
 
-			_ = cw.Write(append(out, sum.String()))
+			out = append(out, ln.Total.String())
+
+			switch v.Comparing() {
+			case "year-before":
+				out = append(out, ln.Before.String(), ln.Change().String())
+			case "budget":
+				if ln.Budgeted {
+					out = append(out, ln.Budget.String(), ln.AgainstBudget().String())
+				}
+			}
+
+			_ = cw.Write(out)
 		}
 
 		for i, s := range rep.Sections {
@@ -667,23 +725,23 @@ func (a app) download(build builder) http.HandlerFunc {
 				_ = cw.Write(nil)
 			}
 
-			_ = cw.Write(append(append([]string{currency + ": " + s.Currency}, rep.Months...), total))
+			_ = cw.Write(append(append(append([]string{currency + ": " + s.Currency}, rep.Months...), total), compared...))
 
 			_ = cw.Write([]string{income})
 			for _, ln := range s.Income {
-				row(ln.Name, ln.Months, ln.Total)
+				row(ln.Name, ln)
 			}
 
-			row(totalIncome, s.IncomeTotal.Months, s.IncomeTotal.Total)
+			row(totalIncome, s.IncomeTotal)
 
 			_ = cw.Write([]string{expenses})
 			for _, ln := range s.Expenses {
-				row(ln.Name, ln.Months, ln.Total)
+				row(ln.Name, ln)
 			}
 
-			row(totalExpenses, s.ExpensesTotal.Months, s.ExpensesTotal.Total)
-			row(net, s.Net.Months, s.Net.Total)
-			row(unsorted, s.Unsorted.Months, s.Unsorted.Total)
+			row(totalExpenses, s.ExpensesTotal)
+			row(net, s.Net)
+			row(unsorted, s.Unsorted)
 
 			_ = cw.Write([]string{owed, s.PassThroughTotal.String()})
 		}
