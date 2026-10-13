@@ -1,6 +1,6 @@
 {{define "title"}}{{.Data.Account.Name}}{{end}}
 {{define "content"}}{{$v := .Data}}{{$cur := $v.Account.Currency}}
-<p class="crumbs"><a href="{{$v.Path}}">{{$v.Account.Name}}</a></p>
+{{template "crumbs" (trail $ $v.Account.Name $v.Path)}}
 <h1>{{t "Transactions"}}</h1>
 {{if $v.Account.Reference}}<p class="notice">{{t "This account is for reference. Its money counts in none of the organization's totals, and nothing in it needs sorting."}}</p>{{end}}
 {{template "done" $v.Done}}

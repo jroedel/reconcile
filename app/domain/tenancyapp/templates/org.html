@@ -1,6 +1,6 @@
 {{define "title"}}{{.Data.Org.Name}}{{end}}
 {{define "content"}}{{with .Data}}
-<p class="crumbs"><a href="/">{{t "Your organizations"}}</a></p>
+{{template "crumbs" (trail $ (t "Your organizations") "/")}}
 <h1>{{.Org.Name}}</h1>
 {{if .Org.Archived}}<p class="notice">{{t "This organization is archived."}}</p>{{end}}
 {{template "done" .Done}}

@@ -1,6 +1,6 @@
 {{define "title"}}{{.Data.Editor.Transaction.Shown}}{{end}}
 {{define "content"}}{{$v := .Data}}{{$e := $v.Editor}}{{$t := $e.Transaction}}{{$cur := $e.Account.Currency}}
-<p class="crumbs"><a href="{{$v.Back}}">{{$e.Account.Name}}</a></p>
+{{template "crumbs" (trail $ $e.Account.Name (printf "/accounts/%s" $e.Account.ID) (slice $t.PostedOn.String 0 7) $v.Back)}}
 <h1>{{if $t.Shown}}{{$t.Shown}}{{else}}{{t "A transaction with no description"}}{{end}}</h1>
 {{if $t.OwnDescription}}<p class="hint">{{if $t.Description}}{{t "The bank calls it {description}." "description" $t.Description}}{{else}}{{t "The bank gave it no description."}}{{end}}</p>{{end}}
 <p>{{$t.PostedOn}}{{with $t.Holder}} · {{.}}{{end}}{{with $t.CheckNumber}} · {{t "Check number {number}" "number" .}}{{end}}{{with $t.Payee}} · {{t "paid to {payee}" "payee" .}}{{end}}{{with $t.CheckMemo}} · {{t "memo: {memo}" "memo" .}}{{end}} · <span class="money {{if lt $t.Amount 0}}out{{else}}in{{end}}">{{money $t.Amount $cur}}</span></p>

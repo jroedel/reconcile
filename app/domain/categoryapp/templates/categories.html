@@ -1,6 +1,6 @@
 {{define "title"}}{{t "Categories"}} · {{.Data.OwnerName}}{{end}}
 {{define "content"}}{{$v := .Data}}
-<p class="crumbs"><a href="{{$v.OwnerPath}}">{{$v.OwnerName}}</a></p>
+{{template "crumbs" (trail $ $v.OwnerName $v.OwnerPath)}}
 <h1>{{t "Categories"}}</h1>
 <p class="hint">{{t "What each part of a transaction was. The same list for every account here, so that the accountant's package adds them up."}}</p>
 {{template "done" $v.Done}}

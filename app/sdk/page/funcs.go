@@ -31,12 +31,48 @@ var Funcs = template.FuncMap{
 	// {{template "x" (dict "Receipt" . "Back" "/receipts")}}.
 	"dict": Dict,
 
+	// trail is a page's breadcrumbs, as pairs of a name and a page:
+	// {{template "crumbs" (trail $ .Account.Name $account (t "Month by month") $months)}}.
+	"trail": Trail,
+
 	// inc counts a range's index from one, as a person counts.
 	"inc": func(i int) int { return i + 1 },
 
 	// join lists names, such as files', for a placeholder of a sentence
 	// that is translated whole: "{files}", not a sentence built of parts.
 	"join": strings.Join,
+}
+
+// Crumb is one step of a page's breadcrumbs: a name, and the page it opens.
+type Crumb struct {
+	Name string
+	Path string
+}
+
+// Trail is the way up from a page, from the widest place down: pairs of a
+// name and the page it opens. A step that is the top bar's place is left
+// out, because the bar already has it one tap away; so is an empty name,
+// for a step a reader may not see. Each word opens one page wherever it
+// appears -- an account's name its page, a month that month's
+// transactions -- which the crumbs written page by page did not: an
+// account's name opened three different pages, by which page it was on.
+func Trail(s Shell, pairs ...string) ([]Crumb, error) {
+	if len(pairs)%2 != 0 {
+		return nil, errors.New("trail takes pairs of a name and a page")
+	}
+
+	var crumbs []Crumb
+
+	for i := 0; i < len(pairs); i += 2 {
+		c := Crumb{Name: pairs[i], Path: pairs[i+1]}
+		if c.Name == "" || (s.Place != nil && c.Path == s.Place.Path) {
+			continue
+		}
+
+		crumbs = append(crumbs, c)
+	}
+
+	return crumbs, nil
 }
 
 // symbols are the currencies whose sign a reader expects in front. Any other

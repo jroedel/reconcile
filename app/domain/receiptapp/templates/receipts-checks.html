@@ -1,6 +1,6 @@
 {{define "title"}}{{t "Your checks"}}{{end}}
 {{define "content"}}{{$v := .Data}}
-<p class="crumbs"><a href="/">{{t "Your organizations"}}</a></p>
+{{template "crumbs" (trail $ (t "Your organizations") "/")}}
 <h1>{{t "Your checks"}}</h1>
 <p class="hint">{{t "Images of checks that only you can see, until each is filed under the account it is drawn on. Claude can file them for you by the account number printed on each check, or you can choose the account for each one below."}}</p>
 

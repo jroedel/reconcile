@@ -1,6 +1,6 @@
 {{define "title"}}{{t "Translations"}}{{end}}
 {{define "content"}}{{with .Data}}{{$p := .Place}}
-<p class="crumbs"><a href="/account">{{t "Your account"}}</a></p>
+{{template "crumbs" (trail $ (t "Your account") "/account")}}
 <h1>{{t "Translations"}}</h1>
 <p>{{t "Every translation here is already on the pages. Look them over: keep the words, change them, or send them back to Claude with a note saying what is wrong."}}</p>
 <p><a href="/account/keys">{{t "Your API keys"}}</a></p>

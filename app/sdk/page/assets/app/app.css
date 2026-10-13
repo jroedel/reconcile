@@ -306,7 +306,16 @@ code.key {
 
 /* ---------------------------------------------------------------- lists */
 
+/*
+ * The way up from a page, from the widest place down (page.Trail). The
+ * marks between the steps are the stylesheet's, so a screen reader reads
+ * a list of places rather than the marks; "·" was the mark before, and it
+ * is the one the pages use between facts, "Card · USD", which made a
+ * breadcrumb read like a line of details.
+ */
 .crumbs { margin: 0 0 -0.5rem; font-size: 0.9rem; }
+.crumbs ol { display: flex; flex-wrap: wrap; gap: 0.15rem 0; margin: 0; padding: 0; list-style: none; }
+.crumbs li + li::before { content: "›"; margin: 0 0.45rem; color: var(--muted); }
 
 /* A row of links that pick what the page shows: a language, a queue. The
  * one in force is marked as the current page rather than by colour alone. */
@@ -475,7 +484,7 @@ table.ledger { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
 @page report { size: landscape; margin: 1.2cm; }
 
 @media print {
-	.masthead, .foot, .no-print, form { display: none !important; }
+	.masthead, .crumbs, .foot, .no-print, form { display: none !important; }
 	body { background: #fff; color: #000; display: block; min-height: 0; }
 	main { max-width: none; padding: 0; }
 	.report-page { page: report; }

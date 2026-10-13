@@ -1,6 +1,6 @@
 {{define "title"}}{{t "Change the report"}} · {{.Data.Report.Saved.Saved.Title}}{{end}}
 {{define "content"}}{{$e := .Data}}{{$v := $e.Report}}{{$r := $v.Report}}{{$f := $e.Typed}}
-<p class="crumbs"><a href="{{$v.Base}}">{{$v.Saved.Saved.Title}}</a></p>
+{{template "crumbs" (trail $ $v.Frame.Name $v.Path (t "Reports") (printf "%s/reports" $v.Path) $v.Saved.Saved.Title $v.Base)}}
 <h1>{{t "Change the report"}}</h1>
 <p class="hint">{{template "style-name" $v.Style.Key}}</p>
 {{template "report-problem" $e.Problem}}

@@ -1,6 +1,6 @@
 {{define "title"}}{{t "Receipts"}} · {{.Data.Name}}{{end}}
 {{define "content"}}{{$v := .Data}}
-<p class="crumbs"><a href="{{$v.Path}}">{{$v.Name}}</a></p>
+{{template "crumbs" (trail $ $v.Name $v.Path)}}
 <h1>{{t "Receipts"}}</h1>
 {{template "done" $v.Done}}
 {{template "uploaded" $v.Uploaded}}

@@ -1,6 +1,6 @@
 {{define "title"}}{{t "Payees"}} · {{.Data.OwnerName}}{{end}}
 {{define "content"}}{{$v := .Data}}
-<p class="crumbs"><a href="{{$v.OwnerPath}}">{{$v.OwnerName}}</a></p>
+{{template "crumbs" (trail $ $v.OwnerName $v.OwnerPath)}}
 <h1>{{t "Payees"}}</h1>
 <p class="hint">{{t "Whom the money went to. A check's payee is read off its image; any other payment's is chosen on its page. The same list for every account here."}}</p>
 <p><a href="{{$v.Path}}/{{$v.ThisYear}}">{{t "Payments by payee, {year}" "year" $v.ThisYear}}</a> · <a href="{{$v.Path}}/{{$v.LastYear}}">{{$v.LastYear}}</a></p>

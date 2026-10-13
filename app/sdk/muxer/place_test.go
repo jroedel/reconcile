@@ -52,6 +52,38 @@ func TestTheTopBarSaysWhereAPageBelongs(t *testing.T) {
 		}
 	}
 
+	// The way up names the account by the account's page wherever it is,
+	// and the month by that month's transactions. The organization is the
+	// top bar's, so no breadcrumb repeats it; for the treasurer the account
+	// is the bar's, and the month is the way up.
+	account := `<li><a href="` + e.account + `">Parish checking</a></li>`
+	month := `<li><a href="` + e.account + `/transactions?month=2026-07">2026-07</a></li>`
+	for path, want := range map[string][]string{
+		grocery:                           {account, month},
+		grocery + "/explain":              {account, month, `<li><a href="` + grocery + `">CORNER GROCERY</a></li>`},
+		e.account + "/sort?month=2026-07": {account, month},
+		statement:                         {account, `<li><a href="` + e.account + `/months">Month by month</a></li>`},
+		e.account + "/transactions":       {account},
+		e.account + "/months":             {account},
+		e.org + "/payees":                 nil,
+		e.org + "/reports/income-expenses-by-month": {`<li><a href="` + e.org + `/reports">Reports</a></li>`},
+	} {
+		body := e.owner.get(path).Body.String()
+		for _, w := range want {
+			if !strings.Contains(body, w) {
+				t.Errorf("the way up from %s lacks %s", path, w)
+			}
+		}
+
+		if strings.Contains(body, `<li><a href="`+e.org+`">`) {
+			t.Errorf("the way up from %s repeats the organization the top bar names", path)
+		}
+	}
+
+	if body := treasurer.get(grocery).Body.String(); strings.Contains(body, account) || !strings.Contains(body, month) {
+		t.Errorf("the treasurer's way up from the grocery:\n%s", body)
+	}
+
 	stranger := signUpAs("stranger@example.org")
 	for _, path := range []string{e.org, e.account, grocery, statement, e.project} {
 		if body := stranger.get(path).Body.String(); strings.Contains(body, `class="place"`) || strings.Contains(body, "St. Joseph Parish") {

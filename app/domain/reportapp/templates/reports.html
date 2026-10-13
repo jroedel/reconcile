@@ -1,6 +1,6 @@
 {{define "title"}}{{t "Reports"}} · {{.Data.Books.Name}}{{end}}
 {{define "content"}}{{$v := .Data}}
-<p class="crumbs"><a href="{{$v.Path}}">{{$v.Books.Name}}</a></p>
+{{template "crumbs" (trail $ $v.Books.Name $v.Path)}}
 <h1>{{t "Reports"}}</h1>
 {{template "report-done" $v.Done}}
 <p class="hint">{{t "A report adds up the money in these books, as it stands today. Run one for any months; sorting a charge changes the next report at once."}}</p>

@@ -7,6 +7,6 @@
 <form method="post" action="/accounts">
   <input type="hidden" name="org" value="{{if .Org.Name}}{{.Org.ID}}{{end}}">
   {{template "accountfields" .}}
-  <button type="submit">{{t "Make the account"}}</button>
+  <p class="actions"><button type="submit">{{t "Make the account"}}</button> <a class="button quiet" href="{{if .Org.Name}}/orgs/{{.Org.ID}}{{else}}/{{end}}">{{t "Cancel"}}</a></p>
 </form>
 {{end}}{{end}}

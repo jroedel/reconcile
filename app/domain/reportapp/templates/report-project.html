@@ -1,7 +1,7 @@
 {{define "title"}}{{with .Data.Saved}}{{.Saved.Title}}{{else}}{{template "style-name" .Data.Style.Key}}{{end}} · {{.Data.Frame.Name}}{{end}}
 {{define "content"}}{{$v := .Data}}{{$r := $v.Project}}{{$accounts := not $r.Choices.HideAccounts}}
 <div class="report-page">
-<p class="crumbs no-print"><a href="{{$v.Path}}">{{$r.Name}}</a> · <a href="{{$v.Path}}/reports">{{t "Reports"}}</a></p>
+{{template "crumbs" (trail $ $r.Name $v.Path (t "Reports") (printf "%s/reports" $v.Path))}}
 
 {{template "report-head" $v}}
 

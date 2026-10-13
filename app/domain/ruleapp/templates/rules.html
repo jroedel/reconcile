@@ -1,6 +1,6 @@
 {{define "title"}}{{t "Sorting rules"}} · {{.Data.Book.Account.Name}}{{end}}
 {{define "content"}}{{$v := .Data}}{{$b := $v.Book}}
-<p class="crumbs"><a href="{{$v.Path}}">{{$b.Account.Name}}</a> · <a href="{{$v.Path}}/transactions">{{t "Transactions"}}</a></p>
+{{template "crumbs" (trail $ $b.Account.Name $v.Path)}}
 <h1>{{t "Sorting rules"}}</h1>
 <p class="hint">{{t "A rule sorts each new transaction whose description has its text as the statement arrives, and marks it so you can check it. The longest text wins. A rule never changes what a person has sorted."}}</p>
 {{template "done" $v}}
