@@ -2,6 +2,7 @@ package page
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
@@ -92,6 +93,9 @@ type Renderer struct {
 	// see OfferApp.
 	manifest, appScript string
 
+	// place answers where a page belongs, for the top bar: see Placing.
+	place Placer
+
 	// images is the site's icons, by file name, from /static/img/. An icon
 	// changes only when the brand does, and then under a new file name: the
 	// name is the version, as stewards has it.
@@ -118,6 +122,13 @@ type Shell struct {
 	// page of somebody who is not, and User is then the zero User.
 	User     userbus.User
 	SignedIn bool
+
+	// Place is where the page belongs, as its reader may see it -- the
+	// organization, or an account or project of its own -- for the top
+	// bar, where a person goes back to start again. Nil on a page that
+	// belongs to nothing, like the list of organizations: a pointer,
+	// because a template's with counts every struct as present.
+	Place *Place
 
 	// Manifest and AppScript are the installable app, on the pages of
 	// somebody signed in alone, and empty on everybody else's: see
@@ -341,6 +352,68 @@ func (rn *Renderer) OfferApp(manifest, script string) {
 	rn.manifest, rn.appScript = manifest, script
 }
 
+// Place is where a page belongs: a name to show and the page to go to.
+type Place struct {
+	Name string
+	Path string
+}
+
+// Placer answers the place holding s as actor sees it, or false for a
+// scope they cannot see. The renderer knows no organization; main's
+// muxer gives it one that asks tenancybus, every time.
+type Placer func(ctx context.Context, actor types.ID, s types.Scope) (Place, bool)
+
+// Placed is a page's data that says which scope it is in, when its address
+// does not: a transaction's, a receipt's, a payee's page.
+type Placed interface {
+	PageScope() types.Scope
+}
+
+// Placing gives the renderer the way to find a page's place. Called while
+// the routes are built, before anything is served.
+func (rn *Renderer) Placing(p Placer) { rn.place = p }
+
+// ScopePath is a scope's own page: an organization's, an account's or a
+// project's.
+func ScopePath(s types.Scope) string {
+	switch s.Kind {
+	case types.ScopeOrg:
+		return "/orgs/" + s.ID.String()
+	case types.ScopeProject:
+		return "/projects/" + s.ID.String()
+	}
+
+	return "/accounts/" + s.ID.String()
+}
+
+// scopePaths is each scope's first path segment.
+var scopePaths = map[string]types.ScopeKind{"orgs": types.ScopeOrg, "accounts": types.ScopeAccount, "projects": types.ScopeProject}
+
+// pageScope is the scope a page is in: what its data says, or else what
+// its address says. Every page under /orgs/{id}, /accounts/{id} and
+// /projects/{id} is that one's, so those pages need say nothing; the
+// handful addressed by an ID of their own (a transaction, a statement, a
+// receipt, a payee, a saved report) implement Placed.
+func pageScope(r *http.Request, data any) types.Scope {
+	if p, ok := data.(Placed); ok {
+		return p.PageScope()
+	}
+
+	first, _, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/"), "/")
+
+	kind, ok := scopePaths[first]
+	if !ok {
+		return types.Scope{}
+	}
+
+	id, err := types.ParseID(r.PathValue("id"))
+	if err != nil {
+		return types.Scope{}
+	}
+
+	return types.Scope{Kind: kind, ID: id}
+}
+
 // StylesheetPath is where the stylesheet is served, including its hash.
 func (rn *Renderer) StylesheetPath() string { return rn.cssPath }
 
@@ -380,12 +453,20 @@ func (rn *Renderer) Render(w http.ResponseWriter, r *http.Request, status int, n
 		manifest, appScript = rn.manifest, rn.appScript
 	}
 
+	var place *Place
+	if s := pageScope(r, data); signedIn && rn.place != nil && !s.Zero() {
+		if p, ok := rn.place(r.Context(), user.ID, s); ok {
+			place = &p
+		}
+	}
+
 	var buf bytes.Buffer
 
 	if err := set.ExecuteTemplate(&buf, "base", Shell{
 		Stylesheet: rn.cssPath,
 		Lang:       lang,
 		Langs:      links,
+		Place:      place,
 		User:       user,
 		SignedIn:   signedIn,
 		Manifest:   manifest,

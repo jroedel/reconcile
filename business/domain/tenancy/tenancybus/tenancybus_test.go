@@ -202,6 +202,33 @@ func TestInheritance(t *testing.T) {
 	if len(ov.Orgs) != 0 || len(ov.Accounts) != 1 || ov.Accounts[0].ID != acct.ID {
 		t.Errorf("treasurer's overview = %+v", ov)
 	}
+
+	// Home, at the top of each page: the organization for whoever holds a
+	// role on it, the account or project itself for whoever holds only
+	// that, and nothing at all for a stranger.
+	for _, tc := range []struct {
+		who   types.ID
+		scope types.Scope
+		home  types.Scope
+		name  string
+	}{
+		{viewer, acct.Scope(), o.Scope(), "Movement"},
+		{viewer, proj.Scope(), o.Scope(), "Movement"},
+		{viewer, o.Scope(), o.Scope(), "Movement"},
+		{treasurer, acct.Scope(), acct.Scope(), acct.Name},
+		{pilgrim, proj.Scope(), proj.Scope(), "World Youth Day"},
+	} {
+		home, name, err := w.ten.Home(t.Context(), tc.who, tc.scope)
+		if err != nil || home != tc.home || name != tc.name {
+			t.Errorf("%s's home from %s: %v %q %v, want %v %q", tc.who.String()[:6], tc.scope.Kind, home, name, err, tc.home, tc.name)
+		}
+	}
+
+	for _, s := range []types.Scope{o.Scope(), acct.Scope()} {
+		if _, _, err := w.ten.Home(t.Context(), pilgrim, s); !errors.Is(err, tenancybus.ErrNotFound) {
+			t.Errorf("the pilgrim's home from %s: %v, want ErrNotFound", s.Kind, err)
+		}
+	}
 }
 
 func TestWhoMayMakeWhatInAnOrganization(t *testing.T) {

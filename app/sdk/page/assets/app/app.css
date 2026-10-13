@@ -109,6 +109,27 @@ p { margin: 0 0 1rem; }
 	text-decoration: none;
 }
 
+/*
+ * Where the page belongs: its organization, or the account or project
+ * somebody was given on its own. It is home, one tap from every page,
+ * which is what people did anyway by finding the organization's name
+ * somewhere on the page. A long name is cut short rather than wrapped, so
+ * the bar stays one row; the page it opens has it whole.
+ */
+.place {
+	flex: 1 1 auto;
+	min-width: 0;
+	padding-left: 0.75rem;
+	border-left: 1px solid var(--line);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--ink);
+	font-size: 0.95rem;
+	text-decoration: none;
+}
+.place:hover, .place:focus-visible { text-decoration: underline; }
+
 .masthead-signin { margin-left: auto; }
 
 .menu { flex: none; margin: 0 0 0 auto; }

@@ -741,6 +741,59 @@ func (b *Business) Project(ctx context.Context, actor, id types.ID) (Project, Ac
 	return p, access, err
 }
 
+// Home is the widest place holding s that the actor can see, and its name:
+// for the top of every page, where a person goes back to start again. An
+// account's or project's home is its organization when the actor holds a
+// role there, and otherwise the account or project itself -- somebody given
+// one account sees the account, not where it lives, the same answer the
+// account's own page gives. ErrNotFound for a scope the actor cannot see.
+func (b *Business) Home(ctx context.Context, actor types.ID, s types.Scope) (types.Scope, string, error) {
+	var (
+		orgID types.ID
+		name  string
+	)
+
+	switch s.Kind {
+	case types.ScopeOrg:
+		o, _, err := b.Org(ctx, actor, s.ID)
+		if err != nil {
+			return types.Scope{}, "", err
+		}
+
+		return s, o.Name, nil
+	case types.ScopeAccount:
+		a, _, err := b.Account(ctx, actor, s.ID)
+		if err != nil {
+			return types.Scope{}, "", err
+		}
+
+		orgID, name = a.OrgID, a.Name
+	case types.ScopeProject:
+		p, _, err := b.Project(ctx, actor, s.ID)
+		if err != nil {
+			return types.Scope{}, "", err
+		}
+
+		orgID, name = p.OrgID, p.Name
+	default:
+		return types.Scope{}, "", ErrNotFound
+	}
+
+	if orgID.Zero() {
+		return s, name, nil
+	}
+
+	o, _, err := b.Org(ctx, actor, orgID)
+	switch {
+	case errors.Is(err, ErrNotFound):
+		return s, name, nil
+	case err != nil:
+		return types.Scope{}, "", err
+	}
+
+	return o.Scope(), o.Name, nil
+}
+
 // EditProject changes what was typed about a project.
 //
 // Saved on its page, it takes off the mark of a program that made or

@@ -625,6 +625,10 @@ type accountFormView struct {
 	Problem string
 }
 
+// PageScope is the organization the account is being made in, if any,
+// for the top bar.
+func (v accountFormView) PageScope() types.Scope { return orgScope(v.Org) }
+
 // inOrg is the organization named by ?org= or the org field, checked to be
 // one the reader can do p in; the zero Org for none.
 func (a app) inOrg(w http.ResponseWriter, r *http.Request, me userbus.User, raw string, p tenancybus.Permission) (tenancybus.Org, bool) {
@@ -877,6 +881,19 @@ type projectFormView struct {
 	Org     tenancybus.Org
 	Fields  tenancybus.ProjectFields
 	Problem string
+}
+
+// PageScope is the organization the project is being made in, if any.
+func (v projectFormView) PageScope() types.Scope { return orgScope(v.Org) }
+
+// orgScope is an organization's scope, or none for the zero Org: a form
+// for something on its own belongs to nothing yet.
+func orgScope(o tenancybus.Org) types.Scope {
+	if o.ID.Zero() {
+		return types.Scope{}
+	}
+
+	return o.Scope()
 }
 
 func (a app) newProject(w http.ResponseWriter, r *http.Request) {
