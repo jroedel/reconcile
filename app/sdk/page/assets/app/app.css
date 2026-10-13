@@ -80,18 +80,28 @@ p { margin: 0 0 1rem; }
 
 /* ---------------------------------------------------------------- chrome */
 
+/*
+ * One row at every width: the wordmark, and a menu behind three lines for
+ * the rest -- who is signed in, the languages, signing out. They were a
+ * second and third row on a phone before, and signing out, a form's button
+ * because it is a write, never sat on the line of the links beside it.
+ *
+ * The menu is <details>, so it opens and closes with no script, as every
+ * flow here must (docs/design.md). It does not close on a tap elsewhere;
+ * a tap on the three lines again, or on anything in it, does.
+ */
 .masthead {
+	position: relative;
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
-	flex-wrap: wrap;
-	gap: 0.5rem var(--gap);
-	padding: 0.75rem var(--gap);
+	gap: 0.75rem;
+	padding: 0.5rem var(--gap);
 	border-bottom: 1px solid var(--line);
 	background: var(--surface);
 }
 
 .wordmark {
+	flex: none;
 	font-weight: 700;
 	font-size: 1.15rem;
 	letter-spacing: 0.01em;
@@ -99,10 +109,73 @@ p { margin: 0 0 1rem; }
 	text-decoration: none;
 }
 
-.who { display: flex; align-items: center; gap: 0.75rem; margin-left: auto; font-size: 0.95rem; }
-.langs { display: flex; gap: 0.75rem; font-size: 0.9rem; }
-.lang { color: var(--muted); }
-.lang.is-on { color: var(--ink); font-weight: 600; }
+.masthead-signin { margin-left: auto; }
+
+.menu { flex: none; margin: 0 0 0 auto; }
+.masthead-signin + .menu { margin-left: 0; }
+.menu > summary {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 2.75rem;
+	height: 2.75rem;
+	border-radius: var(--radius);
+	color: var(--ink);
+	list-style: none;
+}
+.menu > summary::-webkit-details-marker { display: none; }
+.menu > summary:hover, .menu[open] > summary { background: var(--bg); }
+.menu > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.menu-panel {
+	position: absolute;
+	z-index: 10;
+	top: calc(100% - 0.25rem);
+	right: var(--gap);
+	width: min(18rem, calc(100vw - 2 * var(--gap)));
+	padding: 0.35rem 0;
+	background: var(--surface);
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	box-shadow: 0 6px 24px rgb(0 0 0 / 0.14);
+}
+.menu-panel nav > a, .menu-panel .menu-out button {
+	display: block;
+	width: 100%;
+	padding: 0.7rem 1rem;
+	color: var(--ink);
+	text-align: left;
+	text-decoration: none;
+}
+.menu-panel nav > a:hover, .menu-panel .menu-out button:hover { background: var(--bg); }
+.menu-panel .me { border-bottom: 1px solid var(--line); margin-bottom: 0.35rem; }
+.menu-panel .me strong { display: block; overflow: hidden; text-overflow: ellipsis; }
+.menu-panel .me span { color: var(--muted); font-size: 0.85rem; }
+
+/* The languages are one row, each in its own name, the current one filled:
+ * at 360 px each still has 90 of them, room for "Português". */
+.menu-panel .langs {
+	display: flex;
+	margin: 0.5rem 1rem;
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	overflow: hidden;
+}
+.menu-panel .lang { flex: 1; padding: 0.5rem 0.25rem; text-align: center; font-size: 0.9rem; text-decoration: none; }
+.menu-panel .lang + .lang { border-left: 1px solid var(--line); }
+.lang { color: var(--accent); }
+.lang.is-on { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+
+/* Signing out is set apart below a rule, last, where it is not tapped on
+ * the way to something else. */
+.menu-panel .menu-out { margin-top: 0.35rem; border-top: 1px solid var(--line); }
+.menu-panel .menu-out button {
+	min-height: 0;
+	border-radius: 0;
+	background: none;
+	font-weight: inherit;
+	cursor: pointer;
+}
 
 .foot {
 	padding: var(--gap);

@@ -13,15 +13,22 @@
 <body>
 <header class="masthead">
 <a class="wordmark" href="/">Reconcile</a>
-<nav class="who" aria-label="{{t "Your account"}}">
-{{if .SignedIn}}{{if .User.SiteAdmin}}<a href="/admin">{{t "Administration"}}</a>
-{{end}}<a href="/account">{{.User.Named}}</a>
-<form method="post" action="/sign-out" class="inline"><button type="submit" class="link">{{t "Sign out"}}</button></form>
-{{else}}<a href="/sign-in">{{t "Sign in"}}</a>{{end}}
-</nav>
-<nav class="langs" aria-label="{{t "Language"}}">
+{{if not .SignedIn}}<a class="masthead-signin" href="/sign-in">{{t "Sign in"}}</a>
+{{end}}<details class="menu">
+<summary aria-label="{{t "Menu"}}"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></summary>
+<div class="menu-panel">
+{{if .SignedIn}}<nav aria-label="{{t "Your account"}}">
+<a class="me" href="/account"><strong>{{.User.Named}}</strong><span>{{t "Your account"}}</span></a>
+<a href="/">{{t "Your organizations"}}</a>
+<a href="/receipts">{{t "Receipts waiting for a match"}}</a>
+{{if .User.SiteAdmin}}<a href="/admin">{{t "Administration"}}</a>
+{{end}}</nav>
+{{end}}<nav class="langs" aria-label="{{t "Language"}}">
 {{range .Langs}}{{if .Current}}<span class="lang is-on" aria-current="true" lang="{{.Lang}}">{{.Name}}</span>{{else}}<a class="lang" href="{{.URL}}" hreflang="{{.Lang}}" lang="{{.Lang}}">{{.Name}}</a>{{end}}
 {{end}}</nav>
+{{if .SignedIn}}<form method="post" action="/sign-out" class="menu-out"><button type="submit">{{t "Sign out"}}</button></form>
+{{end}}</div>
+</details>
 </header>
 <main>
 {{block "content" .}}{{end}}
