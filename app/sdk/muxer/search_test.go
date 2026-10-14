@@ -2,6 +2,7 @@ package muxer
 
 import (
 	"html"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
@@ -66,4 +67,47 @@ func TestSearchingAnAccount(t *testing.T) {
 	opened := html.UnescapeString(m[1])
 	wantBody(t, e.owner.get(opened), "Back to the transactions you found")
 	wantRedirect(t, e.owner.post(opened, sort), e.account+"/transactions?category=kind%3Aexpense")
+}
+
+// An organization's page shows its newest and a way to look for more; its
+// list searches every account and names each; a project's lists its parts
+// alone, and to somebody given only the project shows them without links
+// to accounts they cannot open, and nothing of the organization.
+func TestSearchingAnOrganizationAndAProject(t *testing.T) {
+	t.Parallel()
+
+	e, txs, _, signUpAs := sorted(t)
+	grocery := txs["CORNER GROCERY"]
+	choices := options(e.owner.get(grocery).Body.String())
+
+	sort := url.Values{"action": {"save"}, "amount-0": {""}, "category-0": {choices["Groceries"]}, "project-0": {choices["World Youth Day"]}, "memo-0": {""}}
+	wantRedirect(t, e.owner.post(grocery, sort), e.account+"/transactions?month=2026-07&done=sorted")
+
+	wantBody(t, e.owner.get(e.org), "Latest transactions", `action="`+e.org+`/transactions"`, ">ELECTRIC CO<", "See more, and choose which")
+
+	coffee := e.owner.get(e.org + "/transactions?q=coffee").Body.String()
+	for _, want := range []string{"2 transactions fit", "<th>Account</th>", "<td>Parish checking</td>", "Every account", "Sorted by a rule"} {
+		if !strings.Contains(coffee, want) {
+			t.Errorf("the organization's coffee: no %q in\n%s", want, coffee)
+		}
+	}
+
+	project := e.owner.get(e.project + "/transactions").Body.String()
+	if !strings.Contains(project, "1 transactions fit") || !strings.Contains(project, ">CORNER GROCERY<") || strings.Contains(project, "COFFEE") || strings.Contains(project, "Sorted by a rule") {
+		t.Errorf("the project's list:\n%s", project)
+	}
+
+	wantBody(t, e.owner.get(e.project+"/book"), `href="`+e.project+`/transactions"`)
+
+	wantRedirect(t, e.owner.post(e.project+"/people", url.Values{"email": {"pilgrim@example.org"}, "role": {"viewer"}}), e.project+"?done=granted")
+	pilgrim := signUpAs("pilgrim@example.org")
+
+	seen := pilgrim.get(e.project + "/transactions?q=grocery").Body.String()
+	if !strings.Contains(seen, "CORNER GROCERY") || strings.Contains(seen, `href="`+grocery) {
+		t.Errorf("the pilgrim's list of the project:\n%s", seen)
+	}
+
+	if rec := pilgrim.get(e.org + "/transactions"); rec.Code != http.StatusNotFound {
+		t.Errorf("the pilgrim, the organization's list: %d", rec.Code)
+	}
 }

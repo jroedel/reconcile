@@ -428,6 +428,11 @@ table.ledger { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
 .search-more { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 0 var(--gap); margin-top: var(--gap); }
 .search-more select, .search-more input { width: 100%; }
 
+/* The organization's search box: the words and the button on one line. */
+.inline-search { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: var(--gap); }
+.inline-search label { flex-basis: 100%; }
+.inline-search input { flex: 1; min-width: 10rem; }
+
 /* ---------------------------------------------------------------- receipts */
 
 /*

@@ -60,6 +60,13 @@ type HolderOption interface {
 	ByHolder(ctx context.Context, actor, accountID types.ID) (bool, error)
 }
 
+// Latester is the part of ledgerbus this app uses for the newest
+// transactions on an organization's page, with a way to look for more
+// (docs/explorer.md).
+type Latester interface {
+	Latest(ctx context.Context, actor, orgID types.ID, n int) ([]ledgerbus.Row, error)
+}
+
 // Figurer is the part of ledgerbus this app uses for an organization's
 // lists: beside each account and project, its days, how many transactions
 // and how much money, so that a busy one is told from a quiet one without
@@ -95,6 +102,10 @@ type Config struct {
 	// Figures says how much each account and project in an organization's
 	// lists has held. Nil says nothing.
 	Figures Figurer
+
+	// Latest is the organization's newest transactions, for its page. Nil
+	// shows none.
+	Latest Latester
 
 	// Mail may be nil: an invitation is then logged as not sent, and the
 	// grant is made all the same -- the person can still sign in.
@@ -469,6 +480,10 @@ type orgView struct {
 	AccountFigures map[types.ID]ledgerbus.Figures
 	ProjectFigures map[types.ID]ledgerbus.Figures
 
+	// Latest is the newest transactions of its accounts, not those for
+	// reference, with a way to look for any of them.
+	Latest []ledgerbus.Row
+
 	// Name is what was typed into the rename form, kept when refused.
 	Name string
 }
@@ -512,6 +527,7 @@ func (a app) orgPage(w http.ResponseWriter, r *http.Request, id types.ID, status
 	}
 
 	a.figures(r, me.ID, &view)
+	a.latest(r, me.ID, &view)
 
 	if edit != nil {
 		edit(&view)
@@ -548,6 +564,25 @@ func (a app) figures(r *http.Request, me types.ID, view *orgView) {
 	view.ProjectFigures, err = a.cfg.Figures.ProjectFigures(r.Context(), me, projects)
 	if err != nil {
 		a.cfg.Log.Error("the projects' figures could not be read", "request_id", web.RequestIDFrom(r.Context()), "error", err)
+	}
+}
+
+// latestShown is how many transactions the organization's page shows.
+const latestShown = 10
+
+// latest adds the newest transactions to the page. Like the figures, ones
+// that cannot be read are a card missing from the page, not a page that
+// fails.
+func (a app) latest(r *http.Request, me types.ID, view *orgView) {
+	if a.cfg.Latest == nil {
+		return
+	}
+
+	var err error
+
+	view.Latest, err = a.cfg.Latest.Latest(r.Context(), me, view.Org.ID, latestShown)
+	if err != nil {
+		a.cfg.Log.Error("the newest transactions could not be read", "request_id", web.RequestIDFrom(r.Context()), "error", err)
 	}
 }
 

@@ -200,6 +200,10 @@ type Storer interface {
 	// for reference, by name.
 	ProjectAccounts(ctx context.Context, projectID types.ID) ([]tenancybus.Account, error)
 
+	// Latest is the n newest transactions of the accounts, newest first,
+	// with their parts.
+	Latest(ctx context.Context, accounts []types.ID, n int) ([]Transaction, error)
+
 	// Reconcile stores a reconciliation and its history if the statement
 	// has none, and reports whether it did: one statement, so that two
 	// people marking at once cannot both.

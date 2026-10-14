@@ -267,6 +267,10 @@ func TestExploringAProject(t *testing.T) {
 			t.Errorf("the project's parts: %v, want %v", got, want)
 		}
 
+		if p := ex.Rows[0].Parts; len(p) != 1 || p[0].ProjectID != x.project {
+			t.Errorf("the parts a project's row names: %+v", p)
+		}
+
 		if ex.Rows[0].Readable != (who == x.owner) || len(ex.Accounts) != 1 {
 			t.Errorf("readable %v for the owner %v; accounts %+v", ex.Rows[0].Readable, who == x.owner, ex.Accounts)
 		}
@@ -380,5 +384,31 @@ func TestExploringOffersItsScopesChoices(t *testing.T) {
 		if want := s.Kind != types.ScopeProject; (len(ex.Projects) == 1 && ex.Projects[0].ID == x.project) != want {
 			t.Errorf("%s: the projects %+v", s.Kind, ex.Projects)
 		}
+	}
+}
+
+// The organization's newest, for its page: newest first, its accounts for
+// reference left out, and nothing for anyone without a role on it.
+func TestTheLatestOfAnOrganization(t *testing.T) {
+	w := newWorld(t)
+	x := newExplored(w)
+	ctx := t.Context()
+
+	rows, err := w.ledger.Latest(ctx, x.owner, x.org, 3)
+	if err != nil || len(rows) != 3 || rows[0].Transaction.Description != "ELECTRIC CO" || rows[2].Transaction.Description != "PARISH OFFERTORY" {
+		t.Fatalf("the latest three: %v, %v", rows, err)
+	}
+
+	if _, err := w.ten.SetAccountReference(ctx, now, x.owner, x.card, true); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err = w.ledger.Latest(ctx, x.owner, x.org, 20)
+	if err != nil || len(rows) != 6 || slices.ContainsFunc(rows, func(r ledgerbus.Row) bool { return r.Account.ID == x.card }) {
+		t.Errorf("without the card: %d, %v", len(rows), err)
+	}
+
+	if _, err := w.ledger.Latest(ctx, w.user("stranger@example.org"), x.org, 3); !errors.Is(err, ledgerbus.ErrNotFound) {
+		t.Errorf("a stranger: %v", err)
 	}
 }
