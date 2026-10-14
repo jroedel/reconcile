@@ -423,6 +423,11 @@ table.ledger { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
 .months { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; list-style: none; padding: 0; margin: 0 0 var(--gap); }
 .months a[aria-current] { font-weight: 600; color: var(--ink); text-decoration: none; }
 
+/* A search's further choices (docs/explorer.md): one under another on a
+   phone, side by side as the page widens. */
+.search-more { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 0 var(--gap); margin-top: var(--gap); }
+.search-more select, .search-more input { width: 100%; }
+
 /* ---------------------------------------------------------------- receipts */
 
 /*

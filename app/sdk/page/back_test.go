@@ -21,9 +21,12 @@ func TestReturnFrom(t *testing.T) {
 		{org + "/payees/2026", "payees-year"},
 		{"/transactions/0123456789abcdef0123456789abcdef/explain", "explain"},
 		{"/receipts", "receipts"},
+		{"/accounts/0123456789abcdef0123456789abcdef/transactions?q=coffee", "transactions"},
+		{org + "/transactions?category=kind%3Apassthrough", "transactions"},
+		{"/projects/0123456789abcdef0123456789abcdef/transactions", "transactions"},
 
 		// Not a page a way back is offered to, or not this site's.
-		{"/accounts/0123456789abcdef0123456789abcdef/transactions", ""},
+		{"/accounts/0123456789abcdef0123456789abcdef/months", ""},
 		{"//elsewhere.invalid" + org + "/payees/2026", ""},
 		{"https://elsewhere.invalid/receipts", ""},
 		{"/receipts\r\nLocation: /", ""},

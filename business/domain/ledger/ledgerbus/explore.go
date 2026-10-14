@@ -156,6 +156,12 @@ type Explored struct {
 	// which a search reads only when one is chosen.
 	Accounts []tenancybus.Account
 	LeftOut  []tenancybus.Account
+
+	// Categories and Projects are what the form offers: the lists the
+	// scope's parts are sorted with, by name, and the projects its parts
+	// may be in -- none on a project's own list, which is its parts.
+	Categories []categorybus.Category
+	Projects   []tenancybus.Project
 }
 
 // ReceiptCounts is how many receipts each of some transactions has.
@@ -204,6 +210,13 @@ func (b *Business) Explore(ctx context.Context, actor types.ID, scope types.Scop
 		searched = []tenancybus.Account{a}
 		c.Account = types.ID{}
 
+		mine, err := b.accounts.ProjectsFor(ctx, actor, tenancybus.Read)
+		if err != nil {
+			return Explored{}, err
+		}
+
+		ex.Projects = slices.DeleteFunc(mine, func(p tenancybus.Project) bool { return p.OrgID != a.OrgID })
+
 	case types.ScopeOrg:
 		access, err := b.accounts.AccessTo(ctx, actor, scope)
 		if err != nil {
@@ -214,7 +227,7 @@ func (b *Business) Explore(ctx context.Context, actor types.ID, scope types.Scop
 			return Explored{}, ErrNotFound
 		}
 
-		if ex.Accounts, _, err = b.accounts.Contents(ctx, actor, scope.ID); err != nil {
+		if ex.Accounts, ex.Projects, err = b.accounts.Contents(ctx, actor, scope.ID); err != nil {
 			return Explored{}, err
 		}
 
@@ -271,6 +284,11 @@ func (b *Business) Explore(ctx context.Context, actor types.ID, scope types.Scop
 		return Explored{}, ErrNotFound
 	}
 
+	var err error
+	if ex.Categories, err = b.lists(ctx, searched); err != nil {
+		return Explored{}, err
+	}
+
 	if scope.Kind != types.ScopeProject {
 		for _, a := range searched {
 			within.Accounts = append(within.Accounts, a.ID)
@@ -311,6 +329,37 @@ func (b *Business) Explore(ctx context.Context, actor types.ID, scope types.Scop
 	}
 
 	return ex, nil
+}
+
+// lists is the categories the accounts' parts are sorted with, each list
+// once, by name.
+func (b *Business) lists(ctx context.Context, accounts []tenancybus.Account) ([]categorybus.Category, error) {
+	var (
+		out  []categorybus.Category
+		seen = map[types.Scope]bool{}
+	)
+
+	for _, a := range accounts {
+		owner := categorybus.OwnerOf(a)
+		if seen[owner] {
+			continue
+		}
+
+		seen[owner] = true
+
+		list, err := b.categories.Of(ctx, owner)
+		if err != nil {
+			return nil, err
+		}
+
+		out = append(out, list...)
+	}
+
+	slices.SortFunc(out, func(x, y categorybus.Category) int {
+		return cmp.Or(strings.Compare(strings.ToLower(x.Name), strings.ToLower(y.Name)), strings.Compare(x.ID.String(), y.ID.String()))
+	})
+
+	return out, nil
 }
 
 // look reads the transactions within and keeps those that fit, in the

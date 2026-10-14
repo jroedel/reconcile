@@ -150,6 +150,7 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		e.project + "/budget", e.ownProject + "/budget",
 		e.org + "/budget", e.org + "/budget?year=2026",
 		e.account + "/transactions", e.ownAccount + "/transactions",
+		e.account + "/transactions?q=coffee&category=kind:expense&receipts=without", e.ownAccount + "/transactions?from=2026-01-01&check=byrule",
 		e.account + "/months", e.ownAccount + "/months",
 		e.account + "/rules", e.ownAccount + "/rules",
 		e.account + "/sort?month=2026-07", e.ownAccount + "/sort?month=2026-07",

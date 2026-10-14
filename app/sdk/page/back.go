@@ -40,6 +40,7 @@ var returnKinds = []struct {
 	{"report", regexp.MustCompile(`^/(orgs|accounts|projects)/` + idPattern + `/reports/[a-z-]+(/parts)?$`)},
 	{"report", regexp.MustCompile(`^/reports/` + idPattern + `(/parts)?$`)},
 	{"book", regexp.MustCompile(`^/projects/` + idPattern + `/book$`)},
+	{"transactions", regexp.MustCompile(`^/(orgs|accounts|projects)/` + idPattern + `/transactions$`)},
 	{"sort", regexp.MustCompile(`^/accounts/` + idPattern + `/sort$`)},
 	{"statement", regexp.MustCompile(`^/statements/` + idPattern + `$`)},
 	{"payees-year", regexp.MustCompile(`^/(orgs|accounts)/` + idPattern + `/payees/[0-9]{4}$`)},

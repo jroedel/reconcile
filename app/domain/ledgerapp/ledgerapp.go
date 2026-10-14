@@ -249,17 +249,20 @@ type transactionsView struct {
 	CanBookkeep bool
 
 	Months     []ledgerbus.Month
-	Month      string
-	Shown      []ledgerbus.Transaction
 	Statements []ledgerbus.Statement
 
-	// Unsorted shows only the month's transactions with a part that has
-	// no category: the treasurer's to-do list. ByRule shows only those a
-	// sorting rule sorted, for checking what a statement brought; Through
-	// those a person's program sorted through an API key, their Claude.
-	Unsorted bool
-	ByRule   bool
-	Through  bool
+	// Search is what was chosen (explore.go), and Found what fits it
+	// (docs/explorer.md). With nothing chosen it is the newest month, and
+	// Month names it whenever the search is one whole month: then the
+	// month's own figures and to-do list show above its transactions, as
+	// the month list always had them. Shown is the rows' transactions.
+	Search search
+	Found  found
+	Month  string
+	Shown  []ledgerbus.Transaction
+
+	// Groups is the categories to choose from, a kind at a time.
+	Groups []categorybus.Group
 
 	// Names of the categories and projects the shown parts point at.
 	Categories map[types.ID]string
@@ -351,18 +354,31 @@ func (a app) transactionsPage(w http.ResponseWriter, r *http.Request, status int
 		return
 	}
 
-	// The month asked for, or the newest there is.
-	view.Month = r.URL.Query().Get("month")
-	if view.Month == "" && len(view.Months) > 0 {
-		view.Month = view.Months[0].Month
+	// What was asked, or with nothing asked the newest month there is.
+	view.Search = searchOf(r.URL.Query())
+	if view.Search.Month == "" && !view.Search.Searched() && len(view.Months) > 0 {
+		view.Search.month(view.Months[0].Month)
 	}
 
-	if view.Month != "" {
-		if view.Shown, err = a.cfg.Ledger.Transactions(ctx, me.ID, id, view.Month); err != nil {
+	if len(view.Months) > 0 {
+		ex, err := a.cfg.Ledger.Explore(ctx, me.ID, types.AccountScope(id), view.Search.Criteria)
+		if err != nil {
 			a.failed(w, r, err)
 
 			return
 		}
+
+		view.Found = foundOf(ex)
+	}
+
+	view.Groups = categorybus.Grouped(view.Found.Categories)
+
+	for _, row := range view.Found.Rows {
+		view.Shown = append(view.Shown, row.Transaction)
+	}
+
+	if view.Search.Criteria.Statement() {
+		view.Month = view.Search.Criteria.From.String()[:7]
 
 		if view.Holders, err = a.cfg.Ledger.Holders(ctx, me.ID, id, view.Month); err != nil {
 			a.failed(w, r, err)
@@ -396,18 +412,6 @@ func (a app) transactionsPage(w http.ResponseWriter, r *http.Request, status int
 	}
 
 	view.OpenHolders = r.URL.Query().Get("holders") == "1"
-
-	switch q := r.URL.Query(); {
-	case q.Get("unsorted") == "1":
-		view.Unsorted = true
-		view.Shown = slices.DeleteFunc(view.Shown, ledgerbus.Transaction.Sorted)
-	case q.Get("byrule") == "1":
-		view.ByRule = true
-		view.Shown = slices.DeleteFunc(view.Shown, func(t ledgerbus.Transaction) bool { return !t.ByRule() })
-	case q.Get("through") == "1":
-		view.Through = true
-		view.Shown = slices.DeleteFunc(view.Shown, func(t ledgerbus.Transaction) bool { return t.ByProgram() == "" })
-	}
 
 	if err := a.names(r, me.ID, account, &view); err != nil {
 		a.failed(w, r, err)
