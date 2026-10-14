@@ -185,6 +185,7 @@ func run() error {
 	ledger := ledgerbus.NewBusiness(log, ledgerdb.NewStore(db), tenancy, files, categories, rules, shapes)
 	receipts := receiptbus.NewBusiness(log, receiptdb.NewStore(db), tenancy, ledger, files)
 	ledger.OnImport(receipts.AfterImport)
+	ledger.OnReceipts(receipts.Counts)
 	budgets := budgetbus.NewBusiness(log, budgetdb.NewStore(db), tenancy, ledger, categories)
 	export := exportbus.NewBusiness(log, tenancy, ledger, receipts, categories, files)
 

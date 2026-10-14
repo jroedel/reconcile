@@ -37,6 +37,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -195,6 +196,10 @@ type Storer interface {
 
 	// OnTransactions is the receipts attached to any of the transactions.
 	OnTransactions(ctx context.Context, ids []types.ID) ([]Receipt, error)
+
+	// Counts is how many receipts each of the transactions has, leaving
+	// out those with none.
+	Counts(ctx context.Context, ids []types.ID) (map[types.ID]int, error)
 
 	// WithContent is a receipt in the inbox, not removed, that has a file
 	// with these bytes, and whether there is one.
@@ -703,6 +708,31 @@ func (b *Business) OnTransactions(ctx context.Context, ids []types.ID) (map[type
 
 	return out, nil
 }
+
+// Counts is how many receipts each of the transactions has, asking
+// nobody's permission, as OnTransactions: for a search choosing those with
+// receipts or without (ledgerbus.OnReceipts), which has already decided
+// who may see the transactions. A search's thousands are counted rather
+// than read, and in batches rather than in one list longer than SQLite
+// takes.
+func (b *Business) Counts(ctx context.Context, ids []types.ID) (map[types.ID]int, error) {
+	out := map[types.ID]int{}
+
+	for batch := range slices.Chunk(ids, countBatch) {
+		counts, err := b.store.Counts(ctx, batch)
+		if err != nil {
+			return nil, err
+		}
+
+		maps.Copy(out, counts)
+	}
+
+	return out, nil
+}
+
+// countBatch is how many transactions Counts asks about at once: well
+// under the variables SQLite allows in one statement.
+const countBatch = 500
 
 // Suggestions is, for each receipt with an amount and a date, the
 // transactions it might be: in an account the actor may attach receipts

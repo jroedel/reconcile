@@ -105,6 +105,7 @@ type Accounts interface {
 	ProjectsFor(ctx context.Context, actor types.ID, p tenancybus.Permission) ([]tenancybus.Project, error)
 	ProjectNames(ctx context.Context, ids []types.ID) (map[types.ID]string, error)
 	Overview(ctx context.Context, actor types.ID) (tenancybus.Overview, error)
+	Contents(ctx context.Context, actor, orgID types.ID) ([]tenancybus.Account, []tenancybus.Project, error)
 }
 
 // Files is where statements' bytes are (filebus).
@@ -189,6 +190,15 @@ type Storer interface {
 	// Matching is the transactions in any of the accounts for exactly the
 	// amount, either way round, posted between from and to inclusive.
 	Matching(ctx context.Context, accounts []types.ID, amount money.Amount, from, to types.Date) ([]Transaction, error)
+
+	// Explore reads what a search looks through (explore.go): the
+	// transactions within, in the order posted, with the kinds of their
+	// parts' categories.
+	Explore(ctx context.Context, w Within) (Explorable, error)
+
+	// ProjectAccounts is the accounts a project has parts in, not those
+	// for reference, by name.
+	ProjectAccounts(ctx context.Context, projectID types.ID) ([]tenancybus.Account, error)
 
 	// Reconcile stores a reconciliation and its history if the statement
 	// has none, and reports whether it did: one statement, so that two
@@ -362,6 +372,7 @@ type Business struct {
 	rules      Rules
 	shapes     Shapes
 	imported   AfterImport
+	receipted  ReceiptCounts
 
 	// readings is the PDFs read lately, each once (readings.go).
 	readings readings

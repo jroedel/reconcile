@@ -1,7 +1,6 @@
 package ledgerbus
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"slices"
@@ -21,17 +20,17 @@ import (
 // for 1,240.00 in March" -- and both answer from the app's own reading of
 // the books rather than from whoever asks remembering them.
 //
-// Neither adds a query of its own. Find reads each account's transactions
-// as the month list does and keeps those that fit, and TryRule asks the
-// rules' own Meets and Pick, so that a rule tried here sorts exactly what
-// the same rule saved would.
+// Neither adds a query of its own. Find is the web's search over every
+// account the actor may read (explore.go), and TryRule asks the rules' own
+// Meets and Pick, so that a rule tried here sorts exactly what the same
+// rule saved would.
 
 // Query is what to look for. Every part is optional; the zero Query finds
 // the newest transactions of every account the actor may read.
 type Query struct {
-	// Text is words to look for in the description, the payee or the
-	// transaction's own description, as a rule looks for them: without
-	// case or runs of spaces.
+	// Text is words to look for in the description, the payee, the
+	// transaction's own description, a check's memo or a part's memo, as
+	// a rule looks for them: without case or runs of spaces.
 	Text string
 
 	// Min and Max bound the amount without its sign, when Has says they
@@ -72,38 +71,27 @@ type Finding struct {
 	More  int
 }
 
-// Find is the transactions that fit q in the accounts the actor may read.
+// Find is the transactions that fit q in the accounts the actor may read:
+// a search (explore.go) over all of them, newest first.
 func (b *Business) Find(ctx context.Context, actor types.ID, q Query) (Finding, error) {
 	accounts, err := b.readable(ctx, actor, q.Accounts)
 	if err != nil {
 		return Finding{}, err
 	}
 
-	from, to := q.From, q.To
-	if to.Zero() {
-		to = types.DateOf(time.Now().AddDate(1, 0, 0))
-	}
-
-	text := rulebus.Key(q.Text)
-
-	var all []Found
-
+	var within Within
 	for _, a := range accounts {
-		txs, err := b.store.Transactions(ctx, a.ID, from, to.AddDays(1))
-		if err != nil {
-			return Finding{}, err
-		}
-
-		for _, t := range txs {
-			if fits(t, text, q) {
-				all = append(all, Found{Transaction: t, Account: a})
-			}
-		}
+		within.Accounts = append(within.Accounts, a.ID)
 	}
 
-	slices.SortStableFunc(all, func(x, y Found) int {
-		return cmp.Compare(y.Transaction.PostedOn.String(), x.Transaction.PostedOn.String())
+	rows, err := b.look(ctx, within, accounts, Criteria{
+		Text: q.Text, Min: q.Min, Max: q.Max, HasMin: q.HasMin, HasMax: q.HasMax, Direction: q.Direction, From: q.From, To: q.To,
 	})
+	if err != nil {
+		return Finding{}, err
+	}
+
+	newestFirst(rows)
 
 	limit := q.Limit
 	if limit <= 0 {
@@ -112,27 +100,19 @@ func (b *Business) Find(ctx context.Context, actor types.ID, q Query) (Finding, 
 
 	limit = min(limit, MaxFind)
 
-	if len(all) <= limit {
-		return Finding{Found: all}, nil
+	var f Finding
+
+	for i, r := range rows {
+		if i == limit {
+			f.More = len(rows) - limit
+
+			break
+		}
+
+		f.Found = append(f.Found, Found{Transaction: r.Transaction, Account: r.Account})
 	}
 
-	return Finding{Found: all[:limit], More: len(all) - limit}, nil
-}
-
-// fits reports whether a transaction is one q asks for.
-func fits(t Transaction, text string, q Query) bool {
-	abs := t.Amount.Abs()
-
-	switch {
-	case text != "" && !strings.Contains(rulebus.Key(t.Words()), text) && !strings.Contains(rulebus.Key(t.OwnDescription), text):
-		return false
-	case q.HasMin && abs < q.Min, q.HasMax && abs > q.Max:
-		return false
-	case q.Direction == rulebus.In && t.Amount < 0, q.Direction == rulebus.Out && t.Amount > 0:
-		return false
-	}
-
-	return true
+	return f, nil
 }
 
 // readable is the accounts the actor may read, of those asked for, or all

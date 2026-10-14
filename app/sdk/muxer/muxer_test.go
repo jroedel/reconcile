@@ -109,6 +109,7 @@ func newSite(t *testing.T, want sqldb.Expected, configure func(*Config)) (http.H
 	budgets := budgetbus.NewBusiness(log, budgetdb.NewStore(db), tenancy, ledger, categories)
 	receipts := receiptbus.NewBusiness(log, receiptdb.NewStore(db), tenancy, ledger, files)
 	ledger.OnImport(receipts.AfterImport)
+	ledger.OnReceipts(receipts.Counts)
 
 	cfg := Config{
 		Log: log, DB: db, Expected: want, Render: render,
