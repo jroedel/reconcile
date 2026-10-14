@@ -361,6 +361,47 @@ func (s *Store) OnTransactions(ctx context.Context, ids []types.ID) ([]receiptbu
 	return s.load(ctx, `r.id IN (SELECT receipt_id FROM receipt_links WHERE transaction_id IN (`+marks(len(ids))+`))`, args...)
 }
 
+// Counts is how many receipts each of the transactions has, leaving out
+// those with none.
+func (s *Store) Counts(ctx context.Context, ids []types.ID) (map[types.ID]int, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id.String()
+	}
+
+	rows, err := s.db.QueryContext(ctx, `SELECT transaction_id, count(*) FROM receipt_links WHERE transaction_id IN (`+marks(len(ids))+`) GROUP BY transaction_id`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("counting receipts: %w", err)
+	}
+	defer rows.Close()
+
+	out := map[types.ID]int{}
+
+	for rows.Next() {
+		var (
+			id string
+			n  int
+		)
+
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, fmt.Errorf("counting receipts: %w", err)
+		}
+
+		tx, err := types.ParseID(id)
+		if err != nil {
+			return nil, fmt.Errorf("a receipt's transaction is unreadable: %w", err)
+		}
+
+		out[tx] = n
+	}
+
+	return out, rows.Err()
+}
+
 // WithContent is a receipt in the inbox, not removed, that has a file with
 // these bytes, and whether there is one: the first added, when the same
 // bytes went in twice before anybody asked.

@@ -149,13 +149,22 @@ bookmarked, sent to the accountant, or come back to.
 ## Storage
 
 No table and no column. A new `ledgerdb` read takes the accounts and the
-days, as `Transactions` does, and adds `EXISTS (SELECT 1 FROM splits …)`
-for a chosen category, kind (joined to `categories`) or project, which the
-indexes on `splits` answer. It never uses the
-`IN (SELECT … FROM transactions)` that took 37 seconds over 2,000 rows
-(`ledgerdb/rules.go`). The words, the amount, what is to check and the
-receipts are kept in Go, as in `Find` today, so that words are folded
-exactly as the sorting rules fold them.
+days, as `Transactions` does, and, for a project's list, the project:
+`id IN (SELECT transaction_id FROM splits WHERE project_id = ?)`, which
+SQLite builds once from the index on splits' project. That is not the shape
+that took 37 seconds over 2,000 rows (`ledgerdb/rules.go`), which was a list
+rebuilt for every row of an `UPDATE`.
+
+Everything else is decided in Go, part by part, as `Find` already did:
+the words, folded exactly as the sorting rules fold them; the amount; the
+category, the kind and the project, judged together on one part; what is
+to check; and the receipts, counted by receiptbus in batches. As planned,
+a chosen category, kind or project was to be an `EXISTS` in the read as
+well. It was left out because it was not needed: over 50,000 invented
+transactions in ten accounts, an organization's widest search took about
+a second and a year's a fifth of one (2026-10-13). If an organization ever
+outgrows that, the `EXISTS` can be added to the read, and Go still judges
+each part.
 
 The organization's card reads with `ORDER BY posted_on DESC LIMIT 10` on the
 `(account_id, posted_on)` index, not a whole read, because it runs every
