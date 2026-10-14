@@ -25,31 +25,24 @@ import (
 // Meets and Pick, so that a rule tried here sorts exactly what the same
 // rule saved would.
 
-// Query is what to look for. Every part is optional; the zero Query finds
-// the newest transactions of every account the actor may read.
+// Query is what to look for: the web's search's choices (Criteria), over
+// every account the actor may read, those named, or one organization's.
+// Every part is optional; the zero Query finds the newest transactions of
+// every account the actor may read but those for reference.
 type Query struct {
-	// Text is words to look for in the description, the payee, the
-	// transaction's own description, a check's memo or a part's memo, as
-	// a rule looks for them: without case or runs of spaces.
-	Text string
+	// Criteria is what a person chooses on the web, read the same way: a
+	// category, a kind and a project are judged on one part together, and
+	// a row's amount is then those parts'. Criteria.Account is one more of
+	// Accounts; Limit is DefaultFind when zero, at most MaxFind.
+	Criteria
 
-	// Min and Max bound the amount without its sign, when Has says they
-	// are set: an exact amount is both. Direction is "in", "out" or "".
-	Min, Max       money.Amount
-	HasMin, HasMax bool
-	Direction      rulebus.Direction
-
-	// From and To bound the date, both days included, when not zero.
-	From, To types.Date
-
-	// Accounts narrows the search to these; nil is every account the
-	// actor may read. One they may not read is left out, as if it were
-	// not there.
+	// Accounts narrows the search to these. One the actor may not read is
+	// left out, as if it were not there.
 	Accounts []types.ID
 
-	// Limit is the most to return, newest first: DefaultFind when zero,
-	// at most MaxFind.
-	Limit int
+	// Org narrows it to an organization's accounts, and with Accounts to
+	// those of them that are its.
+	Org types.ID
 }
 
 const (
@@ -58,61 +51,121 @@ const (
 	MaxFind     = 200
 )
 
-// Found is a transaction Find found, with its account.
+// Found is a transaction Find found, with its account, and the amount it
+// fits with: the parts that were chosen, which Part says when they are not
+// all of it, and are Parts.
 type Found struct {
 	Transaction Transaction
 	Account     tenancybus.Account
+	Amount      money.Amount
+	Part        bool
+	Parts       []Split
 }
 
-// Finding is Find's answer: the transactions, newest first, and how many
-// more fitted than the limit let through.
+// Finding is Find's answer: a page of the transactions, newest first, and
+// over all of them how many fitted and their money in and out.
 type Finding struct {
 	Found []Found
-	More  int
+
+	// More is how many fitted after this page, Next the Skip that reads
+	// them, and Total how many fitted in all. Sums is their money, a
+	// pending charge since posted left out as the web's search leaves it.
+	More, Next, Total int
+	Sums              []Sum
+
+	// LeftOut is the accounts for reference that were not searched,
+	// because none was named: their money is counted in another account,
+	// and a total with both would count it twice.
+	LeftOut []tenancybus.Account
 }
 
 // Find is the transactions that fit q in the accounts the actor may read:
 // a search (explore.go) over all of them, newest first.
 func (b *Business) Find(ctx context.Context, actor types.ID, q Query) (Finding, error) {
-	accounts, err := b.readable(ctx, actor, q.Accounts)
+	asked := slices.Clone(q.Accounts)
+	if !q.Account.Zero() {
+		asked = append(asked, q.Account)
+	}
+
+	accounts, err := b.findable(ctx, actor, q.Org, asked)
 	if err != nil {
 		return Finding{}, err
 	}
 
-	var within Within
+	var (
+		f      Finding
+		within Within
+	)
+
+	// Named, an account for reference is searched like any other: it is
+	// how a charge in one is found.
+	if len(asked) == 0 {
+		accounts = slices.DeleteFunc(accounts, func(a tenancybus.Account) bool {
+			if a.Reference {
+				f.LeftOut = append(f.LeftOut, a)
+			}
+
+			return a.Reference
+		})
+	}
+
 	for _, a := range accounts {
 		within.Accounts = append(within.Accounts, a.ID)
 	}
 
-	rows, err := b.look(ctx, within, accounts, Criteria{
-		Text: q.Text, Min: q.Min, Max: q.Max, HasMin: q.HasMin, HasMax: q.HasMax, Direction: q.Direction, From: q.From, To: q.To,
-	})
+	c := q.Criteria
+	c.Account = types.ID{}
+
+	if len(within.Accounts) == 0 {
+		return f, nil
+	}
+
+	rows, err := b.look(ctx, within, accounts, c)
 	if err != nil {
 		return Finding{}, err
 	}
 
 	newestFirst(rows)
 
-	limit := q.Limit
+	f.Total, f.Sums = len(rows), sums(rows)
+
+	limit := c.Limit
 	if limit <= 0 {
 		limit = DefaultFind
 	}
 
-	limit = min(limit, MaxFind)
+	skip := min(max(c.Skip, 0), len(rows))
+	end := min(skip+min(limit, MaxFind), len(rows))
 
-	var f Finding
+	for _, r := range rows[skip:end] {
+		f.Found = append(f.Found, Found{Transaction: r.Transaction, Account: r.Account, Amount: r.Amount, Part: r.Part, Parts: r.Parts})
+	}
 
-	for i, r := range rows {
-		if i == limit {
-			f.More = len(rows) - limit
-
-			break
-		}
-
-		f.Found = append(f.Found, Found{Transaction: r.Transaction, Account: r.Account})
+	if end < len(rows) {
+		f.More, f.Next = len(rows)-end, end
 	}
 
 	return f, nil
+}
+
+// findable is the accounts the actor may read among those asked for, or
+// all of them, within the organization when one is given: one the actor
+// holds no role on is ErrNotFound, as everywhere.
+func (b *Business) findable(ctx context.Context, actor, org types.ID, asked []types.ID) ([]tenancybus.Account, error) {
+	if org.Zero() {
+		return b.readable(ctx, actor, asked)
+	}
+
+	in, _, err := b.accounts.Contents(ctx, actor, org)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(asked) == 0 {
+		return in, nil
+	}
+
+	return slices.DeleteFunc(in, func(a tenancybus.Account) bool { return !slices.Contains(asked, a.ID) }), nil
 }
 
 // readable is the accounts the actor may read, of those asked for, or all

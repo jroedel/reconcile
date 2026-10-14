@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -181,6 +182,78 @@ func TestReadingTheBooksThroughTheAPI(t *testing.T) {
 	}
 }
 
+// find_transactions with the web's search's choices: a kind judged on one
+// part, with the part marked and its amount; not sorted yet; a project;
+// one organization; a page with the totals of every page; and a choice a
+// program got wrong said back to it. Everything invented.
+func TestFindingThroughTheAPIWithTheSearchsChoices(t *testing.T) {
+	t.Parallel()
+
+	b := newBooked(t)
+	s, e, key := b.s, b.e, b.key
+
+	wantRedirect(t, e.owner.post(e.org+"/categories", url.Values{"name": {"Groceries"}, "kind": {"expense"}}), e.org+"/categories?done=added")
+
+	grocery := transactionsOf(t, e.owner, e.account)["CORNER GROCERY"]
+	choices := options(e.owner.get(grocery).Body.String())
+
+	wantRedirect(t, e.owner.post(grocery, url.Values{
+		"action":   {"save"},
+		"amount-0": {"30.00"}, "category-0": {choices["Groceries"]}, "project-0": {choices["World Youth Day"]}, "memo-0": {""},
+		"amount-1": {"3.99"}, "category-1": {choices["Personal, repaid"]}, "project-1": {""}, "memo-1": {"my bulbs"},
+	}), e.account+"/transactions?month=2026-07&done=sorted")
+
+	pass := s.get(t, "/api/v1/transactions?kind=passthrough", key)
+	got := list(t, pass, "transactions")
+
+	if len(got) != 1 || field(got[0], "matched_amount") != "-3.99" || field(got[0], "amount") != "-33.99" || field(pass, "total") != 1.0 {
+		t.Fatalf("all pass-through: %v", pass)
+	}
+
+	parts := field(got[0], "parts").([]any)
+	if len(parts) != 2 || field(parts[0], "matched") != nil || field(parts[1], "matched") != true {
+		t.Errorf("which part is pass-through: %v", parts)
+	}
+
+	if sums := list(t, pass, "sums"); len(sums) != 1 || field(sums[0], "out") != "-3.99" || field(sums[0], "in") != "0.00" {
+		t.Errorf("all pass-through's money: %v", sums)
+	}
+
+	project := strings.TrimPrefix(e.project, "/projects/")
+	if got := list(t, s.get(t, "/api/v1/transactions?project="+project, key), "transactions"); len(got) != 1 || field(got[0], "matched_amount") != "-30.00" {
+		t.Errorf("the project's: %v", got)
+	}
+
+	if got := s.get(t, "/api/v1/transactions?category=none&direction=out", key); field(got, "total") != 3.0 {
+		t.Errorf("not sorted yet, money out: %v", got)
+	}
+
+	org := strings.TrimPrefix(e.org, "/orgs/")
+
+	page := s.get(t, "/api/v1/transactions?organization="+org+"&limit=2&skip=2", key)
+	if len(list(t, page, "transactions")) != 2 || field(page, "total") != 6.0 || field(page, "more") != 2.0 || field(page, "next_skip") != 4.0 {
+		t.Errorf("the second page: %v", page)
+	}
+
+	if last := s.get(t, "/api/v1/transactions?organization="+org+"&limit=2&skip=4", key); field(last, "next_skip") != nil || field(last, "more") != 0.0 {
+		t.Errorf("the last page: %v", last)
+	}
+
+	for _, path := range []string{
+		"/api/v1/transactions?kind=refund",
+		"/api/v1/transactions?kind=expense&category=none",
+		"/api/v1/transactions?category=groceries",
+		"/api/v1/transactions?by=person",
+		"/api/v1/transactions?receipts=some",
+		"/api/v1/transactions?organization=parish",
+		"/api/v1/transactions?skip=-1",
+	} {
+		if rec := s.api(http.MethodGet, path, key, ""); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"problem"`) {
+			t.Errorf("GET %s: %d %s", path, rec.Code, rec.Body)
+		}
+	}
+}
+
 // Every reading endpoint, asked by a stranger's key for the treasurer's
 // things, is a 404, the same as for something that does not exist; those
 // that list find none of the treasurer's. And a key for something else
@@ -230,14 +303,19 @@ func TestNobodyReadsTheBooksTheyWereNotGiven(t *testing.T) {
 		rec := s.api(e.Method, path, theirs, "")
 
 		// A list of payees is the treasurer's by the organization or the
-		// account asked for, as a path's id is.
-		if strings.Contains(e.Path, "{") || strings.HasPrefix(e.Path, "/api/v1/payees") {
+		// account asked for, as a path's id is, and so is a search in the
+		// treasurer's organization; a search in their account finds nothing.
+		if strings.Contains(e.Path, "{") || strings.HasPrefix(e.Path, "/api/v1/payees") || e.Path == "/api/v1/transactions" {
 			if rec.Code != http.StatusNotFound {
 				t.Errorf("a stranger: %s %s = %d, want 404", e.Method, e.Path, rec.Code)
 			}
 
 			if byAccount := s.api(e.Method, ids.Replace(e.Path)+"?account="+b.account, theirs, ""); strings.HasPrefix(e.Path, "/api/v1/payees") && byAccount.Code != http.StatusNotFound {
 				t.Errorf("a stranger: %s %s by the account = %d, want 404", e.Method, e.Path, byAccount.Code)
+			}
+
+			if byAccount := s.api(e.Method, e.Path+"?account="+b.account, theirs, ""); e.Path == "/api/v1/transactions" && (byAccount.Code != http.StatusOK || strings.Contains(byAccount.Body.String(), "COFFEE")) {
+				t.Errorf("a stranger: finding in the account = %d %s", byAccount.Code, byAccount.Body)
 			}
 
 			continue
