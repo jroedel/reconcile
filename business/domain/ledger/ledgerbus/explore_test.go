@@ -358,3 +358,27 @@ func TestExploringCountsAPostedChargeOnce(t *testing.T) {
 		t.Errorf("the totals: %+v, want %+v", ex.Sums, want)
 	}
 }
+
+// The form offers what makes sense where it is: an organization's list
+// and projects; an account's list and the projects of its organization; a
+// project's list of the lists its parts are sorted with, and no projects.
+func TestExploringOffersItsScopesChoices(t *testing.T) {
+	w := newWorld(t)
+	x := newExplored(w)
+	ctx := t.Context()
+
+	for _, s := range []types.Scope{types.OrgScope(x.org), types.AccountScope(x.card), types.ProjectScope(x.project)} {
+		ex, err := w.ledger.Explore(ctx, x.owner, s, ledgerbus.Criteria{})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !slices.ContainsFunc(ex.Categories, func(c categorybus.Category) bool { return c.ID == x.passThrough }) {
+			t.Errorf("%s: the categories %+v", s.Kind, ex.Categories)
+		}
+
+		if want := s.Kind != types.ScopeProject; (len(ex.Projects) == 1 && ex.Projects[0].ID == x.project) != want {
+			t.Errorf("%s: the projects %+v", s.Kind, ex.Projects)
+		}
+	}
+}

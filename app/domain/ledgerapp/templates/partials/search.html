@@ -1,0 +1,138 @@
+{{/* The search over transactions (docs/explorer.md): its form, the line
+     that says what fits, the rows and the pages. The account's month
+     list uses them now, and an organization's and a project's lists will.
+     A view that shows them has Search (explore.go's search), Found
+     (found), Groups, Categories, Projects, Receipts, Clearing and
+     ByHolder. */}}
+
+{{/* search-fields is the form's fields. Search is what was chosen, Found
+     what the scope offers, Groups its categories a kind at a time, Path
+     where a cleared search goes, and Marks whether to offer what is to
+     check (not on a project's list, whose parts are all it shows). */}}
+{{define "search-fields"}}{{$s := .Search}}{{$f := .Found}}
+<div class="field">
+  <label for="q">{{t "Words"}}</label>
+  <input id="q" name="q" type="search" value="{{$s.Words}}" maxlength="100">
+  <p class="hint">{{t "Found in the description, whom it was paid to, a check's memo or a part's memo, in any case."}}</p>
+</div>
+<details{{if $s.More}} open{{end}}><summary>{{t "More choices"}}</summary>
+{{if $s.Bad}}<p class="notice" role="alert">{{t "A day or an amount could not be read, so it was left out of the search. Choose days from the calendar, and write an amount such as 1234.56."}}</p>{{end}}
+<div class="search-more">
+<div class="field">
+  <label for="from">{{t "From"}}</label>
+  <input id="from" name="from" type="date" value="{{$s.From}}">
+</div>
+<div class="field">
+  <label for="to">{{t "To"}}</label>
+  <input id="to" name="to" type="date" value="{{$s.To}}">
+</div>
+<div class="field">
+  <label for="min">{{t "Amount"}}</label>
+  <input id="min" name="min" type="text" inputmode="decimal" value="{{$s.Min}}">
+</div>
+<div class="field">
+  <label for="max">{{t "Up to"}}</label>
+  <input id="max" name="max" type="text" inputmode="decimal" value="{{$s.Max}}">
+</div>
+<div class="field">
+  <label for="way">{{t "Money in or out"}}</label>
+  <select id="way" name="way">
+    <option value="">{{t "Either"}}</option>
+    <option value="in"{{if eq $s.Way "in"}} selected{{end}}>{{t "Money in"}}</option>
+    <option value="out"{{if eq $s.Way "out"}} selected{{end}}>{{t "Money out"}}</option>
+  </select>
+</div>
+{{with $f.Accounts}}<div class="field">
+  <label for="account">{{t "Account"}}</label>
+  <select id="account" name="account">
+    <option value="">{{t "Every account"}}</option>
+    {{range .}}<option value="{{.ID}}"{{if eq .ID.String $s.Account}} selected{{end}}>{{if .Reference}}{{t "{account}, for reference" "account" .Name}}{{else}}{{.Name}}{{end}}</option>{{end}}
+  </select>
+</div>{{end}}
+<div class="field">
+  <label for="category">{{t "Category"}}</label>
+  <select id="category" name="category">
+    <option value="">{{t "Any category"}}</option>
+    {{range .Groups}}<optgroup label="{{template "kind" .Kind}}">
+    {{if .Kind}}<option value="kind:{{.Kind}}"{{if eq $s.Category (print "kind:" .Kind)}} selected{{end}}>{{template "all-of-kind" .Kind}}</option>
+    {{- else}}<option value="unsaid"{{if eq $s.Category "unsaid"}} selected{{end}}>{{template "all-of-kind" .Kind}}</option>{{end}}
+    {{range .Categories}}<option value="{{.ID}}"{{if eq .ID.String $s.Category}} selected{{end}}>{{.Name}}</option>{{end}}
+    </optgroup>{{end}}
+    <option value="unsorted"{{if eq $s.Category "unsorted"}} selected{{end}}>{{t "Not sorted yet"}}</option>
+  </select>
+</div>
+{{with $f.Projects}}<div class="field">
+  <label for="project">{{t "Project"}}</label>
+  <select id="project" name="project">
+    <option value="">{{t "Any project, or none"}}</option>
+    <option value="none"{{if eq $s.Project "none"}} selected{{end}}>{{t "In no project"}}</option>
+    {{range .}}<option value="{{.ID}}"{{if eq .ID.String $s.Project}} selected{{end}}>{{.Name}}</option>{{end}}
+  </select>
+</div>{{end}}
+{{if .Marks}}<div class="field">
+  <label for="check">{{t "To check"}}</label>
+  <select id="check" name="check">
+    <option value="">{{t "Anything"}}</option>
+    <option value="byrule"{{if eq $s.Check "byrule"}} selected{{end}}>{{t "Sorted by a rule"}}</option>
+    <option value="through"{{if eq $s.Check "through"}} selected{{end}}>{{t "Changed by a program"}}</option>
+  </select>
+</div>{{end}}
+<div class="field">
+  <label for="receipts">{{t "Receipts"}}</label>
+  <select id="receipts" name="receipts">
+    <option value="">{{t "With or without"}}</option>
+    <option value="with"{{if eq $s.Receipts "with"}} selected{{end}}>{{t "With a receipt"}}</option>
+    <option value="without"{{if eq $s.Receipts "without"}} selected{{end}}>{{t "Without a receipt"}}</option>
+  </select>
+</div>
+</div>
+<p class="hint">{{t "An amount alone finds exactly that amount, money in or out; with an amount to go up to as well, everything between the two. A category, a kind or a project shows only the part of a split charge that is in it."}}</p>
+</details>
+<p><button type="submit">{{t "Show"}}</button>{{if $s.Searched}} <a href="{{.Path}}">{{t "Clear the choices"}}</a>{{end}}</p>
+{{end}}
+
+{{/* all-of-kind is the choice of every category of a kind, at the head of
+     that kind's group. */}}
+{{define "all-of-kind"}}
+{{- if eq . "expense"}}{{t "All expenses"}}
+{{- else if eq . "income"}}{{t "All income"}}
+{{- else if eq . "transfer"}}{{t "All transfers between our accounts"}}
+{{- else if eq . "passthrough"}}{{t "All pass-through"}}
+{{- else}}{{t "Every category whose kind is not said"}}{{end}}{{end}}
+
+{{/* found-total says how many fit and their money, a line per currency,
+     over every page. */}}
+{{define "found-total"}}{{$f := .Found}}
+<p><strong>{{t "{n} transactions fit" "n" $f.Total}}</strong></p>
+{{range $f.Sums}}<p>{{t "Money in"}} <span class="money in">{{money .In .Currency}}</span> · {{t "Money out"}} <span class="money out">{{money .Out .Currency}}</span></p>
+{{end}}
+{{- if $f.LeftOut}}<p class="hint">{{t "Accounts for reference are left out. Choose one as the account to look in it."}}</p>{{end}}
+{{end}}
+
+{{/* found-rows is the rows. V is the view, Here the page's own address:
+     a charge opened from a search comes back to it after saving. */}}
+{{define "found-rows"}}{{$v := .V}}{{$here := .Here}}{{$named := $v.Found.Accounts}}
+<div class="scroll">
+<table class="ledger">
+<thead><tr><th>{{t "Date"}}</th><th>{{t "Description"}}</th>{{if $named}}<th>{{t "Account"}}</th>{{end}}<th>{{t "For"}}</th><th class="money">{{t "Amount"}}</th></tr></thead>
+<tbody>
+{{range $v.Found.Rows}}{{$r := .}}{{$cur := .Account.Currency}}{{with .Transaction}}<tr id="t-{{.ID}}"><td>{{.PostedOn}}</td><td>{{if $r.Readable}}<a href="/transactions/{{.ID}}{{if $v.Search.Searched}}?back={{$here}}{{end}}">{{if .Shown}}{{.Shown}}{{else}}{{t "(no description)"}}{{end}}</a>{{else}}{{if .Shown}}{{.Shown}}{{else}}{{t "(no description)"}}{{end}}{{end}}{{if $v.ByHolder}}{{with .Holder}}<br><span class="hint">{{.}}</span>{{end}}{{end}}{{with .CheckUnsaid}}<br><span class="hint">{{t "Check number {number}" "number" .}}</span>{{end}}{{with .Payee}}<br><span class="hint">{{t "Paid to {payee}" "payee" .}}</span>{{end}}{{with .PayeeVia}} <span class="badge">{{t "by {name}" "name" .}}</span>{{end}}{{with .CheckMemo}}<br><span class="hint">{{t "Memo: {memo}" "memo" .}}</span>{{end}}{{if .Cleared}} <a href="/transactions/{{.PostedAs}}" class="badge">{{t "pending, since posted"}}</a>{{else if .Pending}} <span class="badge">{{t "pending"}}</span>{{end}}{{with .OwnVia}} <span class="badge">{{t "described by {name}" "name" .}}</span>{{end}}</td>
+{{if $named}}<td>{{$r.Account.Name}}</td>{{end}}
+<td>{{if .Cleared}}<span class="hint">{{t "counted as its posted charge"}}</span>{{end}}{{if gt (len .Splits) 1}}{{t "{n} parts" "n" (len .Splits)}}{{if not .Sorted}} <span class="badge">{{t "not sorted yet"}}</span>{{end}}
+{{else}}{{range .Splits}}{{with index $v.Categories .CategoryID}}{{.}}{{else}}<span class="badge">{{t "not sorted yet"}}</span>{{end}}{{with index $v.Projects .ProjectID}} · {{.}}{{end}}{{if not .RuleID.Zero}} <span class="badge">{{t "by rule"}}</span>{{else}}{{with .Via}} <span class="badge">{{t "by {name}" "name" .}}</span>{{end}}{{end}}{{end}}{{end}}
+{{- if gt (len .Splits) 1}}{{with .Through}} <span class="badge">{{t "by {name}" "name" .}}</span>{{end}}{{end}}</td>
+<td class="money {{if lt $r.Amount 0}}out{{else}}in{{end}}">{{money $r.Amount $cur}}{{if $r.Part}}<br><span class="hint">{{t "of {amount}" "amount" (money .Amount $cur)}}</span>{{end}}{{with index $v.Receipts .ID}}<br><span class="hint">{{t "{n} receipts" "n" .}}</span>{{end}}
+{{- with $v.Clearing.ClearedBy .ID}}<br>{{if .Hidden}}<span class="badge">{{t "cleared"}}</span>{{else}}<a href="/transactions/{{.Transaction.ID}}/explain" class="badge">{{t "cleared {date}" "date" .Transaction.PostedOn}}</a>{{end}}{{end}}
+{{- $state := $v.Clearing.State .ID}}{{if $state}}<br><a href="/transactions/{{.ID}}/explain" class="badge{{if eq $state "explained"}} ok{{end}}">{{if eq $state "explained"}}{{t "explained"}}{{else}}{{t "open"}}{{end}}</a>{{end}}</td></tr>
+{{end}}{{end}}</tbody>
+</table>
+</div>
+{{end}}
+
+{{/* found-pages is the way to the pages before and after, keeping every
+     choice. */}}
+{{define "found-pages"}}{{$f := .Found}}{{$kept := .Search.Kept}}
+{{if or $f.Skip $f.Next}}<p class="pages">{{t "{first} to {last} of {n}" "first" $f.First "last" $f.Last "n" $f.Total}}
+{{- if $f.Skip}} · <a href="?{{range $kept}}{{.Key}}={{.Value}}&amp;{{end}}skip={{$f.Prev}}">{{t "Newer"}}</a>{{end}}
+{{- if $f.Next}} · <a href="?{{range $kept}}{{.Key}}={{.Value}}&amp;{{end}}skip={{$f.Next}}">{{t "Older"}}</a>{{end}}</p>{{end}}
+{{end}}
