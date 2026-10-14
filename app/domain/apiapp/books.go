@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -215,19 +217,26 @@ func (a app) bookEndpoints() []Endpoint {
 		},
 		{
 			Method: http.MethodGet, Path: Prefix + "/transactions", Scope: read, Tool: "find_transactions",
-			Summary: "Find transactions across every account you may read, or the ones named: by words in the description or payee (as a sorting rule looks for them), an amount without its sign, a range of amounts, dates, and money in or out. Newest first. Use it to hunt down an amount, or the same payment in earlier months.",
+			Summary: "Find transactions across every account you may read, one organization's, or the accounts named, with the web's search's choices: words (in the description, the payee, a check's memo or a part's memo, as a sorting rule looks for them), an amount without its sign or a range, dates, money in or out, a category or a whole kind, a project, what a rule or a program sorted, and whether it has receipts. Newest first, a page at a time, with how many fit and their money in and out over every page. A category, a kind and a project must all be true of one part of a split charge, and the transaction's matched_amount is then those parts'. Accounts for reference are searched only when named. Use it to hunt down an amount, the same payment in earlier months, or what was spent on something.",
 			Query: []Field{
 				{Name: "text", Type: "string", Description: "Words to look for, without case."},
 				{Name: "amount", Type: "string", Description: "An exact amount, without its sign, such as 1240.00."},
 				{Name: "min", Type: "string", Description: "At least this amount, without its sign."},
 				{Name: "max", Type: "string", Description: "At most this amount, without its sign."},
-				{Name: "direction", Type: "string", Values: []string{"in", "out"}, Description: "Money in or money out only."},
+				{Name: "direction", Type: "string", Values: []string{"in", "out"}, Description: "Money in or money out only. A refund is money in that is still an expense, so ask kind=expense&direction=in for refunds."},
 				{Name: "from", Type: "string", Description: "From this day, YYYY-MM-DD, included."},
 				{Name: "to", Type: "string", Description: "To this day, YYYY-MM-DD, included."},
-				{Name: "account", Type: "string", Description: "One account's id, or several separated by commas. Every account you may read when left out."},
+				{Name: "account", Type: "string", Description: "One account's id, or several separated by commas. Every account you may read when left out, but those for reference."},
+				{Name: "organization", Type: "string", Description: "An organization's id, as get_overview gives it: only its accounts."},
+				{Name: "category", Type: "string", Description: "A category's id, or none for the parts not sorted yet."},
+				{Name: "kind", Type: "string", Values: []string{"income", "expense", "transfer", "passthrough", "unsaid"}, Description: "Parts in a category of this kind; unsaid is a category whose kind its owner has not said. Not with category."},
+				{Name: "project", Type: "string", Description: "A project's id, or none for parts in no project. It finds the project's parts in the accounts you may read; get_project_book has every part of a project you were given."},
+				{Name: "by", Type: "string", Values: []string{"rule", "program"}, Description: "Those a sorting rule sorted, or those a program (an API key) changed that no person has saved since."},
+				{Name: "receipts", Type: "string", Values: []string{"with", "without"}, Description: "Those with a receipt, or with none."},
 				{Name: "limit", Type: "integer", Description: fmt.Sprintf("How many, %d by default and %d at most.", ledgerbus.DefaultFind, ledgerbus.MaxFind)},
+				{Name: "skip", Type: "integer", Description: "How many to pass over: the next page is the answer's next_skip."},
 			},
-			Returns: "{transactions: [transaction, with account_name], more}: more is how many else matched.",
+			Returns: "{transactions: [transaction, with account_name, and matched_amount when only some of its parts fit, those parts matched], total, more, next_skip, sums: [{currency, in, out}], left_out: [{id, name}]}: total is how many fit, more how many after this page, sums their money over every page, and left_out the accounts for reference not searched.",
 			handler: a.findTransactions,
 		},
 		{
@@ -349,6 +358,10 @@ type partOut struct {
 	ProjectName  string       `json:"project_name,omitempty"`
 	Memo         string       `json:"memo,omitempty"`
 	ByRule       bool         `json:"by_rule,omitempty"`
+
+	// Matched is, in find_transactions' answer, a part that fits what was
+	// asked when the others do not.
+	Matched bool `json:"matched,omitempty"`
 
 	// Through is the API key a program sorted the part through, until a
 	// person saves it on the web.
@@ -1200,8 +1213,49 @@ func (a app) listTransactions(w http.ResponseWriter, r *http.Request) {
 	rd.done(w, r, map[string]any{"account": id.String(), "account_name": acct.Name, "month": month, "transactions": out})
 }
 
+// findChoices are find_transactions' choices of what a part is: each a
+// single word, as the Values say, so that a program's mistake is a 400
+// that says what to give rather than a search for nothing.
+var (
+	findKinds = map[string]func(*ledgerbus.Criteria){
+		"income":      func(c *ledgerbus.Criteria) { c.Kind = categorybus.Income },
+		"expense":     func(c *ledgerbus.Criteria) { c.Kind = categorybus.Expense },
+		"transfer":    func(c *ledgerbus.Criteria) { c.Kind = categorybus.Transfer },
+		"passthrough": func(c *ledgerbus.Criteria) { c.Kind = categorybus.PassThrough },
+		"unsaid":      func(c *ledgerbus.Criteria) { c.KindUnsaid = true },
+	}
+	findBy = map[string]ledgerbus.Mark{"rule": ledgerbus.MarkRule, "program": ledgerbus.MarkProgram}
+)
+
+// moneyOut is the money in and out of what fitted, in one currency.
+type moneyOut struct {
+	Currency string       `json:"currency"`
+	In       money.Amount `json:"in"`
+	Out      money.Amount `json:"out"`
+}
+
+// leftOut is an account for reference a search passed over.
+type leftOut struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// foundOut is a transaction find_transactions found: MatchedAmount is the
+// parts that fit, when they are not all of it.
+type foundOut struct {
+	txOut
+
+	MatchedAmount *money.Amount `json:"matched_amount,omitempty"`
+}
+
 func (a app) findTransactions(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+
+	refuse := func(name, problem string) bool {
+		web.WriteJSON(w, http.StatusBadRequest, web.Problem(name, problem))
+
+		return false
+	}
 
 	amount := func(name string) (money.Amount, bool, bool) {
 		s := q.Get(name)
@@ -1211,9 +1265,7 @@ func (a app) findTransactions(w http.ResponseWriter, r *http.Request) {
 
 		v, err := money.Parse(s)
 		if err != nil {
-			web.WriteJSON(w, http.StatusBadRequest, web.Problem(name, "Give "+name+" as an amount, such as 1240.00."))
-
-			return 0, false, false
+			return 0, false, refuse(name, "Give "+name+" as an amount, such as 1240.00.")
 		}
 
 		return v.Abs(), true, true
@@ -1227,50 +1279,112 @@ func (a app) findTransactions(w http.ResponseWriter, r *http.Request) {
 
 		d, err := types.ParseDate(s)
 		if err != nil {
-			web.WriteJSON(w, http.StatusBadRequest, web.Problem(name, "Give "+name+" as a day, YYYY-MM-DD."))
-
-			return types.Date{}, false
+			return types.Date{}, refuse(name, "Give "+name+" as a day, YYYY-MM-DD.")
 		}
 
 		return d, true
 	}
 
-	query := ledgerbus.Query{Text: q.Get("text")}
+	// one is an id, or "none" when none may be given.
+	one := func(name string) (types.ID, bool, bool) {
+		switch s := q.Get(name); s {
+		case "":
+			return types.ID{}, false, true
+		case "none":
+			return types.ID{}, true, true
+		default:
+			id, err := types.ParseID(s)
+			if err != nil {
+				return types.ID{}, false, refuse(name, fmt.Sprintf("%q is not an id. Give one id, as other answers give them, or none.", s))
+			}
 
-	var ok bool
+			return id, false, true
+		}
+	}
+
+	var (
+		query ledgerbus.Query
+		c     = &query.Criteria
+		ok    bool
+	)
+
+	c.Text = q.Get("text")
 
 	exact, hasExact, ok := amount("amount")
 	if !ok {
 		return
 	}
 
-	if query.Min, query.HasMin, ok = amount("min"); !ok {
+	if c.Min, c.HasMin, ok = amount("min"); !ok {
 		return
 	}
 
-	if query.Max, query.HasMax, ok = amount("max"); !ok {
+	if c.Max, c.HasMax, ok = amount("max"); !ok {
 		return
 	}
 
 	if hasExact {
-		query.Min, query.Max, query.HasMin, query.HasMax = exact, exact, true, true
+		c.Min, c.Max, c.HasMin, c.HasMax = exact, exact, true, true
 	}
 
 	switch d := q.Get("direction"); d {
 	case "":
 	case "in", "out":
-		query.Direction = rulebus.Direction(d)
+		c.Direction = rulebus.Direction(d)
 	default:
-		web.WriteJSON(w, http.StatusBadRequest, web.Problem("direction", "Give direction as in or out, or leave it out."))
+		refuse("direction", "Give direction as in or out, or leave it out.")
 
 		return
 	}
 
-	if query.From, ok = date("from"); !ok {
+	if c.From, ok = date("from"); !ok {
 		return
 	}
 
-	if query.To, ok = date("to"); !ok {
+	if c.To, ok = date("to"); !ok {
+		return
+	}
+
+	if c.Category, c.Unsorted, ok = one("category"); !ok {
+		return
+	}
+
+	if k := q.Get("kind"); k != "" {
+		set, known := findKinds[k]
+
+		switch {
+		case !known:
+			refuse("kind", "Give kind as income, expense, transfer, passthrough or unsaid, or leave it out.")
+
+			return
+		case q.Get("category") != "":
+			refuse("kind", "Give a category or a kind, not both: a category is of one kind already.")
+
+			return
+		}
+
+		set(c)
+	}
+
+	if c.Project, c.NoProject, ok = one("project"); !ok {
+		return
+	}
+
+	if b := q.Get("by"); b != "" {
+		if c.Mark, ok = findBy[b]; !ok {
+			refuse("by", "Give by as rule or program, or leave it out.")
+
+			return
+		}
+	}
+
+	switch h := ledgerbus.HasReceipts(q.Get("receipts")); h {
+	case "":
+	case ledgerbus.WithReceipts, ledgerbus.WithoutReceipts:
+		c.Receipts = h
+	default:
+		refuse("receipts", "Give receipts as with or without, or leave it out.")
+
 		return
 	}
 
@@ -1278,24 +1392,65 @@ func (a app) findTransactions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if query.Limit, ok = a.number(w, r, "limit", ledgerbus.DefaultFind, 1, ledgerbus.MaxFind); !ok {
+	if org := q.Get("organization"); org != "" {
+		id, err := types.ParseID(org)
+		if err != nil {
+			refuse("organization", fmt.Sprintf("%q is not an id. Give one organization's id, as get_overview gives it.", org))
+
+			return
+		}
+
+		query.Org = id
+	}
+
+	if c.Limit, ok = a.number(w, r, "limit", ledgerbus.DefaultFind, 1, ledgerbus.MaxFind); !ok {
+		return
+	}
+
+	if c.Skip, ok = a.number(w, r, "skip", 0, 0, math.MaxInt32); !ok {
 		return
 	}
 
 	rd := a.reader(r)
 
 	got, err := a.books.Ledger.Find(r.Context(), rd.me, query)
-	if a.bookRefused(w, r, err, "account") {
+	if a.bookRefused(w, r, err, "organization") {
 		return
 	}
 
-	out := make([]txOut, 0, len(got.Found))
+	out := make([]foundOut, 0, len(got.Found))
 	for _, f := range got.Found {
 		rd.accts[f.Account.ID] = f.Account
-		out = append(out, rd.named(f.Transaction, f.Account))
+
+		o := foundOut{txOut: rd.named(f.Transaction, f.Account)}
+
+		if f.Part {
+			o.MatchedAmount = &f.Amount
+
+			for i, s := range f.Transaction.Splits {
+				o.Parts[i].Matched = slices.ContainsFunc(f.Parts, func(p ledgerbus.Split) bool { return p.ID == s.ID })
+			}
+		}
+
+		out = append(out, o)
 	}
 
-	rd.done(w, r, map[string]any{"transactions": out, "more": got.More})
+	sums := make([]moneyOut, len(got.Sums))
+	for i, s := range got.Sums {
+		sums[i] = moneyOut{Currency: s.Currency, In: s.In, Out: s.Out}
+	}
+
+	left := make([]leftOut, len(got.LeftOut))
+	for i, l := range got.LeftOut {
+		left[i] = leftOut{ID: l.ID.String(), Name: l.Name}
+	}
+
+	answer := map[string]any{"transactions": out, "total": got.Total, "more": got.More, "sums": sums, "left_out": left}
+	if got.Next > 0 {
+		answer["next_skip"] = got.Next
+	}
+
+	rd.done(w, r, answer)
 }
 
 func (a app) getTransaction(w http.ResponseWriter, r *http.Request) {
