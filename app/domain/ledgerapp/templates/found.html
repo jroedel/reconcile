@@ -1,0 +1,21 @@
+{{define "title"}}{{.Data.Name}}{{end}}
+{{define "content"}}{{$v := .Data}}
+{{template "crumbs" (trail $ $v.Name $v.Path)}}
+<h1>{{t "Transactions"}}</h1>
+{{if $v.Project}}<p class="hint">{{t "The project's parts, from every account they are in. Of a charge only partly in the project, only that part is shown."}}</p>{{end}}
+
+<section class="card" id="search">
+<h2>{{t "Find transactions"}}</h2>
+<form method="get" action="{{$v.Path}}/transactions">
+{{template "search-fields" (dict "Search" $v.Search "Found" $v.Found "Groups" $v.Groups "Path" (print $v.Path "/transactions") "Marks" (not $v.Project))}}
+</form>
+</section>
+
+<section class="card">
+{{template "found-total" $v}}
+{{if $v.Found.Rows}}{{template "found-rows" (dict "V" $v "Here" $.Here)}}
+{{template "found-pages" $v}}
+{{else if $v.Search.Searched}}<p class="hint">{{t "No transaction fits these choices."}}</p>
+{{else}}<p class="hint">{{t "No transactions yet. They arrive with the first statement."}}</p>{{end}}
+</section>
+{{end}}

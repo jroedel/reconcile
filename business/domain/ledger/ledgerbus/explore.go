@@ -119,13 +119,28 @@ type Row struct {
 
 	// Amount is what the row shows: the transaction's, or the parts that
 	// are what was chosen, which Part says when they are not all of it.
+	// Parts is those parts, or all of them: on a project's list, what the
+	// row says the money was for is only the project's, never the rest of
+	// a charge a project's role does not reach.
 	Amount money.Amount
 	Part   bool
+	Parts  []Split
 
 	// Readable is whether the reader may open the transaction: on a
 	// project's list, a part in an account they are given nothing on is
 	// shown, and not linked (docs/plan.md, "Inheritance").
 	Readable bool
+}
+
+// Sorted reports whether every part the row shows has a category: of a
+// project's row, only the project's parts, which are all its reader may
+// know of.
+func (r Row) Sorted() bool {
+	if r.Transaction.Cleared() {
+		return true
+	}
+
+	return len(r.Parts) > 0 && !slices.ContainsFunc(r.Parts, func(s Split) bool { return s.CategoryID.Zero() })
 }
 
 // Sum is money in and out of the rows in one currency. A total across
@@ -331,6 +346,53 @@ func (b *Business) Explore(ctx context.Context, actor types.ID, scope types.Scop
 	return ex, nil
 }
 
+// Latest is the n newest transactions of an organization's accounts, not
+// those for reference, newest first: the card on the organization's page.
+// Read newest first with a limit, not as a search is, because the page is
+// opened far more often than anything is looked for.
+func (b *Business) Latest(ctx context.Context, actor, orgID types.ID, n int) ([]Row, error) {
+	access, err := b.accounts.AccessTo(ctx, actor, types.OrgScope(orgID))
+	if err != nil {
+		return nil, err
+	}
+
+	if !access.Can(tenancybus.Read) {
+		return nil, ErrNotFound
+	}
+
+	accounts, _, err := b.accounts.Contents(ctx, actor, orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	named := map[types.ID]tenancybus.Account{}
+
+	var ids []types.ID
+
+	for _, a := range accounts {
+		if !a.Reference {
+			named[a.ID] = a
+			ids = append(ids, a.ID)
+		}
+	}
+
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	txs, err := b.store.Latest(ctx, ids, n)
+	if err != nil {
+		return nil, err
+	}
+
+	rows := make([]Row, len(txs))
+	for i, t := range txs {
+		rows[i] = Row{Transaction: t, Account: named[t.AccountID], Amount: t.Amount, Parts: t.Splits, Readable: true}
+	}
+
+	return rows, nil
+}
+
 // lists is the categories the accounts' parts are sorted with, each list
 // once, by name.
 func (b *Business) lists(ctx context.Context, accounts []tenancybus.Account) ([]categorybus.Category, error) {
@@ -392,12 +454,12 @@ func (b *Business) look(ctx context.Context, within Within, accounts []tenancybu
 			continue
 		}
 
-		amount, part, ok := c.parts(t, read.Kinds)
+		amount, parts, ok := c.parts(t, read.Kinds)
 		if !ok || !c.fits(t, text, amount) {
 			continue
 		}
 
-		rows = append(rows, Row{Transaction: t, Account: a, Amount: amount, Part: part})
+		rows = append(rows, Row{Transaction: t, Account: a, Amount: amount, Part: len(parts) < len(t.Splits), Parts: parts})
 	}
 
 	if c.Receipts == "" || len(rows) == 0 {
@@ -422,17 +484,17 @@ func (b *Business) look(ctx context.Context, within Within, accounts []tenancybu
 	}), nil
 }
 
-// parts is the amount of a transaction's parts that are what was chosen,
-// whether that is less than all of them, and whether any is. With no part
-// chosen it is the whole transaction.
-func (c Criteria) parts(t Transaction, kinds map[types.ID]categorybus.Kind) (money.Amount, bool, bool) {
+// parts is the parts of a transaction that are what was chosen, their
+// amount, and whether any is. With no part chosen it is the whole
+// transaction.
+func (c Criteria) parts(t Transaction, kinds map[types.ID]categorybus.Kind) (money.Amount, []Split, bool) {
 	if !c.parted() {
-		return t.Amount, false, true
+		return t.Amount, t.Splits, true
 	}
 
 	var (
-		sum money.Amount
-		n   int
+		sum   money.Amount
+		parts []Split
 	)
 
 	for _, s := range t.Splits {
@@ -449,10 +511,10 @@ func (c Criteria) parts(t Transaction, kinds map[types.ID]categorybus.Kind) (mon
 		}
 
 		sum += s.Amount
-		n++
+		parts = append(parts, s)
 	}
 
-	return sum, n < len(t.Splits), n > 0
+	return sum, parts, len(parts) > 0
 }
 
 // fits reports whether a transaction, showing amount, is one the rest of

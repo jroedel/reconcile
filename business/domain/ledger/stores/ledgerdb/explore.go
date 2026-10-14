@@ -85,6 +85,40 @@ SELECT category_id FROM splits WHERE category_id IS NOT NULL AND transaction_id 
 	return ledgerbus.Explorable{Transactions: txs, Kinds: kinds}, nil
 }
 
+// Latest is the n newest transactions of the accounts, newest first, with
+// their parts: the index on (account_id, posted_on) answers it without
+// reading the rest. The parts are read for those n alone, by their IDs.
+func (s *Store) Latest(ctx context.Context, accounts []types.ID, n int) ([]ledgerbus.Transaction, error) {
+	if len(accounts) == 0 || n <= 0 {
+		return nil, nil
+	}
+
+	in, args := inList(accounts)
+
+	txs, err := s.transactions(ctx, `SELECT `+transactionColumns+` FROM transactions WHERE account_id IN (`+in+`) ORDER BY posted_on DESC, rowid DESC LIMIT ?`, append(args, n)...)
+	if err != nil || len(txs) == 0 {
+		return txs, err
+	}
+
+	ids := make([]types.ID, len(txs))
+	for i, t := range txs {
+		ids[i] = t.ID
+	}
+
+	in, args = inList(ids)
+
+	splits, err := s.splits(ctx, `transaction_id IN (`+in+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range txs {
+		txs[i].Splits = splits[txs[i].ID]
+	}
+
+	return txs, nil
+}
+
 // ProjectAccounts is the accounts a project has parts in, by name, not
 // those for reference: what a project's list may be narrowed to, and what
 // its rows are named by. Read here rather than asked of tenancybus,

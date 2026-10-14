@@ -30,6 +30,23 @@
 {{range .ArchivedProjects}}<li><a href="/projects/{{.ID}}">{{.Name}}</a></li>{{end}}</ul></details>{{end}}
 </section>
 
+{{if .Accounts}}
+<section class="card">
+<h2>{{t "Latest transactions"}}</h2>
+<form method="get" action="{{.Path}}/transactions" class="inline-search">
+  <label for="q">{{t "Find a transaction"}}</label>
+  <input id="q" name="q" type="search" maxlength="100">
+  <button type="submit" class="quiet">{{t "Find"}}</button>
+</form>
+{{with .Latest}}<ul class="list">
+{{range .}}<li>{{.Transaction.PostedOn}} · <a href="/transactions/{{.Transaction.ID}}">{{if .Transaction.Shown}}{{.Transaction.Shown}}{{else}}{{t "(no description)"}}{{end}}</a> · <span class="money {{if lt .Amount 0}}out{{else}}in{{end}}">{{money .Amount .Account.Currency}}</span>
+<br><span class="hint">{{.Account.Name}}</span></li>
+{{end}}</ul>
+<p><a href="{{$.Data.Path}}/transactions">{{t "See more, and choose which"}}</a></p>
+{{else}}<p class="hint">{{t "No transactions yet. They arrive with the first statement."}}</p>{{end}}
+</section>
+{{end}}
+
 <section class="card">
 <h2>{{t "Reports"}}</h2>
 <p class="hint">{{t "The organization's income and expenses, month by month, without transfers or money that only passed through."}}</p>

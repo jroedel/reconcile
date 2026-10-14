@@ -192,6 +192,7 @@ func New(cfg Config) (http.Handler, error) {
 			Categories: cfg.Categories,
 			Holders:    cfg.Ledger,
 			Figures:    cfg.Ledger,
+			Latest:     cfg.Ledger,
 		}, guard)
 
 		ledgerapp.Routes(mux, ledgerapp.Config{

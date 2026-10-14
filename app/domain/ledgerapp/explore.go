@@ -1,6 +1,7 @@
 package ledgerapp
 
 import (
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -248,4 +249,131 @@ type found struct {
 
 func foundOf(ex ledgerbus.Explored) found {
 	return found{Explored: ex, First: ex.Skip + 1, Last: ex.Skip + len(ex.Rows), Prev: max(ex.Skip-ledgerbus.DefaultExplore, 0)}
+}
+
+// --- an organization's and a project's lists ---------------------------------
+
+// foundView is an organization's or a project's transactions: the search's
+// form and what fits it, as the account's month list shows them without
+// the month's own figures, which belong to one account's statement.
+type foundView struct {
+	Name string
+	Path string
+
+	Search search
+	Found  found
+	Groups []categorybus.Group
+
+	// Names of the categories and projects the rows' parts point at, the
+	// receipts each row has, and what explains what, as on the month list.
+	Categories map[types.ID]string
+	Projects   map[types.ID]string
+	Receipts   map[types.ID]int
+	Clearing   ledgerbus.Clearing
+	ByHolder   bool
+
+	// Project is a project's list: its rows are its parts, and what is to
+	// check is not offered, because a project's role sorts nothing.
+	Project bool
+}
+
+func (a app) orgTransactions(w http.ResponseWriter, r *http.Request) {
+	a.foundPage(w, r, types.ScopeOrg)
+}
+
+func (a app) projectTransactions(w http.ResponseWriter, r *http.Request) {
+	a.foundPage(w, r, types.ScopeProject)
+}
+
+// foundPage is the list of a scope that is not one account: the account's
+// is its month list (transactionsPage).
+func (a app) foundPage(w http.ResponseWriter, r *http.Request, kind types.ScopeKind) {
+	me, ok := actor(w, r)
+	if !ok {
+		return
+	}
+
+	id, ok := a.pathID(w, r, "id")
+	if !ok {
+		return
+	}
+
+	ctx := r.Context()
+	view := foundView{Search: searchOf(r.URL.Query()), Project: kind == types.ScopeProject}
+
+	switch kind {
+	case types.ScopeOrg:
+		o, _, err := a.cfg.Tenancy.Org(ctx, me.ID, id)
+		if err != nil {
+			a.failed(w, r, err)
+
+			return
+		}
+
+		view.Name, view.Path = o.Name, "/orgs/"+id.String()
+	default:
+		p, _, err := a.cfg.Tenancy.Project(ctx, me.ID, id)
+		if err != nil {
+			a.failed(w, r, err)
+
+			return
+		}
+
+		view.Name, view.Path = p.Name, "/projects/"+id.String()
+	}
+
+	ex, err := a.cfg.Ledger.Explore(ctx, me.ID, types.Scope{Kind: kind, ID: id}, view.Search.Criteria)
+	if err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
+	view.Found, view.Groups = foundOf(ex), categorybus.Grouped(ex.Categories)
+
+	view.Categories = make(map[types.ID]string, len(ex.Categories))
+	for _, c := range ex.Categories {
+		view.Categories[c.ID] = c.Name
+	}
+
+	var (
+		ids      []types.ID
+		projects []types.ID
+	)
+
+	for _, row := range ex.Rows {
+		ids = append(ids, row.Transaction.ID)
+
+		for _, s := range row.Parts {
+			if !s.ProjectID.Zero() {
+				projects = append(projects, s.ProjectID)
+			}
+		}
+	}
+
+	if view.Projects, err = a.cfg.Tenancy.ProjectNames(ctx, projects); err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
+	on, err := a.cfg.Receipts.OnTransactions(ctx, ids)
+	if err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
+	view.Receipts = make(map[types.ID]int, len(on))
+	for id, rs := range on {
+		view.Receipts[id] = len(rs)
+	}
+
+	if view.Clearing, err = a.cfg.Ledger.Clearing(ctx, me.ID, ids); err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
+	a.cfg.Render.Render(w, r, http.StatusOK, "found", view)
 }
