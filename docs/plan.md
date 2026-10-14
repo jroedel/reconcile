@@ -289,6 +289,7 @@ Owners, bookkeepers and accountants can download it (the Export permission). It 
    - Accounts for reference (above, "Whose books"): the mark on the account's edit page and wherever it is named, and its parts left out of the organization's totals, budget, what should come back to zero, a project's book and what is to sort. Before reports, which build on it
    - Reports: an engine that sums parts by kind, category, group, project, payee, account and month; styles written in code and reviewed by pull request ("Income and expenses by month", "A project"); saved reports, a style with its choices made, run for a period chosen each time; category groups; printing and a CSV. No builder on the web yet, and nothing in the way of one (planned in `docs/reports.md`)
    - Thumbnails (stewards `imaging`, now `foundation/imaging`): a JPEG or PNG receipt has a small picture for lists and a large one for its page, upright and without EXIF, made the first time a page asks and kept beside the original by its hash (`files/sized/`). The original is unchanged, still a tap away, and is what the accountant's package holds. PDF, WebP and HEIC are shown or offered as they are
+   - Looking through transactions: one form of choices (words, days, amount and direction, account, category or kind, project, what is to check, receipts) over an account's month list, an organization's transactions and a project's; the organization's page shows its latest ten (planned in `docs/explorer.md`)
 
 ## Open items (do not block steps 1–8)
 
