@@ -10,7 +10,7 @@ module github.com/jroedel/reconcile
 // fixed since -- red in CI and green on a developer machine.
 //
 // Raise this when a Go patch release fixes an advisory the scan reports.
-go 1.26.9
+go 1.26.10
 
 require (
 	github.com/BurntSushi/toml v1.6.0
