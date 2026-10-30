@@ -425,6 +425,26 @@ Then the tests that cross all of it (Verification), and the translations.
 - **A transaction's page** says which list it is in through
   `ledgerbus.AccountingOf`, the same judgement on the one transaction.
 
+### Questions, the books
+
+- **Two tables, not one of messages**: `questions` (what it is about,
+  where its history goes, whether it is answered, and the references
+  that go with a removed statement) and `question_replies` (text and who
+  wrote it). Only the question has what a thread has.
+- **Home** is kept with each question: the account for a transaction or
+  a statement, the project, or the payee list's owner. It is where the
+  line of history is written, and where an organization's list of
+  questions will start from.
+- **Marking answered is the asker's alone.** Anybody else answers by
+  replying, which does it in the same SQL statement that finds the
+  question open, so that two replies at once answer it once. A reply
+  after the answer is a reply.
+- **The history** says "asked a question about ...", "replied to ...",
+  "answered ...", naming the thing, never the question's words: a line
+  of history is read by everyone who reads the account, and the words
+  are the thread's.
+- No pages yet: the thread, its link, and the cards come next.
+
 ## Verification
 
 - **Each reason and each kind of context**, in both lists, in a

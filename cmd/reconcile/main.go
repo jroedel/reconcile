@@ -28,6 +28,8 @@ import (
 	"github.com/jroedel/reconcile/business/domain/file/stores/filefs"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/ledger/stores/ledgerdb"
+	"github.com/jroedel/reconcile/business/domain/question/questionbus"
+	"github.com/jroedel/reconcile/business/domain/question/stores/questiondb"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/stores/receiptdb"
 	"github.com/jroedel/reconcile/business/domain/report/reportbus"
@@ -186,6 +188,8 @@ func run() error {
 	receipts := receiptbus.NewBusiness(log, receiptdb.NewStore(db), tenancy, ledger, files)
 	ledger.OnImport(receipts.AfterImport)
 	ledger.OnReceipts(receipts.Counts)
+	questions := questionbus.NewBusiness(log, questiondb.NewStore(db), tenancy, ledger)
+	ledger.OnAnswered(questions.Answered)
 	budgets := budgetbus.NewBusiness(log, budgetdb.NewStore(db), tenancy, ledger, categories)
 	export := exportbus.NewBusiness(log, tenancy, ledger, receipts, categories, files)
 
@@ -253,6 +257,7 @@ func prepare(ctx context.Context, db *sql.DB) error {
 		{"the budgets", budgetdb.Init},
 		{"the statements and transactions", ledgerdb.Init},
 		{"the receipts", receiptdb.Init},
+		{"the questions about the books", questiondb.Init},
 		{"the layouts of statements seen", shapedb.Init},
 		{"the saved reports", reportdb.Init},
 	} {
@@ -284,6 +289,7 @@ func expectedSchema() sqldb.Expected {
 		budgetdb.Expected,
 		ledgerdb.Expected,
 		receiptdb.Expected,
+		questiondb.Expected,
 		shapedb.Expected,
 		reportdb.Expected,
 	} {

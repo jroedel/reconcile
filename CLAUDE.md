@@ -152,7 +152,9 @@ what a charge that has it is sorted into), `budget` (what owners expect
 a project's, or an organization's year's, income and expenses to be,
 compared with what happened), `receipt`
 (the photos and PDFs that justify a charge, waiting in an account's or
-project's inbox until a person matches them), `shape` (the layouts of
+project's inbox until a person matches them), `question` (what people
+ask about a transaction, a statement, a project or a payee, and the
+answers, `docs/accountant.md`), `shape` (the layouts of
 statements no declaration describes, as the words their structure uses
 and never their contents, for the site administrator), `export` (the
 accountant's zip, read across the others and stored nowhere) and `report`
