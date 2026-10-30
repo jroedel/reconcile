@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -390,6 +391,101 @@ func TestWhoMayAsk(t *testing.T) {
 	} {
 		if err := call(); !errors.Is(err, questionbus.ErrNotFound) {
 			t.Errorf("%s: %v, want not found", name, err)
+		}
+	}
+}
+
+// The whole table (#151): every role on each of the three scopes, and
+// somebody with none, asking, reading, replying, and marking a question
+// answered -- their own, and the owner's. Note is what asks, replies and
+// marks; Read is what reads; only the asker marks; and the groceries,
+// which have a part in the project, are reached from every scope, while
+// the coffee, which has none, is not reached from the project.
+func TestTheRoleTable(t *testing.T) {
+	w := newWorld(t)
+	ctx := t.Context()
+
+	scopes := []struct {
+		name  string
+		scope types.Scope
+	}{
+		{"organization", types.OrgScope(w.org)},
+		{"account", types.AccountScope(w.account)},
+		{"project", types.ProjectScope(w.project)},
+	}
+
+	roles := map[tenancybus.Role]bool{
+		tenancybus.Owner: true, tenancybus.Bookkeeper: true, tenancybus.Contributor: true, tenancybus.Accountant: true, tenancybus.Viewer: false,
+	}
+
+	// refused is the answer a person without Note gets: they found the
+	// question, so it is not hidden from them, only not theirs to change.
+	refused := func(note bool, err error) bool {
+		if note {
+			return err == nil
+		}
+
+		return errors.Is(err, questionbus.ErrForbidden)
+	}
+
+	n := 0
+
+	for _, s := range scopes {
+		for role, note := range roles {
+			n++
+			name := fmt.Sprintf("%s on the %s", role, s.name)
+			who := w.given(fmt.Sprintf("person%d@example.org", n), s.scope, role)
+			theirs := w.ask(w.owner, onTx(w.grocery), "Which part was the retreat's?")
+
+			if _, err := w.questions.Question(ctx, who, theirs.ID); err != nil {
+				t.Errorf("%s, reading: %v", name, err)
+			}
+
+			if _, err := w.questions.Summary(ctx, who, onTx(w.grocery)); err != nil {
+				t.Errorf("%s, listing: %v", name, err)
+			}
+
+			if err := w.questions.MarkAnswered(ctx, now, who, theirs.ID); !errors.Is(err, questionbus.ErrForbidden) {
+				t.Errorf("%s, marking the owner's question: %v, want forbidden", name, err)
+			}
+
+			if _, err := w.questions.Reply(ctx, now, who, theirs.ID, "The twenty dollars."); !refused(note, err) {
+				t.Errorf("%s, replying: %v", name, err)
+			}
+
+			mine, err := w.questions.Ask(ctx, now, who, onTx(w.grocery), "Is there a receipt?")
+			if !refused(note, err) {
+				t.Errorf("%s, asking: %v", name, err)
+			}
+
+			if note {
+				if err := w.questions.MarkAnswered(ctx, now, who, mine.ID); err != nil {
+					t.Errorf("%s, marking their own question: %v", name, err)
+				}
+			}
+
+			_, err = w.questions.Ask(ctx, now, who, onTx(w.coffee), "Whose coffee?")
+			switch {
+			case s.name == "project" && !errors.Is(err, questionbus.ErrNotFound):
+				t.Errorf("%s, asking about the coffee, outside the project: %v, want not found", name, err)
+			case s.name != "project" && !refused(note, err):
+				t.Errorf("%s, asking about the coffee: %v", name, err)
+			}
+		}
+	}
+
+	stranger := w.user("stranger@example.org")
+	theirs := w.ask(w.owner, onTx(w.grocery), "Which part was the retreat's?")
+
+	for what, err := range map[string]error{
+		"reading":  func() error { _, err := w.questions.Question(ctx, stranger, theirs.ID); return err }(),
+		"listing":  func() error { _, err := w.questions.Summary(ctx, stranger, onTx(w.grocery)); return err }(),
+		"replying": func() error { _, err := w.questions.Reply(ctx, now, stranger, theirs.ID, "?"); return err }(),
+		"asking":   func() error { _, err := w.questions.Ask(ctx, now, stranger, onTx(w.grocery), "?"); return err }(),
+		"marking":  w.questions.MarkAnswered(ctx, now, stranger, theirs.ID),
+	} {
+		if !errors.Is(err, questionbus.ErrNotFound) {
+			t.Errorf("a stranger, %s: %v, want not found", what, err)
 		}
 	}
 }
