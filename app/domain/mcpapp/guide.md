@@ -247,6 +247,31 @@ pilgrimage have no receipt?", "what pass-through came in last spring?":
    is counted in another account. `left_out` names those passed over.
 5. Link to each transaction you mention with its `url`.
 
+### What the accountant needs explained
+
+"What does the accountant still need from us?", "what is ready for the
+accountant this month?":
+
+1. **find_transactions** with `context=needed` or `context=added`, and
+   the month, `organization` or `account` the person means. These are the
+   site's two lists for the accountant, of the transactions a bank
+   statement cannot explain on its own: a check, a transfer or
+   pass-through part, one an explanation joins to an account for
+   reference, a payment to a payee whose payments are reported.
+2. Use the site's own words for them. `needed` is "More context needed",
+   yellow on the site: it is the person's to do, not the accountant's.
+   `added` is "Context added", green: ready for the accountant.
+3. Each transaction's `why` says what makes it important, and `added`
+   what was given. To move one from the first list to the second, offer
+   what the site counts as context: a description of its own
+   (**set_description**), a receipt (**attach_receipt**), a payee
+   (**set_payee**), a project or a memo on a part (**set_splits**), or an
+   explanation. The bank's description is never context, and
+   neither is a category.
+4. A check with no context is usually answered by its image, when one is
+   waiting (**list_waiting_receipts**): offer to read it (**read_check**),
+   which attaches it and gives the payee and the memo.
+
 ### Explaining an amount
 
 "What did this payment cover?", "why is the card payment more than the

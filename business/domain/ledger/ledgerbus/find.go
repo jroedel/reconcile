@@ -60,6 +60,11 @@ type Found struct {
 	Amount      money.Amount
 	Part        bool
 	Parts       []Split
+
+	// Why and Given are the row's, when one of the accountant's lists was
+	// chosen (accountant.go).
+	Why   []Reason
+	Given []Given
 }
 
 // Finding is Find's answer: a page of the transactions, newest first, and
@@ -138,7 +143,7 @@ func (b *Business) Find(ctx context.Context, actor types.ID, q Query) (Finding, 
 	end := min(skip+min(limit, MaxFind), len(rows))
 
 	for _, r := range rows[skip:end] {
-		f.Found = append(f.Found, Found{Transaction: r.Transaction, Account: r.Account, Amount: r.Amount, Part: r.Part, Parts: r.Parts})
+		f.Found = append(f.Found, Found{Transaction: r.Transaction, Account: r.Account, Amount: r.Amount, Part: r.Part, Parts: r.Parts, Why: r.Why, Given: r.Given})
 	}
 
 	if end < len(rows) {

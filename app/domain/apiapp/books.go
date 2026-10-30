@@ -233,10 +233,11 @@ func (a app) bookEndpoints() []Endpoint {
 				{Name: "project", Type: "string", Description: "A project's id, or none for parts in no project. It finds the project's parts in the accounts you may read; get_project_book has every part of a project you were given."},
 				{Name: "by", Type: "string", Values: []string{"rule", "program"}, Description: "Those a sorting rule sorted, or those a program (an API key) changed that no person has saved since."},
 				{Name: "receipts", Type: "string", Values: []string{"with", "without"}, Description: "Those with a receipt, or with none."},
+				{Name: "context", Type: "string", Values: []string{"needed", "added"}, Description: "The accountant's two lists, of the transactions a bank statement cannot explain on its own: a check, a transfer or pass-through part, one an explanation joins to an account for reference, or a payment to a payee whose payments are reported. needed is those nobody has given context yet, the person's to do, shown on the site as \"More context needed\" in yellow; added is those with some, ready for the accountant, \"Context added\" in green. Context is a description of its own, a receipt, a check's memo, an explanation that adds up or was accepted with a note, a project or a memo on a part, a payee, or a question answered; never the bank's description, nor a category. Each transaction then says why it is in the list and what it was given."},
 				{Name: "limit", Type: "integer", Description: fmt.Sprintf("How many, %d by default and %d at most.", ledgerbus.DefaultFind, ledgerbus.MaxFind)},
 				{Name: "skip", Type: "integer", Description: "How many to pass over: the next page is the answer's next_skip."},
 			},
-			Returns: "{transactions: [transaction, with account_name, and matched_amount when only some of its parts fit, those parts matched], total, more, next_skip, sums: [{currency, in, out}], left_out: [{id, name}]}: total is how many fit, more how many after this page, sums their money over every page, and left_out the accounts for reference not searched.",
+			Returns: "{transactions: [transaction, with account_name, matched_amount when only some of its parts fit, those parts matched, and with context why (check, transfer, passthrough, reference, reported) and added (description, receipt, check-memo, explanation, project, part-memo, payee, answer)], total, more, next_skip, sums: [{currency, in, out}], left_out: [{id, name}]}: total is how many fit, more how many after this page, sums their money over every page, and left_out the accounts for reference not searched.",
 			handler: a.findTransactions,
 		},
 		{
@@ -1246,6 +1247,12 @@ type foundOut struct {
 	txOut
 
 	MatchedAmount *money.Amount `json:"matched_amount,omitempty"`
+
+	// Why and Added are why the transaction is in the accountant's list
+	// that was chosen, and what context it was given (ledgerbus.Reason,
+	// ledgerbus.Given), each a word the Returns lists.
+	Why   []ledgerbus.Reason `json:"why,omitzero"`
+	Added []ledgerbus.Given  `json:"added,omitzero"`
 }
 
 func (a app) findTransactions(w http.ResponseWriter, r *http.Request) {
@@ -1388,6 +1395,16 @@ func (a app) findTransactions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	switch l := ledgerbus.ForAccountant(q.Get("context")); l {
+	case "":
+	case ledgerbus.MoreContextNeeded, ledgerbus.ContextAdded:
+		c.Accountant = l
+	default:
+		refuse("context", "Give context as needed or added, or leave it out.")
+
+		return
+	}
+
 	if query.Accounts, ok = a.ids(w, q.Get("account"), "account"); !ok {
 		return
 	}
@@ -1422,7 +1439,7 @@ func (a app) findTransactions(w http.ResponseWriter, r *http.Request) {
 	for _, f := range got.Found {
 		rd.accts[f.Account.ID] = f.Account
 
-		o := foundOut{txOut: rd.named(f.Transaction, f.Account)}
+		o := foundOut{txOut: rd.named(f.Transaction, f.Account), Why: f.Why, Added: f.Given}
 
 		if f.Part {
 			o.MatchedAmount = &f.Amount

@@ -86,6 +86,11 @@ type Criteria struct {
 	Mark     Mark
 	Receipts HasReceipts
 
+	// Accountant is one of the two lists for the accountant
+	// (accountant.go): important transactions with no context given yet,
+	// or those with some.
+	Accountant ForAccountant
+
 	// Skip and Limit page anything wider than a month: Limit is
 	// DefaultExplore when zero.
 	Skip, Limit int
@@ -130,6 +135,12 @@ type Row struct {
 	// project's list, a part in an account they are given nothing on is
 	// shown, and not linked (docs/plan.md, "Inheritance").
 	Readable bool
+
+	// Why is what makes the transaction important to the accountant, and
+	// Given the context somebody gave it, when one of the accountant's
+	// lists was chosen; the page says them, a word for each.
+	Why   []Reason
+	Given []Given
 }
 
 // Sorted reports whether every part the row shows has a category: of a
@@ -191,18 +202,22 @@ func (b *Business) OnReceipts(fn ReceiptCounts) { b.receipted = fn }
 // Within is what the store reads for a search: the accounts', or with a
 // project its parts' transactions, in any of its accounts not for
 // reference or in the accounts given; posted from From up to but not
-// including To.
+// including To. Facts asks for each transaction's Facts too, which only
+// the accountant's lists need.
 type Within struct {
 	Accounts []types.ID
 	Project  types.ID
 	From, To types.Date
+	Facts    bool
 }
 
 // Explorable is what the store read: the transactions in the order
-// posted, with their parts, and the kind of each category the parts are in.
+// posted, with their parts, the kind of each category the parts are in,
+// and when asked the facts of those transactions that have any.
 type Explorable struct {
 	Transactions []Transaction
 	Kinds        map[types.ID]categorybus.Kind
+	Facts        map[types.ID]Facts
 }
 
 // Explore is the transactions in a scope -- an account, an organization or
@@ -433,6 +448,7 @@ func (b *Business) look(ctx context.Context, within Within, accounts []tenancybu
 	}
 
 	within.From, within.To = from, to.AddDays(1)
+	within.Facts = c.Accountant != ""
 
 	read, err := b.store.Explore(ctx, within)
 	if err != nil {
@@ -462,7 +478,7 @@ func (b *Business) look(ctx context.Context, within Within, accounts []tenancybu
 		rows = append(rows, Row{Transaction: t, Account: a, Amount: amount, Part: len(parts) < len(t.Splits), Parts: parts})
 	}
 
-	if c.Receipts == "" || len(rows) == 0 {
+	if c.Receipts == "" && c.Accountant == "" || len(rows) == 0 {
 		return rows, nil
 	}
 
@@ -479,9 +495,17 @@ func (b *Business) look(ctx context.Context, within Within, accounts []tenancybu
 		}
 	}
 
-	return slices.DeleteFunc(rows, func(r Row) bool {
-		return (counts[r.Transaction.ID] > 0) != (c.Receipts == WithReceipts)
-	}), nil
+	if c.Receipts != "" {
+		rows = slices.DeleteFunc(rows, func(r Row) bool {
+			return (counts[r.Transaction.ID] > 0) != (c.Receipts == WithReceipts)
+		})
+	}
+
+	if c.Accountant == "" {
+		return rows, nil
+	}
+
+	return b.forAccountant(ctx, rows, c.Accountant, within.Project, read.Kinds, read.Facts, counts)
 }
 
 // parts is the parts of a transaction that are what was chosen, their
