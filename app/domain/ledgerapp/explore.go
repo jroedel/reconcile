@@ -1,6 +1,7 @@
 package ledgerapp
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -27,6 +28,12 @@ type search struct {
 	Way, Category, Project    string
 	Check, Receipts, Account  string
 
+	// Context is one of the accountant's lists (docs/accountant.md):
+	// "needed" or "added". On the accountant's page it is the tab, fixed
+	// by the page rather than chosen in the form, so it opens nothing.
+	Context string
+	fixed   bool
+
 	// Month is ?month=: a month's first day to its last, kept because every
 	// month link in the app says it so. Days typed in the form win.
 	Month string
@@ -51,6 +58,7 @@ func searchOf(q url.Values) search {
 		Words: get("q"), From: get("from"), To: get("to"), Min: get("min"), Max: get("max"),
 		Way: get("way"), Category: get("category"), Project: get("project"),
 		Check: get("check"), Receipts: get("receipts"), Account: get("account"), Month: get("month"),
+		Context: get("context"),
 	}
 
 	switch {
@@ -128,6 +136,13 @@ func searchOf(q url.Values) search {
 		s.Receipts = ""
 	}
 
+	switch l := ledgerbus.ForAccountant(s.Context); l {
+	case ledgerbus.MoreContextNeeded, ledgerbus.ContextAdded:
+		c.Accountant = l
+	default:
+		s.Context = ""
+	}
+
 	if n, err := strconv.Atoi(q.Get("skip")); err == nil && n > 0 {
 		c.Skip = n
 	}
@@ -188,13 +203,14 @@ func (s *search) id(v string) (types.ID, string) {
 
 // Searched reports whether anything beyond a month was chosen: then the
 // page says how many fit, and a charge opened from it comes back to it.
-func (s search) Searched() bool { return s.Words != "" || s.More() }
+func (s search) Searched() bool { return s.Words != "" || s.Context != "" || s.More() }
 
 // More reports whether a choice beyond the words was made, so that the
 // form's further choices are open to show it.
 func (s search) More() bool {
 	return s.Bad || s.From != "" || s.To != "" || s.Min != "" || s.Max != "" || s.Way != "" ||
-		s.Category != "" || s.Project != "" || s.Check != "" || s.Receipts != "" || s.Account != ""
+		s.Category != "" || s.Project != "" || s.Check != "" || s.Receipts != "" || s.Account != "" ||
+		s.Context != "" && !s.fixed
 }
 
 // param is one value of an address, for a link that keeps the choices: the
@@ -209,6 +225,7 @@ func (s search) Carry() []param {
 	for _, p := range []param{
 		{"q", s.Words}, {"min", s.Min}, {"max", s.Max}, {"way", s.Way}, {"category", s.Category},
 		{"project", s.Project}, {"check", s.Check}, {"receipts", s.Receipts}, {"account", s.Account},
+		{"context", s.Context},
 	} {
 		if p.Value != "" {
 			out = append(out, p)
@@ -329,6 +346,19 @@ func (a app) foundPage(w http.ResponseWriter, r *http.Request, kind types.ScopeK
 		return
 	}
 
+	if err := a.fill(ctx, me.ID, &view, ex); err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
+	a.cfg.Render.Render(w, r, http.StatusOK, "found", view)
+}
+
+// fill gives a list's view what a search found, and what its rows show
+// beside their own columns: the names of their categories and projects,
+// their receipts, and what explains what.
+func (a app) fill(ctx context.Context, me types.ID, view *foundView, ex ledgerbus.Explored) error {
 	view.Found, view.Groups = foundOf(ex), categorybus.Grouped(ex.Categories)
 
 	view.Categories = make(map[types.ID]string, len(ex.Categories))
@@ -351,17 +381,14 @@ func (a app) foundPage(w http.ResponseWriter, r *http.Request, kind types.ScopeK
 		}
 	}
 
+	var err error
 	if view.Projects, err = a.cfg.Tenancy.ProjectNames(ctx, projects); err != nil {
-		a.failed(w, r, err)
-
-		return
+		return err
 	}
 
 	on, err := a.cfg.Receipts.OnTransactions(ctx, ids)
 	if err != nil {
-		a.failed(w, r, err)
-
-		return
+		return err
 	}
 
 	view.Receipts = make(map[types.ID]int, len(on))
@@ -369,11 +396,7 @@ func (a app) foundPage(w http.ResponseWriter, r *http.Request, kind types.ScopeK
 		view.Receipts[id] = len(rs)
 	}
 
-	if view.Clearing, err = a.cfg.Ledger.Clearing(ctx, me.ID, ids); err != nil {
-		a.failed(w, r, err)
+	view.Clearing, err = a.cfg.Ledger.Clearing(ctx, me, ids)
 
-		return
-	}
-
-	a.cfg.Render.Render(w, r, http.StatusOK, "found", view)
+	return err
 }

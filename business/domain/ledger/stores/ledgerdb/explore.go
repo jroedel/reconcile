@@ -112,6 +112,18 @@ const factsQuery = `SELECT t.id,
         WHERE l.explains = t.id AND a.reference = 1)
 FROM transactions t WHERE t.id IN (SELECT id FROM transactions WHERE `
 
+// Facts is the Facts of some transactions, by their IDs, those with none
+// left out: a transaction's page asks for its own.
+func (s *Store) Facts(ctx context.Context, ids []types.ID) (map[types.ID]ledgerbus.Facts, error) {
+	if len(ids) == 0 {
+		return map[types.ID]ledgerbus.Facts{}, nil
+	}
+
+	in, args := inList(ids)
+
+	return s.facts(ctx, `id IN (`+in+`)`, args)
+}
+
 // facts reads the Facts of the transactions where says, keeping only those
 // with any: most have none, and a missing one is the zero Facts.
 func (s *Store) facts(ctx context.Context, where string, args []any) (map[types.ID]ledgerbus.Facts, error) {

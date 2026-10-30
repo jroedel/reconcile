@@ -153,6 +153,7 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		e.account + "/transactions?q=coffee&category=kind:expense&receipts=without", e.ownAccount + "/transactions?from=2026-01-01&check=byrule",
 		e.org + "/transactions", e.org + "/transactions?category=unsorted&account=" + strings.TrimPrefix(e.account, "/accounts/"),
 		e.project + "/transactions", e.ownProject + "/transactions?q=coffee",
+		e.org + "/accountant", e.org + "/accountant?context=added&month=2026-07",
 		e.account + "/months", e.ownAccount + "/months",
 		e.account + "/rules", e.ownAccount + "/rules",
 		e.account + "/sort?month=2026-07", e.ownAccount + "/sort?month=2026-07",

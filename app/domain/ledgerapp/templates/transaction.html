@@ -6,6 +6,11 @@
 {{if $t.OwnDescription}}<p class="hint">{{if $t.Description}}{{t "The bank calls it {description}." "description" $t.Description}}{{else}}{{t "The bank gave it no description."}}{{end}}</p>{{end}}
 <p>{{$t.PostedOn}}{{with $t.Holder}} · {{.}}{{end}}{{with $t.CheckNumber}} · {{t "Check number {number}" "number" .}}{{end}}{{with $t.Payee}} · {{t "paid to {payee}" "payee" .}}{{end}}{{with $t.CheckMemo}} · {{t "memo: {memo}" "memo" .}}{{end}} · <span class="money {{if lt $t.Amount 0}}out{{else}}in{{end}}">{{money $t.Amount $cur}}</span></p>
 {{if not $t.WrittenOn.Zero}}<p class="hint">{{t "The check was written on {written} and cleared on {date}." "written" $t.WrittenOn "date" $t.PostedOn}}</p>{{end}}
+{{/* Where it stands with the accountant (docs/accountant.md): one line,
+     so that somebody who came to attach a receipt reads no more above it
+     than before. Nothing at all when it is in neither list. */}}
+{{with $v.Accounting}}{{if eq .List "needed"}}<p class="notice"><strong>{{t "More context needed."}}</strong>{{range .Why}} {{template "reason-sentence" .}}{{end}}{{if or $v.CanReceipts $v.CanSort}} {{t "Add a description of its own, a receipt or whom it was paid to."}}{{end}}</p>
+{{else if eq .List "added"}}<p class="notice ok"><strong>{{t "Ready for the accountant."}}</strong> <span class="why">{{t "Context added:"}} {{range .Given}}<span>{{template "given" .}}</span>{{end}}</span></p>{{end}}{{end}}
 {{with $e.PostedAs}}<p class="notice"><span class="badge">{{t "pending, since posted"}}</span> {{t "This charge had not posted when its file was read. It posted as the charge below, which is the one that counts; this one stays in its statement, which was checked with it."}}<br>
 <a href="/transactions/{{.ID}}">{{if .Shown}}{{.Shown}}{{else}}{{t "(no description)"}}{{end}}</a> · {{t "posted on {date} at {amount}" "date" .PostedOn "amount" (money .Amount $cur)}}</p>
 {{if $v.CanPair}}<form method="post" action="/transactions/{{$t.ID}}/unclear" class="inline"><button type="submit" class="link">{{t "Not the same charge: count this one again"}}</button></form>{{end}}

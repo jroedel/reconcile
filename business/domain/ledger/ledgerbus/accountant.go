@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/jroedel/reconcile/business/domain/category/categorybus"
+	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/types"
 )
 
@@ -203,17 +204,78 @@ func (b *Business) forAccountant(ctx context.Context, rows []Row, list ForAccoun
 
 		r.Why, r.Given = explaining(t, parts, kinds, facts[t.ID], receipts[t.ID], answered[t.ID])
 
-		switch {
-		case len(r.Why) == 0:
-			continue
-		case list == MoreContextNeeded && (len(r.Given) > 0 || r.Account.Reference):
-			continue
-		case list == ContextAdded && len(r.Given) == 0:
-			continue
+		if listOf(r.Why, r.Given, r.Account) == list {
+			out = append(out, r)
 		}
-
-		out = append(out, r)
 	}
 
 	return out, nil
+}
+
+// listOf is the list a transaction is in, from why it is important and
+// what it was given: none when it is not important, nor when it is in an
+// account for reference with nothing given, since nothing there is to do.
+func listOf(why []Reason, given []Given, account tenancybus.Account) ForAccountant {
+	switch {
+	case len(why) == 0:
+		return ""
+	case len(given) > 0:
+		return ContextAdded
+	case account.Reference:
+		return ""
+	default:
+		return MoreContextNeeded
+	}
+}
+
+// Accounting is a transaction's place in the accountant's lists, for its
+// page: the list it is in, if any, why, and what it was given.
+type Accounting struct {
+	List  ForAccountant
+	Why   []Reason
+	Given []Given
+}
+
+// AccountingOf is where the transaction an editor shows stands with the
+// accountant. The editor is what Transaction gave the actor, which is the
+// actor's leave to read it; the transaction's page already holds one, and
+// asking tenancybus again would answer the same.
+func (b *Business) AccountingOf(ctx context.Context, e Editor) (Accounting, error) {
+	t := e.Transaction
+	if t.Cleared() {
+		return Accounting{}, nil
+	}
+
+	ids := []types.ID{t.ID}
+
+	facts, err := b.store.Facts(ctx, ids)
+	if err != nil {
+		return Accounting{}, err
+	}
+
+	receipts := map[types.ID]int{}
+	if b.receipted != nil {
+		if receipts, err = b.receipted(ctx, ids); err != nil {
+			return Accounting{}, err
+		}
+	}
+
+	answered := map[types.ID]bool{}
+	if b.answered != nil {
+		if answered, err = b.answered(ctx, ids); err != nil {
+			return Accounting{}, err
+		}
+	}
+
+	kinds := make(map[types.ID]categorybus.Kind, len(e.Categories))
+	for _, c := range e.Categories {
+		kinds[c.ID] = c.Kind
+	}
+
+	var a Accounting
+
+	a.Why, a.Given = explaining(t, t.Splits, kinds, facts[t.ID], receipts[t.ID], answered[t.ID])
+	a.List = listOf(a.Why, a.Given, e.Account)
+
+	return a, nil
 }

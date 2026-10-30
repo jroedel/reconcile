@@ -397,6 +397,34 @@ Seven pull requests after this one, each useful when merged:
 
 Then the tests that cross all of it (Verification), and the translations.
 
+## As built
+
+### The read (#153)
+
+- **`ledgerbus/accountant.go`**: the reasons and the kinds of context as
+  codes, judged in Go beside the search's other choices
+  (`Criteria.Accountant`). The store reads three facts beside the
+  transactions only when a list is asked for (`ledgerdb/explore.go`,
+  `factsQuery`).
+- **A payment to a reported payee is always in the green list**: naming
+  its payee is itself context. Its reasons still say "reported".
+- **A difference accepted without a note is not context**: it says only
+  that the difference was let go.
+
+### The page
+
+- **The rows come first**, then the search's other choices, closed: the
+  tab is the page's, not a choice made in the form, and on a phone the
+  form is a screen of its own.
+- **A yellow row says only why it is important**, not every kind of
+  context it lacks: a row in that list lacks them all, and eight "no ..."
+  under each row would bury the one word that matters.
+- **The months offered are the six latest**, counted from today, and
+  "Every month"; any other is a day or two in the form.
+- **The two counts** are the same search twice, once for each list.
+- **A transaction's page** says which list it is in through
+  `ledgerbus.AccountingOf`, the same judgement on the one transaction.
+
 ## Verification
 
 - **Each reason and each kind of context**, in both lists, in a

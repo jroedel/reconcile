@@ -77,7 +77,7 @@
 <section class="card" id="search">
 <h2>{{t "Find transactions"}}</h2>
 <form method="get" action="{{$v.Path}}/transactions">
-{{template "search-fields" (dict "Search" $v.Search "Found" $v.Found "Groups" $v.Groups "Path" (print $v.Path "/transactions") "Marks" true)}}
+{{template "search-fields" (dict "Search" $v.Search "Found" $v.Found "Groups" $v.Groups "Path" (print $v.Path "/transactions") "Marks" true "Lists" true)}}
 </form>
 </section>
 

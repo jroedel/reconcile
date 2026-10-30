@@ -1,0 +1,42 @@
+{{define "title"}}{{t "For the accountant"}}{{end}}
+{{define "content"}}{{$v := .Data}}
+{{template "crumbs" (trail $ $v.Name $v.Path)}}
+<h1>{{t "For the accountant"}}</h1>
+<p class="hint">{{t "Checks, transfers and pass-through are what a bank statement cannot explain on its own. Each is listed here: first while it needs more context, then once it has some."}}</p>
+
+{{/* A tab each list, each a link that keeps every other choice. The
+     rule under them is the list's colour, and each tab says its words:
+     colour is never the only sign (docs/design.md). */}}
+<nav class="tabs lists {{$v.List}}" aria-label="{{t "The accountant's lists"}}">
+<a href="?{{range $v.Tabs}}{{.Key}}={{.Value}}&amp;{{end}}context=needed"{{if eq $v.List "needed"}} aria-current="page"{{end}}>{{t "More context needed ({n})" "n" $v.Needed}}</a>
+<a href="?{{range $v.Tabs}}{{.Key}}={{.Value}}&amp;{{end}}context=added"{{if eq $v.List "added"}} aria-current="page"{{end}}>{{t "Context added ({n})" "n" $v.Added}}</a>
+</nav>
+{{if eq $v.List "needed"}}<p class="hint">{{t "The bank's description is all the accountant has of these. A description of its own, a receipt, whom it was paid to, a project or an explanation moves each to the next list."}}</p>
+{{else}}<p class="hint">{{t "Each has something the bank did not give: what it was for, its receipt, or whom it was paid to."}}</p>{{end}}
+
+<ul class="months">
+{{range $v.Months}}<li><a href="?{{range $v.Search.Carry}}{{.Key}}={{.Value}}&amp;{{end}}month={{.}}"{{if eq . $v.Search.Month}} aria-current="page"{{end}}>{{.}}</a></li>
+{{end}}<li><a href="?{{range $v.Search.Carry}}{{.Key}}={{.Value}}&amp;{{end}}"{{if and (not $v.Search.Month) (not $v.Search.From) (not $v.Search.To)}} aria-current="page"{{end}}>{{t "Every month"}}</a></li>
+</ul>
+
+<section class="card">
+{{- if $v.Found.LeftOut}}<p class="hint">{{t "Accounts for reference are left out. Choose one as the account to look in it."}}</p>{{end}}
+{{if $v.Found.Rows}}{{template "found-rows" (dict "V" $v "Here" $.Here)}}
+{{template "found-pages" $v}}
+{{else if $v.Tabs}}<p class="hint">{{t "Nothing in this list fits these choices."}} <a href="{{$v.Path}}/accountant?context={{$v.Search.Context}}">{{t "Clear the choices"}}</a></p>
+{{else if eq $v.List "needed"}}<p>{{t "Nothing needs more context. Every check, transfer and pass-through has what the accountant needs."}}</p>
+<p><a href="?context=added">{{t "See what is ready for the accountant"}}</a></p>
+{{else}}<p>{{t "Nothing is ready for the accountant yet. A transaction is ready once it has a description of its own, a receipt, whom it was paid to, or a project."}}</p>
+<p><a href="?context=needed">{{t "See what needs more context"}}</a></p>{{end}}
+</section>
+
+{{/* The search's other choices, after the rows: the rows are what the
+     page is for, and on a phone the form is a screen of its own. */}}
+<section class="card" id="search">
+<h2>{{t "Find among them"}}</h2>
+<form method="get" action="{{$v.Path}}/accountant">
+<input type="hidden" name="context" value="{{$v.Search.Context}}">
+{{template "search-fields" (dict "Search" $v.Search "Found" $v.Found "Groups" $v.Groups "Path" (print $v.Path "/accountant?context=" $v.Search.Context) "Marks" true "Lists" false)}}
+</form>
+</section>
+{{end}}

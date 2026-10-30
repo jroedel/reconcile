@@ -195,6 +195,7 @@ type Storer interface {
 	// transactions within, in the order posted, with the kinds of their
 	// parts' categories.
 	Explore(ctx context.Context, w Within) (Explorable, error)
+	Facts(ctx context.Context, ids []types.ID) (map[types.ID]Facts, error)
 
 	// ProjectAccounts is the accounts a project has parts in, not those
 	// for reference, by name.

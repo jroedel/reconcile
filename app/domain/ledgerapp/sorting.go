@@ -60,6 +60,11 @@ type transactionView struct {
 	// PayeeProblem is set when the payee typed would not do.
 	PayeeProblem bool
 
+	// Accounting is where it stands with the accountant
+	// (docs/accountant.md): which of the two lists it is in, if either,
+	// why, and what it was given.
+	Accounting ledgerbus.Accounting
+
 	sortForm
 }
 
@@ -206,6 +211,12 @@ func (a app) transactionPage(w http.ResponseWriter, r *http.Request, status int,
 
 	view.Settled, view.Explained = c.Explains[id]
 	view.ClearedBy = c.ClearedBy(id)
+
+	if view.Accounting, err = a.cfg.Ledger.AccountingOf(r.Context(), e); err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
 
 	if view.CanReceipts {
 		if view.Waiting, err = a.waitingFor(r, me.ID, e.Transaction); err != nil {

@@ -77,6 +77,14 @@
     <option value="through"{{if eq $s.Check "through"}} selected{{end}}>{{t "Changed by a program"}}</option>
   </select>
 </div>{{end}}
+{{if .Lists}}<div class="field">
+  <label for="context">{{t "For the accountant"}}</label>
+  <select id="context" name="context">
+    <option value="">{{t "Anything"}}</option>
+    <option value="needed"{{if eq $s.Context "needed"}} selected{{end}}>{{t "More context needed"}}</option>
+    <option value="added"{{if eq $s.Context "added"}} selected{{end}}>{{t "Context added"}}</option>
+  </select>
+</div>{{end}}
 <div class="field">
   <label for="receipts">{{t "Receipts"}}</label>
   <select id="receipts" name="receipts">
@@ -116,7 +124,7 @@
 <table class="ledger">
 <thead><tr><th>{{t "Date"}}</th><th>{{t "Description"}}</th>{{if $named}}<th>{{t "Account"}}</th>{{end}}<th>{{t "For"}}</th><th class="money">{{t "Amount"}}</th></tr></thead>
 <tbody>
-{{range $v.Found.Rows}}{{$r := .}}{{$cur := .Account.Currency}}{{with .Transaction}}<tr id="t-{{.ID}}"><td>{{.PostedOn}}</td><td>{{if $r.Readable}}<a href="/transactions/{{.ID}}{{if $v.Search.Searched}}?back={{$here}}{{end}}">{{if .Shown}}{{.Shown}}{{else}}{{t "(no description)"}}{{end}}</a>{{else}}{{if .Shown}}{{.Shown}}{{else}}{{t "(no description)"}}{{end}}{{end}}{{if $v.ByHolder}}{{with .Holder}}<br><span class="hint">{{.}}</span>{{end}}{{end}}{{with .CheckUnsaid}}<br><span class="hint">{{t "Check number {number}" "number" .}}</span>{{end}}{{with .Payee}}<br><span class="hint">{{t "Paid to {payee}" "payee" .}}</span>{{end}}{{with .PayeeVia}} <span class="badge">{{t "by {name}" "name" .}}</span>{{end}}{{with .CheckMemo}}<br><span class="hint">{{t "Memo: {memo}" "memo" .}}</span>{{end}}{{if .Cleared}} <a href="/transactions/{{.PostedAs}}" class="badge">{{t "pending, since posted"}}</a>{{else if .Pending}} <span class="badge">{{t "pending"}}</span>{{end}}{{with .OwnVia}} <span class="badge">{{t "described by {name}" "name" .}}</span>{{end}}</td>
+{{range $v.Found.Rows}}{{$r := .}}{{$cur := .Account.Currency}}{{with .Transaction}}<tr id="t-{{.ID}}"><td>{{.PostedOn}}</td><td>{{if $r.Readable}}<a href="/transactions/{{.ID}}{{if $v.Search.Searched}}?back={{$here}}{{end}}">{{if .Shown}}{{.Shown}}{{else}}{{t "(no description)"}}{{end}}</a>{{else}}{{if .Shown}}{{.Shown}}{{else}}{{t "(no description)"}}{{end}}{{end}}{{if $v.ByHolder}}{{with .Holder}}<br><span class="hint">{{.}}</span>{{end}}{{end}}{{with .CheckUnsaid}}<br><span class="hint">{{t "Check number {number}" "number" .}}</span>{{end}}{{with .Payee}}<br><span class="hint">{{t "Paid to {payee}" "payee" .}}</span>{{end}}{{with .PayeeVia}} <span class="badge">{{t "by {name}" "name" .}}</span>{{end}}{{with .CheckMemo}}<br><span class="hint">{{t "Memo: {memo}" "memo" .}}</span>{{end}}{{if .Cleared}} <a href="/transactions/{{.PostedAs}}" class="badge">{{t "pending, since posted"}}</a>{{else if .Pending}} <span class="badge">{{t "pending"}}</span>{{end}}{{with .OwnVia}} <span class="badge">{{t "described by {name}" "name" .}}</span>{{end}}{{template "accounting" $r}}</td>
 {{if $named}}<td>{{$r.Account.Name}}</td>{{end}}
 <td>{{if .Cleared}}<span class="hint">{{t "counted as its posted charge"}}</span>{{end}}{{if gt (len $r.Parts) 1}}{{t "{n} parts" "n" (len $r.Parts)}}{{if not $r.Sorted}} <span class="badge">{{t "not sorted yet"}}</span>{{end}}
 {{else}}{{range $r.Parts}}{{with index $v.Categories .CategoryID}}{{.}}{{else}}<span class="badge">{{t "not sorted yet"}}</span>{{end}}{{with index $v.Projects .ProjectID}} · {{.}}{{end}}{{if not .RuleID.Zero}} <span class="badge">{{t "by rule"}}</span>{{else}}{{with .Via}} <span class="badge">{{t "by {name}" "name" .}}</span>{{end}}{{end}}{{end}}{{end}}
@@ -128,6 +136,46 @@
 </table>
 </div>
 {{end}}
+
+{{/* accounting is a row's reasons for the accountant and what it was
+     given (docs/accountant.md), when one of the two lists was chosen: a
+     word for each, the marks between them the stylesheet's (.why). */}}
+{{define "accounting"}}
+{{- if .Why}}<br><span class="hint why">{{range .Why}}<span>{{template "reason" .}}</span>{{end}}</span>{{end}}
+{{- if .Given}}<br><span class="hint why">{{t "Added:"}} {{range .Given}}<span>{{template "given" .}}</span>{{end}}</span>{{end}}
+{{- end}}
+
+{{/* reason is why a transaction is important to the accountant
+     (ledgerbus.Reason), as a row says it. */}}
+{{define "reason"}}
+{{- if eq . "check"}}{{t "a check"}}
+{{- else if eq . "transfer"}}{{t "a transfer between our accounts"}}
+{{- else if eq . "passthrough"}}{{t "pass-through"}}
+{{- else if eq . "reference"}}{{t "explained by an account for reference"}}
+{{- else if eq . "reported"}}{{t "a payee whose payments are reported"}}{{end}}
+{{- end}}
+
+{{/* reason-sentence is why a transaction is important to the
+     accountant, as its own page says it: a whole sentence each. */}}
+{{define "reason-sentence"}}
+{{- if eq . "check"}}{{t "This is a check, so the accountant needs to know what it paid for."}}
+{{- else if eq . "transfer"}}{{t "Part of it moves money between our own accounts, so the accountant needs to know why."}}
+{{- else if eq . "passthrough"}}{{t "Part of it is money held for somebody else, so the accountant needs to know whose it is."}}
+{{- else if eq . "reference"}}{{t "An explanation joins it to an account for reference, so the accountant needs to know what it was for."}}
+{{- else if eq . "reported"}}{{t "Its payee's payments are reported to the accountant."}}{{end}}
+{{- end}}
+
+{{/* given is context a transaction was given (ledgerbus.Given). */}}
+{{define "given"}}
+{{- if eq . "description"}}{{t "a description of its own"}}
+{{- else if eq . "receipt"}}{{t "a receipt"}}
+{{- else if eq . "check-memo"}}{{t "the check's memo"}}
+{{- else if eq . "explanation"}}{{t "an explanation"}}
+{{- else if eq . "project"}}{{t "a project"}}
+{{- else if eq . "part-memo"}}{{t "a memo on a part"}}
+{{- else if eq . "payee"}}{{t "whom it was paid to"}}
+{{- else if eq . "answer"}}{{t "an answered question"}}{{end}}
+{{- end}}
 
 {{/* found-pages is the way to the pages before and after, keeping every
      choice. */}}

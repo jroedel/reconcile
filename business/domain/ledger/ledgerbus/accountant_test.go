@@ -428,3 +428,51 @@ func TestFindingWhatTheAccountantNeeds(t *testing.T) {
 		t.Errorf("found %+v, %v", got.Found, err)
 	}
 }
+
+// A transaction's page says where it stands: to do, ready, or in neither
+// list, and a transaction in an account for reference is never to do.
+func TestWhereATransactionStandsWithTheAccountant(t *testing.T) {
+	a := newAccounted(newWorld(t))
+	ctx := t.Context()
+
+	stands := func(id types.ID) ledgerbus.Accounting {
+		t.Helper()
+
+		e, err := a.w.ledger.Transaction(ctx, a.owner, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		got, err := a.w.ledger.AccountingOf(ctx, e)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		return got
+	}
+
+	if got := stands(a.electric.ID); got.List != "" || got.Why != nil {
+		t.Errorf("an ordinary bill: %+v", got)
+	}
+
+	a.check(a.electric.ID)
+
+	if got := stands(a.electric.ID); got.List != ledgerbus.MoreContextNeeded || !slices.Equal(got.Why, []ledgerbus.Reason{ledgerbus.BecauseCheck}) {
+		t.Errorf("a check: %+v", got)
+	}
+
+	if _, err := a.w.ledger.Describe(ctx, now, a.owner, a.electric.ID, "Lights for the hall"); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := stands(a.electric.ID); got.List != ledgerbus.ContextAdded || !slices.Equal(got.Given, []ledgerbus.Given{ledgerbus.GaveDescription}) {
+		t.Errorf("a check described: %+v", got)
+	}
+
+	a.reference()
+	a.check(a.cardBill.ID)
+
+	if got := stands(a.cardBill.ID); got.List != "" || !slices.Equal(got.Why, []ledgerbus.Reason{ledgerbus.BecauseCheck}) {
+		t.Errorf("a check in an account for reference: %+v", got)
+	}
+}

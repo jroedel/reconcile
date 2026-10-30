@@ -45,6 +45,15 @@
 <p><a href="{{$.Data.Path}}/transactions">{{t "See more, and choose which"}}</a></p>
 {{else}}<p class="hint">{{t "No transactions yet. They arrive with the first statement."}}</p>{{end}}
 </section>
+
+{{/* The accountant's two lists (docs/accountant.md), without their
+     counts: this page is opened far more often than they are read, and
+     counting an organization's whole history takes a second. */}}
+<section class="card">
+<h2>{{t "For the accountant"}}</h2>
+<p>{{t "Checks, transfers and pass-through: what still needs explaining, and what is ready for the accountant."}}</p>
+<p><a class="button quiet" href="{{.Path}}/accountant?context=needed">{{t "More context needed"}}</a> <a class="button quiet" href="{{.Path}}/accountant?context=added">{{t "Context added"}}</a></p>
+</section>
 {{end}}
 
 <section class="card">
