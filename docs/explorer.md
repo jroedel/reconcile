@@ -176,8 +176,9 @@ time the organization's page is opened.
 one organization's (`organization=`), or the accounts named, and takes the
 form's choices under the API's own names: `category` (an id, or `none` for
 not sorted yet), `kind` (the four, or `unsaid`), `project` (an id, or
-`none`), `by` (`rule` or `program`) and `receipts`, beside the words,
-amounts, days and direction it always had. A transaction only part of
+`none`), `by` (`rule` or `program`), `receipts` and `context` (`needed`
+or `added`, the accountant's two lists, `docs/accountant.md`), beside the
+words, amounts, days and direction it always had. A transaction only part of
 which fits carries `matched_amount`, and its parts that fit are
 `matched`. The answer has the form's `total` and `sums` over every page,
 `more` and `next_skip` for the next, and `left_out`: accounts for

@@ -2,6 +2,7 @@ package muxer
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -224,6 +225,18 @@ func TestFindingThroughTheAPIWithTheSearchsChoices(t *testing.T) {
 		t.Errorf("the project's: %v", got)
 	}
 
+	// The groceries' pass-through part makes them important to the
+	// accountant, and the project and the memo are context given.
+	added := list(t, s.get(t, "/api/v1/transactions?context=added", key), "transactions")
+	if len(added) != 1 || field(added[0], "description") != "CORNER GROCERY" ||
+		fmt.Sprint(field(added[0], "why")) != "[passthrough]" || fmt.Sprint(field(added[0], "added")) != "[project part-memo]" {
+		t.Errorf("context added: %v", added)
+	}
+
+	if got := s.get(t, "/api/v1/transactions?context=needed", key); field(got, "total") != 0.0 {
+		t.Errorf("more context needed: %v", got)
+	}
+
 	if got := s.get(t, "/api/v1/transactions?category=none&direction=out", key); field(got, "total") != 3.0 {
 		t.Errorf("not sorted yet, money out: %v", got)
 	}
@@ -245,6 +258,7 @@ func TestFindingThroughTheAPIWithTheSearchsChoices(t *testing.T) {
 		"/api/v1/transactions?category=groceries",
 		"/api/v1/transactions?by=person",
 		"/api/v1/transactions?receipts=some",
+		"/api/v1/transactions?context=augmented",
 		"/api/v1/transactions?organization=parish",
 		"/api/v1/transactions?skip=-1",
 	} {

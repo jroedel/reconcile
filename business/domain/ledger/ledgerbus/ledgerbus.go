@@ -377,6 +377,7 @@ type Business struct {
 	shapes     Shapes
 	imported   AfterImport
 	receipted  ReceiptCounts
+	answered   Answered
 
 	// readings is the PDFs read lately, each once (readings.go).
 	readings readings

@@ -82,7 +82,70 @@ SELECT category_id FROM splits WHERE category_id IS NOT NULL AND transaction_id 
 		return ledgerbus.Explorable{}, fmt.Errorf("reading the kinds of the parts' categories: %w", err)
 	}
 
-	return ledgerbus.Explorable{Transactions: txs, Kinds: kinds}, nil
+	read := ledgerbus.Explorable{Transactions: txs, Kinds: kinds}
+
+	if w.Facts {
+		if read.Facts, err = s.facts(ctx, where, args); err != nil {
+			return ledgerbus.Explorable{}, err
+		}
+	}
+
+	return read, nil
+}
+
+// factsQuery is, for each transaction t of a search, the three facts the
+// accountant's lists need that are not its own columns (ledgerbus.Facts):
+// its payee is reported; its explanation is explained, as settledWhere
+// (explain.go) has it but accepted only with a note; and an explanation
+// joins it to a transaction in an account for reference, the reference
+// one being either the line or what the line explains. Every EXISTS is
+// answered by a primary key or an index: payees' id, explanations'
+// transaction, explanation_lines' transaction and its explains.
+const factsQuery = `SELECT t.id,
+    EXISTS (SELECT 1 FROM payees p WHERE p.id = t.payee_id AND p.reported = 1),
+    EXISTS (SELECT 1 FROM explanations e WHERE e.transaction_id = t.id AND (e.accepted = 1 AND e.note <> '' OR
+        (SELECT coalesce(sum(lt.amount), 0) FROM explanation_lines l JOIN transactions lt ON lt.id = l.transaction_id WHERE l.explains = e.transaction_id) = t.amount
+        AND EXISTS (SELECT 1 FROM explanation_lines l WHERE l.explains = e.transaction_id))),
+    EXISTS (SELECT 1 FROM explanation_lines l JOIN transactions o ON o.id = l.explains JOIN accounts a ON a.id = o.account_id
+        WHERE l.transaction_id = t.id AND a.reference = 1)
+    OR EXISTS (SELECT 1 FROM explanation_lines l JOIN transactions o ON o.id = l.transaction_id JOIN accounts a ON a.id = o.account_id
+        WHERE l.explains = t.id AND a.reference = 1)
+FROM transactions t WHERE t.id IN (SELECT id FROM transactions WHERE `
+
+// facts reads the Facts of the transactions where says, keeping only those
+// with any: most have none, and a missing one is the zero Facts.
+func (s *Store) facts(ctx context.Context, where string, args []any) (map[types.ID]ledgerbus.Facts, error) {
+	rows, err := s.db.QueryContext(ctx, factsQuery+where+`)`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("reading what the accountant needs to know: %w", err)
+	}
+	defer rows.Close()
+
+	out := map[types.ID]ledgerbus.Facts{}
+
+	for rows.Next() {
+		var (
+			id string
+			f  ledgerbus.Facts
+		)
+
+		if err := rows.Scan(&id, &f.Reported, &f.Explained, &f.Reference); err != nil {
+			return nil, fmt.Errorf("reading what the accountant needs to know: %w", err)
+		}
+
+		if f == (ledgerbus.Facts{}) {
+			continue
+		}
+
+		tx, err := types.ParseID(id)
+		if err != nil {
+			return nil, fmt.Errorf("a transaction is unreadable: %w", err)
+		}
+
+		out[tx] = f
+	}
+
+	return out, rows.Err()
 }
 
 // Latest is the n newest transactions of the accounts, newest first, with
