@@ -24,6 +24,8 @@ import (
 	"github.com/jroedel/reconcile/business/domain/file/stores/filefs"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/ledger/stores/ledgerdb"
+	"github.com/jroedel/reconcile/business/domain/question/questionbus"
+	"github.com/jroedel/reconcile/business/domain/question/stores/questiondb"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/stores/receiptdb"
 	"github.com/jroedel/reconcile/business/domain/report/reportbus"
@@ -71,7 +73,7 @@ func newSite(t *testing.T, want sqldb.Expected, configure func(*Config)) (http.H
 	}
 
 	for _, init := range []func(context.Context, *sql.DB) error{
-		translationdb.Init, userdb.Init, eventdb.Init, tenancydb.Init, filedb.Init, categorydb.Init, ruledb.Init, ledgerdb.Init, receiptdb.Init, budgetdb.Init, shapedb.Init, reportdb.Init,
+		translationdb.Init, userdb.Init, eventdb.Init, tenancydb.Init, filedb.Init, categorydb.Init, ruledb.Init, ledgerdb.Init, receiptdb.Init, questiondb.Init, budgetdb.Init, shapedb.Init, reportdb.Init,
 	} {
 		if err := init(t.Context(), db); err != nil {
 			t.Fatal(err)
@@ -110,6 +112,7 @@ func newSite(t *testing.T, want sqldb.Expected, configure func(*Config)) (http.H
 	receipts := receiptbus.NewBusiness(log, receiptdb.NewStore(db), tenancy, ledger, files)
 	ledger.OnImport(receipts.AfterImport)
 	ledger.OnReceipts(receipts.Counts)
+	ledger.OnAnswered(questionbus.NewBusiness(log, questiondb.NewStore(db), tenancy, ledger).Answered)
 
 	cfg := Config{
 		Log: log, DB: db, Expected: want, Render: render,
