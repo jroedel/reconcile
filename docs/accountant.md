@@ -460,6 +460,30 @@ Then the tests that cross all of it (Verification), and the translations.
   account's name and currency and nothing more).
 - **Dates are shown as days** until people have a time zone (5).
 
+### The weekly email's settings
+
+- **On by default for everybody**, not only for accountants, bookkeepers
+  and owners as planned: an email with nothing in it is never sent, and
+  only those roles' lines ever have anything in them, so the default
+  reaches exactly those people without the user domain asking tenancy
+  which roles somebody holds. The card's sentence says "if there is
+  anything new for you".
+- **`users.tz`** is a later column, written only by `SetZone`, in one
+  statement: `UpdateUser` leaves it alone, so that saving a name never
+  undoes a zone the sign-in page set a moment before.
+  `notification_prefs` has the cursor and the token's hash already, for
+  the email (6), so the table has one history.
+- **The browser's zone** comes from `authapp/static/tz.mjs`, a served
+  module (the pages allow no script written into them): every sign-in
+  form carries it in a hidden field, kept only when the person has none;
+  the profile offers it when the field is empty. Checked in Chrome by
+  `make test-browser`.
+- **The zone field suggests** a list of zones of the Americas, Europe and
+  Africa; any IANA name is taken, since Go knows them all and cannot list
+  them. `time/tzdata` is in the binary.
+- **When the next one comes** is said under the form, in the person's
+  zone, or in UTC with "UTC" when they have none yet.
+
 ## Verification
 
 - **Each reason and each kind of context**, in both lists, in a

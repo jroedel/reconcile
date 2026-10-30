@@ -19,7 +19,9 @@
            autocomplete="off" autocapitalize="characters" spellcheck="false" class="code">
   </div>
   <button type="submit">{{t "Sign in"}}</button>
+  {{template "device-zone"}}
 </form>
 
 <p class="aside"><a href="/sign-in">{{t "Have a code sent by email instead"}}</a></p>
-{{end}}{{end}}
+{{end}}<script type="module" src="/account/static/tz.mjs"></script>
+{{end}}

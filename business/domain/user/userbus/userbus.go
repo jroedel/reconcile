@@ -106,6 +106,11 @@ type User struct {
 	// page then follows the browser.
 	Lang types.Lang
 
+	// Zone is their time zone by its IANA name, or "" for none yet: the
+	// browser's at their first sign-in, or the one they chose on their
+	// profile (weekly.go). Changed only through SetWeekly and SetZoneOnce.
+	Zone string
+
 	// SiteAdmin may see the list of users and disable one. It grants no
 	// organisation's data; see the package comment.
 	SiteAdmin bool
@@ -196,6 +201,13 @@ type Storer interface {
 	UserByID(ctx context.Context, id types.ID) (User, error)
 	UserByEmail(ctx context.Context, email types.Email) (User, error)
 	Users(ctx context.Context) ([]User, error)
+
+	// Weekly is a person's settings for the weekly email, and whether they
+	// ever saved any; SetWeekly saves them. SetZone writes a person's time
+	// zone, or when onlyIfNone only if they have none, in one statement.
+	Weekly(ctx context.Context, userID types.ID) (Weekly, bool, error)
+	SetWeekly(ctx context.Context, userID types.ID, w Weekly) error
+	SetZone(ctx context.Context, now time.Time, userID types.ID, zone string, onlyIfNone bool) error
 
 	// ClaimCode stores a sign-in token if, and only if, the address has fewer
 	// than perAddress live tokens and the service has sent fewer than perHour

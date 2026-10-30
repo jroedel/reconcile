@@ -16,6 +16,7 @@
            maxlength="9" spellcheck="false" class="code">
   </div>
   <button type="submit">{{t "Sign in"}}</button>
+  {{template "device-zone"}}
 </form>
 
 <div class="aside">
@@ -23,4 +24,5 @@
   <p>{{t "The code stops working after fifteen minutes. If you asked more than once, use the newest email."}}</p>
   <p><a href="/sign-in{{with .Email}}?email={{.}}{{end}}">{{t "Ask for a new code"}}</a> · <a href="/sign-in/backup">{{t "Use a backup code instead"}}</a></p>
 </div>
-{{end}}{{end}}
+{{end}}<script type="module" src="/account/static/tz.mjs"></script>
+{{end}}

@@ -40,7 +40,7 @@ var _ userbus.Storer = (*Store)(nil)
 
 // Expected is what CheckSchema verifies at startup and on every /healthz.
 var Expected = sqldb.Expected{
-	"users":         {"id", "email", "name", "lang", "site_admin", "enabled", "created_at", "updated_at"},
+	"users":         {"id", "email", "name", "lang", "site_admin", "enabled", "created_at", "updated_at", "tz"},
 	"signin_codes":  {"id", "email", "user_id", "hash", "created_at", "expires_at", "used_at", "attempts"},
 	"email_changes": {"id", "user_id", "new_email", "hash", "created_at", "expires_at", "used_at", "cancelled_at", "attempts"},
 	"backup_codes":  {"id", "user_id", "hash", "created_at", "used_at"},
@@ -48,6 +48,8 @@ var Expected = sqldb.Expected{
 	"bootstrap":     {"id", "claimed_at"},
 	"api_keys":      {"id", "user_id", "name", "hash", "created_at", "expires_at", "last_used_at", "client", "scopes"},
 	"oauth_grants":  {"id", "user_id", "hash", "client_id", "client_name", "redirect_uri", "challenge", "created_at", "expires_at", "used_at", "scopes"},
+
+	"notification_prefs": {"user_id", "digest_enabled", "digest_weekday", "digest_hour", "sent_up_to", "unsubscribe_hash"},
 }
 
 // Init creates the tables. Idempotent, run at every startup.
@@ -197,17 +199,45 @@ CREATE INDEX IF NOT EXISTS oauth_grants_user ON oauth_grants (user_id, expires_a
 		return err
 	}
 
+	// A person's time zone by its IANA name (userbus.Weekly), a later
+	// column: '' is none yet, which the weekly email reads as UTC.
+	if err := sqldb.AddColumn(ctx, db, "users", "tz", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+
+	// The weekly email (docs/accountant.md, 5): a person's day and hour,
+	// whether they want it, and, for the email itself, how far it has told
+	// them (sent_up_to, Unix milliseconds, NULL before the first) and the
+	// hash of the token in the last one's link that stops it. A person
+	// with no row has never chosen and gets the defaults. A table of its
+	// own, not columns of users, because only the email reads it, and
+	// every read of a user would otherwise carry it.
+	const prefs = `
+CREATE TABLE IF NOT EXISTS notification_prefs (
+    user_id          TEXT    PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
+    digest_enabled   INTEGER NOT NULL DEFAULT 1 CHECK (digest_enabled IN (0, 1)),
+    digest_weekday   INTEGER NOT NULL DEFAULT 1 CHECK (digest_weekday BETWEEN 0 AND 6),
+    digest_hour      INTEGER NOT NULL DEFAULT 8 CHECK (digest_hour BETWEEN 0 AND 23),
+    sent_up_to       INTEGER,
+    unsubscribe_hash TEXT    NOT NULL DEFAULT ''
+) STRICT;
+`
+
+	if _, err := db.ExecContext(ctx, prefs); err != nil {
+		return fmt.Errorf("creating the weekly email's settings: %w", err)
+	}
+
 	return nil
 }
 
-const userColumns = `id, email, name, lang, site_admin, enabled, created_at, updated_at`
+const userColumns = `id, email, name, lang, site_admin, enabled, created_at, updated_at, tz`
 
 // CreateUser inserts a user. A unique violation is returned wrapped, not
 // translated: userbus recognises it as two first sign-ins racing.
 func (s *Store) CreateUser(ctx context.Context, u userbus.User) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO users (`+userColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+	_, err := s.db.ExecContext(ctx, `INSERT INTO users (`+userColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		u.ID.String(), u.Email.String(), u.Name, string(u.Lang), boolOf(u.SiteAdmin), boolOf(u.Enabled),
-		msOf(u.CreatedAt), msOf(u.UpdatedAt))
+		msOf(u.CreatedAt), msOf(u.UpdatedAt), u.Zone)
 	if err != nil {
 		return fmt.Errorf("inserting the user: %w", err)
 	}
@@ -215,7 +245,9 @@ func (s *Store) CreateUser(ctx context.Context, u userbus.User) error {
 	return nil
 }
 
-// UpdateUser replaces a user's mutable fields.
+// UpdateUser replaces a user's mutable fields but the time zone, which
+// SetZone writes alone, so that saving a name never undoes a zone the
+// sign-in page set a moment before.
 func (s *Store) UpdateUser(ctx context.Context, u userbus.User) error {
 	res, err := s.db.ExecContext(ctx, `
 UPDATE users SET email = ?, name = ?, lang = ?, site_admin = ?, enabled = ?, updated_at = ?
@@ -878,7 +910,7 @@ func scanUser(row rowScanner) (userbus.User, error) {
 		parseErr, parseErrEmail error
 	)
 
-	err := row.Scan(&rawID, &rawEmail, &u.Name, &lang, &admin, &enabled, &made, &updated)
+	err := row.Scan(&rawID, &rawEmail, &u.Name, &lang, &admin, &enabled, &made, &updated, &u.Zone)
 
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
@@ -1003,6 +1035,58 @@ func oneRow(res sql.Result, what string) error {
 		return fmt.Errorf("checking what changed: %w", err)
 	case n == 0:
 		return fmt.Errorf("%w: %s", userbus.ErrNotFound, what)
+	}
+
+	return nil
+}
+
+// Weekly is a person's settings for the weekly email, and whether they
+// ever saved any.
+func (s *Store) Weekly(ctx context.Context, userID types.ID) (userbus.Weekly, bool, error) {
+	var (
+		w            userbus.Weekly
+		enabled, day int64
+	)
+
+	err := s.db.QueryRowContext(ctx, `SELECT digest_enabled, digest_weekday, digest_hour FROM notification_prefs WHERE user_id = ?`, userID.String()).
+		Scan(&enabled, &day, &w.Hour)
+
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return userbus.Weekly{}, false, nil
+	case err != nil:
+		return userbus.Weekly{}, false, fmt.Errorf("reading the weekly email's settings: %w", err)
+	}
+
+	w.Enabled, w.Weekday = enabled != 0, time.Weekday(day)
+
+	return w, true, nil
+}
+
+// SetWeekly saves a person's settings, keeping how far the email has told
+// them and its token.
+func (s *Store) SetWeekly(ctx context.Context, userID types.ID, w userbus.Weekly) error {
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO notification_prefs (user_id, digest_enabled, digest_weekday, digest_hour) VALUES (?, ?, ?, ?)
+ON CONFLICT (user_id) DO UPDATE SET digest_enabled = excluded.digest_enabled, digest_weekday = excluded.digest_weekday, digest_hour = excluded.digest_hour`,
+		userID.String(), boolOf(w.Enabled), int(w.Weekday), w.Hour)
+	if err != nil {
+		return fmt.Errorf("saving the weekly email's settings: %w", err)
+	}
+
+	return nil
+}
+
+// SetZone writes a person's time zone; when onlyIfNone, only if they have
+// none, in the same statement that looks.
+func (s *Store) SetZone(ctx context.Context, now time.Time, userID types.ID, zone string, onlyIfNone bool) error {
+	q := `UPDATE users SET tz = ?, updated_at = ? WHERE id = ?`
+	if onlyIfNone {
+		q += ` AND tz = ''`
+	}
+
+	if _, err := s.db.ExecContext(ctx, q, zone, msOf(now), userID.String()); err != nil {
+		return fmt.Errorf("saving the time zone: %w", err)
 	}
 
 	return nil

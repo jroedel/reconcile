@@ -21,6 +21,8 @@
     <input id="secret" name="secret" type="password" required autocomplete="off" spellcheck="false">
   </div>
   <button type="submit">{{t "Sign in"}}</button>
+  {{template "device-zone"}}
 </form>
 {{end}}
-{{end}}{{end}}
+{{end}}<script type="module" src="/account/static/tz.mjs"></script>
+{{end}}
