@@ -98,3 +98,115 @@ func TestTheWeeklySettings(t *testing.T) {
 		t.Error("Location")
 	}
 }
+
+// Whose email is due: at the person's own hour, within Late of it, once a
+// week, never when it is off; and the claim is taken once.
+func TestWhoseWeeklyEmailIsDue(t *testing.T) {
+	users := newBus(t)
+	ctx := t.Context()
+	treasurer := signUp(t, users, "treasurer@example.org")
+	confrere := signUp(t, users, "confrere@example.org")
+	quiet := signUp(t, users, "quiet@example.org")
+
+	if err := users.SetWeekly(ctx, start, confrere.ID, userbus.Weekly{Enabled: true, Weekday: time.Monday, Hour: 8}, "America/Sao_Paulo"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := users.SetWeekly(ctx, start, quiet.ID, userbus.Weekly{Weekday: time.Monday, Hour: 8}, "UTC"); err != nil {
+		t.Fatal(err)
+	}
+
+	due := func(now time.Time) map[string]time.Time {
+		t.Helper()
+
+		ds, err := users.DueWeekly(ctx, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		out := map[string]time.Time{}
+		for _, d := range ds {
+			out[d.User.Email.String()] = d.Since
+		}
+
+		return out
+	}
+
+	monday := time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)
+
+	if got := due(monday.Add(7*time.Hour + 59*time.Minute)); len(got) != 0 {
+		t.Errorf("before eight: %v", got)
+	}
+
+	at := monday.Add(8*time.Hour + 5*time.Minute)
+	if got := due(at); len(got) != 1 || !got["treasurer@example.org"].IsZero() {
+		t.Fatalf("at eight UTC, the treasurer for the first time, and nobody else: %v", got)
+	}
+
+	if ok, err := users.ClaimWeek(ctx, at, treasurer.ID, time.Time{}); err != nil || !ok {
+		t.Fatalf("claiming: %v %v", ok, err)
+	}
+
+	if ok, err := users.ClaimWeek(ctx, at, treasurer.ID, time.Time{}); err != nil || ok {
+		t.Fatalf("claimed twice: %v %v", ok, err)
+	}
+
+	// Eight in São Paulo is eleven UTC; the treasurer has had theirs.
+	if got := due(monday.Add(11*time.Hour + 5*time.Minute)); len(got) != 1 || !got["confrere@example.org"].IsZero() {
+		t.Errorf("at eight in São Paulo: %v", got)
+	}
+
+	// Past Late, a week that was never sent waits for the next.
+	if got := due(monday.Add(17*time.Hour + 5*time.Minute)); len(got) != 0 {
+		t.Errorf("too late: %v", got)
+	}
+
+	next := monday.AddDate(0, 0, 7).Add(8*time.Hour + 10*time.Minute)
+	if got := due(next); len(got) != 1 || !got["treasurer@example.org"].Equal(at) {
+		t.Errorf("a week on, since the last: %v", got)
+	}
+}
+
+// The link in an email stops it, once, and only the last email's link;
+// the day and the hour are kept for when it is turned back on.
+func TestStoppingTheWeeklyEmail(t *testing.T) {
+	users := newBus(t)
+	ctx := t.Context()
+	u := signUp(t, users, "treasurer@example.org")
+
+	friday := userbus.Weekly{Enabled: true, Weekday: time.Friday, Hour: 17}
+	if err := users.SetWeekly(ctx, start, u.ID, friday, "Europe/Lisbon"); err != nil {
+		t.Fatal(err)
+	}
+
+	older, err := users.StopToken(ctx, u.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	token, err := users.StopToken(ctx, u.ID)
+	if err != nil || token == older {
+		t.Fatalf("a second token: %q %v", token, err)
+	}
+
+	for _, wrong := range []string{"", older, "NOTATOKEN"} {
+		if ok, err := users.StopWeekly(ctx, wrong); err != nil || ok {
+			t.Errorf("%q stopped it: %v %v", wrong, ok, err)
+		}
+	}
+
+	if ok, err := users.StopWeekly(ctx, token); err != nil || !ok {
+		t.Fatalf("stopping: %v %v", ok, err)
+	}
+
+	if ok, _ := users.StopWeekly(ctx, token); ok {
+		t.Error("a token used twice")
+	}
+
+	stopped := friday
+	stopped.Enabled = false
+
+	if got, err := users.Weekly(ctx, u.ID); err != nil || got != stopped {
+		t.Errorf("after: %+v %v", got, err)
+	}
+}

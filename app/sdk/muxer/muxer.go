@@ -19,6 +19,7 @@ import (
 	"github.com/jroedel/reconcile/app/domain/authapp"
 	"github.com/jroedel/reconcile/app/domain/budgetapp"
 	"github.com/jroedel/reconcile/app/domain/categoryapp"
+	"github.com/jroedel/reconcile/app/domain/digestapp"
 	"github.com/jroedel/reconcile/app/domain/exportapp"
 	"github.com/jroedel/reconcile/app/domain/homeapp"
 	"github.com/jroedel/reconcile/app/domain/ledgerapp"
@@ -36,6 +37,7 @@ import (
 	"github.com/jroedel/reconcile/app/sdk/page"
 	"github.com/jroedel/reconcile/business/domain/budget/budgetbus"
 	"github.com/jroedel/reconcile/business/domain/category/categorybus"
+	"github.com/jroedel/reconcile/business/domain/digest/digestbus"
 	"github.com/jroedel/reconcile/business/domain/event/eventbus"
 	"github.com/jroedel/reconcile/business/domain/export/exportbus"
 	"github.com/jroedel/reconcile/business/domain/file/filebus"
@@ -60,7 +62,7 @@ import (
 // renderer rather than this package, because the strings it reads out of
 // these are registered for translation before anything is served.
 func Templates() []fs.FS {
-	return []fs.FS{homeapp.Templates, authapp.Templates, tenancyapp.Templates, ledgerapp.Templates, categoryapp.Templates, payeeapp.Templates, questionapp.Templates, receiptapp.Templates, ruleapp.Templates, budgetapp.Templates, reportapp.Templates, exportapp.Templates, adminapp.Templates, oauthapp.Templates, translationapp.Templates}
+	return []fs.FS{homeapp.Templates, authapp.Templates, tenancyapp.Templates, ledgerapp.Templates, categoryapp.Templates, payeeapp.Templates, questionapp.Templates, digestapp.Templates, receiptapp.Templates, ruleapp.Templates, budgetapp.Templates, reportapp.Templates, exportapp.Templates, adminapp.Templates, oauthapp.Templates, translationapp.Templates}
 }
 
 // Config is everything the routes need, gathered by main and passed in.
@@ -81,6 +83,7 @@ type Config struct {
 	Reports    *reportbus.Business
 	Receipts   *receiptbus.Business
 	Questions  *questionbus.Business
+	Digest     *digestbus.Business
 	Export     *exportbus.Business
 	Shapes     *shapebus.Business
 
@@ -115,6 +118,24 @@ type Config struct {
 	// the job is still working. Zero is each app's own, a few seconds
 	// inside the proxy's limit; a test makes it short to see the answer.
 	JobWait time.Duration
+}
+
+// Weekly is what sends the weekly emails that are due at a moment, for
+// main's loop to call (docs/accountant.md, 5); nil when there is nothing
+// to send with, or no address for its links to name.
+func Weekly(cfg Config) func(ctx context.Context, now time.Time) error {
+	if cfg.Mail == nil || cfg.BaseURL == "" || cfg.Digest == nil {
+		return nil
+	}
+
+	return digestapp.NewSender(digestapp.Config{
+		Log:     cfg.Log,
+		Users:   cfg.Users,
+		Digest:  cfg.Digest,
+		Render:  cfg.Render,
+		Mail:    cfg.Mail,
+		BaseURL: cfg.BaseURL,
+	}).Run
 }
 
 // maxBody is the most any form here may send. A sign-in form is a few
@@ -283,6 +304,14 @@ func New(cfg Config) (http.Handler, error) {
 			Render:    cfg.Render,
 			BaseURL:   cfg.BaseURL,
 		}, guard)
+
+		// The weekly email's link to stop it, which needs no sign-in: the
+		// token in it is the credential (digestapp).
+		digestapp.Routes(mux, digestapp.Config{
+			Log:    cfg.Log,
+			Users:  cfg.Users,
+			Render: cfg.Render,
+		})
 
 		adminapp.Routes(mux, adminapp.Config{
 			Log:    cfg.Log,

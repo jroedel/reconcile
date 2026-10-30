@@ -18,6 +18,7 @@ package userdb
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -1090,4 +1091,104 @@ func (s *Store) SetZone(ctx context.Context, now time.Time, userID types.ID, zon
 	}
 
 	return nil
+}
+
+// Weeklies is the settings of everybody who has a row, with how far the
+// email has told each of them.
+func (s *Store) Weeklies(ctx context.Context) (map[types.ID]userbus.WeeklyState, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT user_id, digest_enabled, digest_weekday, digest_hour, sent_up_to FROM notification_prefs`)
+	if err != nil {
+		return nil, fmt.Errorf("reading the weekly email's settings: %w", err)
+	}
+	defer rows.Close()
+
+	out := map[types.ID]userbus.WeeklyState{}
+
+	for rows.Next() {
+		var (
+			id           string
+			enabled, day int64
+			ws           userbus.WeeklyState
+			sent         sql.NullInt64
+		)
+
+		if err := rows.Scan(&id, &enabled, &day, &ws.Hour, &sent); err != nil {
+			return nil, fmt.Errorf("reading the weekly email's settings: %w", err)
+		}
+
+		userID, err := types.ParseID(id)
+		if err != nil {
+			return nil, fmt.Errorf("reading the weekly email's settings: %w", err)
+		}
+
+		ws.Enabled, ws.Weekday, ws.SentUpTo = enabled != 0, time.Weekday(day), timeOfNull(sent)
+		out[userID] = ws
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("reading the weekly email's settings: %w", err)
+	}
+
+	return out, nil
+}
+
+// ClaimWeek moves how far the email has told a person from was (zero for
+// never) to now, if nobody moved it first: the UPDATE whose WHERE is the
+// check. A person with no row gets the defaults' first, which changes
+// nothing they chose, since they chose nothing.
+func (s *Store) ClaimWeek(ctx context.Context, userID types.ID, was, now time.Time) (bool, error) {
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO notification_prefs (user_id) VALUES (?) ON CONFLICT (user_id) DO NOTHING`, userID.String()); err != nil {
+		return false, fmt.Errorf("claiming the weekly email: %w", err)
+	}
+
+	var before any
+	if !was.IsZero() {
+		before = msOf(was)
+	}
+
+	res, err := s.db.ExecContext(ctx, `UPDATE notification_prefs SET sent_up_to = ? WHERE user_id = ? AND sent_up_to IS ?`,
+		msOf(now), userID.String(), before)
+	if err != nil {
+		return false, fmt.Errorf("claiming the weekly email: %w", err)
+	}
+
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("claiming the weekly email: %w", err)
+	}
+
+	return n == 1, nil
+}
+
+// SetStopHash keeps the hash of the token in the link that stops a
+// person's weekly email, replacing the last one's.
+func (s *Store) SetStopHash(ctx context.Context, userID types.ID, hash []byte) error {
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO notification_prefs (user_id, unsubscribe_hash) VALUES (?, ?)
+ON CONFLICT (user_id) DO UPDATE SET unsubscribe_hash = excluded.unsubscribe_hash`,
+		userID.String(), hex.EncodeToString(hash))
+	if err != nil {
+		return fmt.Errorf("keeping the weekly email's stop link: %w", err)
+	}
+
+	return nil
+}
+
+// StopByHash turns off the weekly email of whoever's last one carried the
+// token with this hash, and forgets the hash, in the one statement that
+// looks: true when there was one.
+func (s *Store) StopByHash(ctx context.Context, hash []byte) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `
+UPDATE notification_prefs SET digest_enabled = 0, unsubscribe_hash = ''
+WHERE unsubscribe_hash = ? AND unsubscribe_hash <> ''`, hex.EncodeToString(hash))
+	if err != nil {
+		return false, fmt.Errorf("stopping the weekly email: %w", err)
+	}
+
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("stopping the weekly email: %w", err)
+	}
+
+	return n == 1, nil
 }

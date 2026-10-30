@@ -95,6 +95,13 @@ type Message struct {
 	// and every spam filter, so it is the one that has to be right.
 	Text string
 	HTML string
+
+	// Headers are more, written after the ones every message carries: a
+	// List-Unsubscribe, say, which is the caller's to know about and this
+	// package's only to write. A name must be a plain header name and not
+	// one of those this package writes itself, and neither may hold a line
+	// break, for the reason in the package comment.
+	Headers [][2]string
 }
 
 // Sender is what the app layer depends on, so that it can be given something
@@ -266,6 +273,17 @@ func (s *SMTP) build(m Message) ([]byte, error) {
 		return nil, fmt.Errorf("%w: the subject contains a line break", ErrUnsendable)
 	}
 
+	for _, h := range m.Headers {
+		switch {
+		case !headerName(h[0]):
+			return nil, fmt.Errorf("%w: %q is not a header name", ErrUnsendable, h[0])
+		case ownHeaders[textproto.CanonicalMIMEHeaderKey(h[0])]:
+			return nil, fmt.Errorf("%w: the %s header is written by this package", ErrUnsendable, h[0])
+		case hasLineBreak(h[1]):
+			return nil, fmt.Errorf("%w: the %s header contains a line break", ErrUnsendable, h[0])
+		}
+	}
+
 	var b strings.Builder
 
 	from := s.cfg.From
@@ -290,6 +308,8 @@ func (s *SMTP) build(m Message) ([]byte, error) {
 		{"Auto-Submitted", "auto-generated"},
 		{"X-Auto-Response-Suppress", "All"},
 	}
+
+	headers = append(headers, m.Headers...)
 
 	if m.HTML == "" {
 		headers = append(headers,
@@ -374,6 +394,30 @@ func normaliseBody(s string) string {
 }
 
 func hasLineBreak(s string) bool { return strings.ContainsAny(s, "\r\n") }
+
+// ownHeaders is the headers build writes, which a caller's may not repeat:
+// a second From or Content-Type is a message each client reads its own way.
+var ownHeaders = map[string]bool{
+	"From": true, "To": true, "Subject": true, "Date": true, "Message-Id": true, "Mime-Version": true,
+	"Auto-Submitted": true, "X-Auto-Response-Suppress": true, "Content-Type": true,
+	"Content-Transfer-Encoding": true, "Cc": true, "Bcc": true,
+}
+
+// headerName reports whether s is a header name RFC 5322 allows: printable
+// ASCII, with no space and no colon.
+func headerName(s string) bool {
+	if s == "" {
+		return false
+	}
+
+	for _, c := range []byte(s) {
+		if c <= ' ' || c > '~' || c == ':' {
+			return false
+		}
+	}
+
+	return true
+}
 
 func isLoopback(host string) bool {
 	if host == "localhost" {

@@ -209,6 +209,16 @@ type Storer interface {
 	SetWeekly(ctx context.Context, userID types.ID, w Weekly) error
 	SetZone(ctx context.Context, now time.Time, userID types.ID, zone string, onlyIfNone bool) error
 
+	// Weeklies is the settings of everybody who has any, with how far the
+	// email has told them. ClaimWeek moves that from was to now if nobody
+	// moved it first, in one UPDATE. SetStopHash keeps the hash of the
+	// token in the last email's stop link; StopByHash turns the email off
+	// for whoever's it is and forgets it, in one UPDATE.
+	Weeklies(ctx context.Context) (map[types.ID]WeeklyState, error)
+	ClaimWeek(ctx context.Context, userID types.ID, was, now time.Time) (bool, error)
+	SetStopHash(ctx context.Context, userID types.ID, hash []byte) error
+	StopByHash(ctx context.Context, hash []byte) (bool, error)
+
 	// ClaimCode stores a sign-in token if, and only if, the address has fewer
 	// than perAddress live tokens and the service has sent fewer than perHour
 	// since hourAgo. One INSERT ... SELECT ... WHERE, so a burst cannot all

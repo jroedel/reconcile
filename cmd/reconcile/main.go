@@ -25,6 +25,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/budget/stores/budgetdb"
 	"github.com/jroedel/reconcile/business/domain/category/categorybus"
 	"github.com/jroedel/reconcile/business/domain/category/stores/categorydb"
+	"github.com/jroedel/reconcile/business/domain/digest/digestbus"
 	"github.com/jroedel/reconcile/business/domain/digest/stores/digestdb"
 	"github.com/jroedel/reconcile/business/domain/event/eventbus"
 	"github.com/jroedel/reconcile/business/domain/event/stores/eventdb"
@@ -199,6 +200,8 @@ func run() error {
 	budgets := budgetbus.NewBusiness(log, budgetdb.NewStore(db), tenancy, ledger, categories)
 	export := exportbus.NewBusiness(log, tenancy, ledger, receipts, categories, files)
 
+	digest := digestbus.NewBusiness(digestdb.NewStore(db), tenancy, ledger, questions)
+
 	go prune(ctx, log, users)
 
 	// What takes longer than the proxy lets a request last: a bulk
@@ -206,7 +209,7 @@ func run() error {
 	// server; one cut short is started again by whoever asks after it.
 	runner := jobs.New(ctx, log)
 
-	handler, err := muxer.New(muxer.Config{
+	site := muxer.Config{
 		Log:        log,
 		DB:         db,
 		Expected:   expected,
@@ -223,6 +226,7 @@ func run() error {
 		Reports:    reportbus.NewBusiness(tenancy, ledger, categories, budgets, reportdb.NewStore(db)),
 		Receipts:   receipts,
 		Questions:  questions,
+		Digest:     digest,
 		Export:     export,
 		BaseURL:    cfg.Server.BaseURL,
 
@@ -232,7 +236,16 @@ func run() error {
 		Bootstrap:  cfg.Auth.BootstrapSecret,
 		TrustProxy: cfg.Server.TrustProxy,
 		Jobs:       runner,
-	})
+	}
+
+	// The weekly emails, when there is a relay and an address for their
+	// links: none at all otherwise, rather than cursors moved past emails
+	// nobody got.
+	if send := muxer.Weekly(site); send != nil {
+		go weekly(ctx, log, send)
+	}
+
+	handler, err := muxer.New(site)
 	if err != nil {
 		return err
 	}
@@ -346,6 +359,29 @@ func (s logSender) Send(_ context.Context, m mail.Message) error {
 	s.log.Info("a message that would have been sent", "to", m.To, "subject", m.Subject, "text", m.Text)
 
 	return nil
+}
+
+// weekly sends the weekly emails that are due, every few minutes, until
+// the server stops. Every few minutes rather than every hour, because an
+// hourly ticker drifts from the top of the hour and the person chose an
+// hour; a run with nothing due reads the users and their settings and
+// nothing else, and taking a week is a claim, so running often never sends
+// twice (userbus.ClaimWeek).
+func weekly(ctx context.Context, log *slog.Logger, send func(context.Context, time.Time) error) {
+	tick := time.NewTicker(10 * time.Minute)
+	defer tick.Stop()
+
+	for {
+		if err := send(ctx, time.Now()); err != nil && ctx.Err() == nil {
+			log.Error("the weekly emails could not be sent", "error", err)
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+	}
 }
 
 // prune clears spent and expired codes and sessions every hour, until the

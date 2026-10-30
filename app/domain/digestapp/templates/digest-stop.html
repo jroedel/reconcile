@@ -1,0 +1,19 @@
+{{define "title"}}{{t "Stop the weekly email"}}{{end}}
+{{define "content"}}{{with .Data}}
+<h1>{{t "Stop the weekly email"}}</h1>
+{{if eq .State "done"}}
+<p class="notice ok" role="status">{{t "The weekly email is stopped."}}</p>
+<p>{{t "To have it again, turn it back on in your profile."}}</p>
+<p><a href="/account#weekly">{{t "Your profile"}}</a></p>
+{{else if eq .State "unknown"}}
+<p>{{t "This link no longer stops the weekly email. Only the link in the latest weekly email does, or you can turn it off in your profile."}}</p>
+<p><a href="/account#weekly">{{t "Your profile"}}</a></p>
+{{else}}
+{{if eq .State "server"}}<p class="notice" role="alert">{{t "Something went wrong at our end. Please try again in a few minutes."}}</p>{{end}}
+<p>{{t "You will get no more weekly emails of what is new. You can turn them back on in your profile."}}</p>
+<form method="post" action="/digest/stop">
+  <input type="hidden" name="t" value="{{.Token}}">
+  <button type="submit">{{t "Stop the weekly email"}}</button>
+</form>
+{{end}}
+{{end}}{{end}}
