@@ -163,7 +163,7 @@ accountant's zip, read across the others and stored nowhere) and `report`
 account and month, and the styles, written here, that lay it out; stored
 nowhere either, `docs/reports.md`). The pages
 over them are `homeapp`, `authapp`, `tenancyapp`, `ledgerapp`,
-`categoryapp`, `payeeapp`, `questionapp`, `ruleapp`, `budgetapp`, `reportapp`, `receiptapp`, `exportapp`, `adminapp` and
+`categoryapp`, `payeeapp`, `questionapp`, `digestapp` (the weekly email, and the page its link to stop it opens), `ruleapp`, `budgetapp`, `reportapp`, `receiptapp`, `exportapp`, `adminapp` and
 `translationapp` (the review screen); a program's ways
 in are `apiapp` (`/api/v1`: the translations, the statement inbox a
 person's Gmail script fills, and reading and keeping the books, each endpoint behind the

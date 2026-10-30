@@ -1,0 +1,38 @@
+{{define "subject"}}{{t "What is new this week, to {date}" "date" .Date}}{{end}}
+{{define "body"}}
+{{- if .First}}{{t "Your first weekly email: what is new this week where you have a role."}}{{else}}{{t "What is new where you have a role, since your last weekly email."}}{{end}}
+{{- range .Orgs}}
+
+{{.Name}}
+{{- if .NewlyNeeded}}
+{{if eq .NewlyNeeded 1}}{{t "1 transaction newly needs more context ({total} in all):" "total" .Needed}}{{else}}{{t "{count} transactions newly need more context ({total} in all):" "count" .NewlyNeeded "total" .Needed}}{{end}}
+{{.NeededLink}}
+{{- end}}
+{{- if .NewlyReady}}
+{{if eq .NewlyReady 1}}{{t "1 transaction now has what the accountant needs:"}}{{else}}{{t "{count} transactions now have what the accountant needs:" "count" .NewlyReady}}{{end}}
+{{.ReadyLink}}
+{{- end}}
+{{- with .Asked}}
+{{if eq (len .) 1}}{{t "1 question is waiting for an answer:"}}{{else}}{{t "{count} questions are waiting for an answer:" "count" (len .)}}{{end}}
+{{- range .}}
+{{.}}
+{{- end}}
+{{- end}}
+{{- with .Answered}}
+{{if eq (len .) 1}}{{t "1 of your questions was answered:"}}{{else}}{{t "{count} of your questions were answered:" "count" (len .)}}{{end}}
+{{- range .}}
+{{.}}
+{{- end}}
+{{- end}}
+{{- end}}
+
+{{if eq .Weekday 1}}{{t "You get this email every Monday at {hour} ({zone})." "hour" .Hour "zone" .Zone}}
+{{- else if eq .Weekday 2}}{{t "You get this email every Tuesday at {hour} ({zone})." "hour" .Hour "zone" .Zone}}
+{{- else if eq .Weekday 3}}{{t "You get this email every Wednesday at {hour} ({zone})." "hour" .Hour "zone" .Zone}}
+{{- else if eq .Weekday 4}}{{t "You get this email every Thursday at {hour} ({zone})." "hour" .Hour "zone" .Zone}}
+{{- else if eq .Weekday 5}}{{t "You get this email every Friday at {hour} ({zone})." "hour" .Hour "zone" .Zone}}
+{{- else if eq .Weekday 6}}{{t "You get this email every Saturday at {hour} ({zone})." "hour" .Hour "zone" .Zone}}
+{{- else}}{{t "You get this email every Sunday at {hour} ({zone})." "hour" .Hour "zone" .Zone}}{{end}}
+{{t "Change the day or the hour: {link}" "link" .Settings}}
+{{t "Stop it: {link}" "link" .Stop}}
+{{end}}

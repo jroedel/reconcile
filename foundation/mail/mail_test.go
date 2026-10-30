@@ -276,6 +276,36 @@ func TestSendDeliversAMessage(t *testing.T) {
 	}
 }
 
+// Headers a caller adds go out after the package's own, as written: the
+// weekly email's unsubscribe headers are the case.
+func TestSendAddsTheCallersHeaders(t *testing.T) {
+	relay := newFakeRelay(t)
+	s := senderFor(t, relay, nil)
+
+	err := s.Send(t.Context(), mail.Message{
+		To: "treasurer@example.org", Subject: "This week", Text: "Nothing much.",
+		Headers: [][2]string{
+			{"List-Unsubscribe", "<https://reconcile.example.invalid/digest/stop?t=ABC>"},
+			{"List-Unsubscribe-Post", "List-Unsubscribe=One-Click"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	got, _ := relay.last()
+	headers, _, _ := strings.Cut(got.data, "\r\n\r\n")
+
+	for _, want := range []string{
+		"\r\nList-Unsubscribe: <https://reconcile.example.invalid/digest/stop?t=ABC>\r\n",
+		"\r\nList-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n",
+	} {
+		if !strings.Contains(headers+"\r\n", want) {
+			t.Errorf("the headers are missing %q:\n%s", want, headers)
+		}
+	}
+}
+
 func TestSendAMultipartMessage(t *testing.T) {
 	relay := newFakeRelay(t)
 	s := senderFor(t, relay, nil)
@@ -347,6 +377,27 @@ func TestSendRefusesHeaderInjection(t *testing.T) {
 			m: mail.Message{
 				To:      "treasurer@example.org",
 				Subject: "Hello\nBcc: everybody@example.org", Text: "Hello",
+			},
+		},
+		{
+			name: "a newline in an added header",
+			m: mail.Message{
+				To: "treasurer@example.org", Subject: "Hello", Text: "Hello",
+				Headers: [][2]string{{"List-Unsubscribe", "<https://example.invalid/stop>\r\nBcc: everybody@example.org"}},
+			},
+		},
+		{
+			name: "a colon in an added header's name",
+			m: mail.Message{
+				To: "treasurer@example.org", Subject: "Hello", Text: "Hello",
+				Headers: [][2]string{{"Bcc: everybody@example.org\r\nX", "y"}},
+			},
+		},
+		{
+			name: "an added header this package writes itself",
+			m: mail.Message{
+				To: "treasurer@example.org", Subject: "Hello", Text: "Hello",
+				Headers: [][2]string{{"bcc", "everybody@example.org"}},
 			},
 		},
 		{name: "no recipient", m: mail.Message{Subject: "Hello", Text: "Hello"}},

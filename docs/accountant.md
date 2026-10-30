@@ -48,7 +48,7 @@ rest, and lets people hear about new activity without signing in to look.
 | Mail | **Weekly, and only when there is something.** No email the moment a question is asked: an urgent one goes by the person's own email, with the question's link pasted in |
 | Stopping the email | **One tap, confirmed by a button.** A link that stopped the email on opening would be opened by the scanners some mail systems run over every link in a message, and would stop it for people who never asked |
 | Time zone | **The person's own**, from the browser at the first sign-in, editable on their profile |
-| Scheduling | **An hourly loop in the server**, as old sign-in codes are pruned. `foundation/jobs` takes slow work off a request and keeps nothing between restarts; it is not a scheduler |
+| Scheduling | **A loop in the server**, every ten minutes, as old sign-in codes are pruned. `foundation/jobs` takes slow work off a request and keeps nothing between restarts; it is not a scheduler |
 
 ## 1. Important to the accountant
 
@@ -329,9 +329,9 @@ Stop it: https://…/digest/stop?t=…
 
 ### How it is sent
 
-- **An hourly loop** in the server, shaped like the one that prunes old
-  sign-in codes, sends to each person whose day and hour have come in
-  their own time zone.
+- **A loop** in the server, shaped like the one that prunes old sign-in
+  codes, sends to each person whose day and hour have come in their own
+  time zone.
 - **A cursor per person** (`sent_up_to`), so nothing is missed or repeated
   when a run is skipped or the server restarts. Somebody who joins midweek
   starts from the moment they joined, and gets no flood. Taking a week to
@@ -391,7 +391,7 @@ Seven pull requests after this one, each useful when merged:
    thing's page, and the third tab.
 5. **The weekly email's settings** (5): `users.tz`, `notification_prefs`, the
    profile's card, and the script for the time zone.
-6. **The weekly email** (5): what it says, the hourly loop, and stopping it.
+6. **The weekly email** (5): what it says, the loop that sends it, and stopping it.
 7. **Through the API** (6): the question endpoints, the settings, and
    Claude's guide.
 
@@ -502,7 +502,46 @@ Then the tests that cross all of it (Verification), and the translations.
 - **The first email only looks**: it sees the lists and says nothing of
   them, and looks back a week for questions, so that somebody given a
   role today hears of this week's and not a year's.
-- Sending it, on the person's day and hour, and stopping it, come next.
+
+### Sending the weekly email
+
+- **Every ten minutes, not every hour.** An hourly ticker drifts from the
+  top of the hour, and the person chose an hour. A run with nothing due
+  reads the users and their settings and nothing else, and taking a week
+  is a claim, so running often never sends twice. There is no loop at all
+  without a mail relay and a public address, so that cursors never move
+  past emails nobody got.
+- **Due** is: the person's account enabled and the email on; their hour
+  this week has come in their own time zone (`userbus.Weekly.Last`); and
+  it came after the last email they were sent and **less than six hours
+  ago** (`userbus.Late`). Past that, the week waits for the next, which
+  says everything since the last one that went, so a server that was down
+  loses only the timing. The same window keeps an email from going at a
+  strange hour to somebody who turns it back on midweek, or who was just
+  given their first role.
+- **Taken, then built.** `ClaimWeek` is the one `UPDATE … WHERE
+  sent_up_to IS ?`, moving the cursor to the moment of sending (a person
+  with no row gets one with the defaults first). An empty week moves it
+  too and keeps what it saw. A message the relay refuses is logged; what
+  it saw is not kept, so the next email tells its lists' news again, but
+  its questions, read from the cursor, it does not.
+- **The message** is `digestapp/mail/digest.txt`, in the reader's
+  language: one block per organization, each line a count and the link to
+  the list or the question, and a footer with the day and hour, the link
+  to the profile's card and the link to stop it. The subject's date is the
+  person's own, written `2006-01-02` like every date on a page, so that it
+  needs no month names. The weekday in the footer is seven whole
+  sentences, one per day.
+- **Stopping it**: each email mints a token (`userbus.StopToken`) and
+  keeps only its hash, replacing the last one's, so only the latest
+  email's link works; an older one's page says so and links to the
+  profile. `GET /digest/stop?t=` is a sentence and a button and changes
+  nothing; `POST /digest/stop` stops it, with the token from the form or
+  from the address, where a mail program's own button leaves it
+  (`List-Unsubscribe-Post: List-Unsubscribe=One-Click`). Neither asks for
+  sign-in, and the cross-origin guard lets the mail program's post
+  through because it carries neither `Sec-Fetch-Site` nor `Origin`.
+  Stopping keeps the day and the hour for when it is turned back on.
 
 ## Verification
 
