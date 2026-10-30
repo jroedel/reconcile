@@ -225,6 +225,28 @@ account will repay together":
    payee's tax number, nor write one anywhere: those stay with the
    accountant.
 
+### Looking something up
+
+"How much did we spend on groceries this year?", "which charges for the
+pilgrimage have no receipt?", "what pass-through came in last spring?":
+
+1. **find_transactions** with the choices that say it: a `category` or a
+   whole `kind`, a `project`, `from` and `to`, `direction`, `receipts`,
+   `by` (what a rule or a program sorted), and `organization` or `account`.
+   Use the ids get_overview and the transactions' parts give. A category,
+   a kind and a project together must be true of one part of a split
+   charge.
+2. **Its `total` and `sums` are the answer**, over every page: say those,
+   money in and money out in each currency, rather than adding up the
+   transactions yourself. A charge only part of which fits shows that part
+   as its `matched_amount`, and the part is `matched`; say so when you
+   mention it.
+3. When `more` is above zero, ask again with `skip` set to `next_skip` for
+   the next page, only if the person needs the transactions themselves.
+4. An account for reference is searched only when you name it: its money
+   is counted in another account. `left_out` names those passed over.
+5. Link to each transaction you mention with its `url`.
+
 ### Explaining an amount
 
 "What did this payment cover?", "why is the card payment more than the

@@ -66,7 +66,7 @@ func TestDescribingATransaction(t *testing.T) {
 		t.Errorf("the month's changes to check: %+v, %v", months, err)
 	}
 
-	if f, err := w.ledger.Find(ctx, r.owner, ledgerbus.Query{Text: "summer WORK"}); err != nil || len(f.Found) != 1 || f.Found[0].Transaction.ID != check.ID {
+	if f, err := w.ledger.Find(ctx, r.owner, ledgerbus.Query{Criteria: ledgerbus.Criteria{Text: "summer WORK"}}); err != nil || len(f.Found) != 1 || f.Found[0].Transaction.ID != check.ID {
 		t.Errorf("found by its own description: %+v, %v", f, err)
 	}
 

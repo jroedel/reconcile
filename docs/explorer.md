@@ -172,10 +172,23 @@ time the organization's page is opened.
 
 ## The API
 
-`find_transactions` keeps its contract and becomes a call to the same read,
-with every account the key may read. Its own tests pin it. Whether it
-gains the category, kind and project choices is a separate change to
-`docs/books-api.md`, made when a person's Claude needs them.
+`find_transactions` is the same read over every account the key may read,
+one organization's (`organization=`), or the accounts named, and takes the
+form's choices under the API's own names: `category` (an id, or `none` for
+not sorted yet), `kind` (the four, or `unsaid`), `project` (an id, or
+`none`), `by` (`rule` or `program`) and `receipts`, beside the words,
+amounts, days and direction it always had. A transaction only part of
+which fits carries `matched_amount`, and its parts that fit are
+`matched`. The answer has the form's `total` and `sums` over every page,
+`more` and `next_skip` for the next, and `left_out`: accounts for
+reference are searched only when named, as on an organization's list,
+because a total with both counts the same money twice.
+
+A project's choice reads only the accounts the key may read. A role on a
+project alone reads its parts with `get_project_book`; showing them here
+would need the project list's care with the rest of each charge
+(Readable, and only the project's parts), which an answer of whole
+transactions does not have.
 
 ## Build order
 
