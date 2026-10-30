@@ -272,6 +272,28 @@ accountant this month?":
    waiting (**list_waiting_receipts**): offer to read it (**read_check**),
    which attaches it and gives the payee and the memo.
 
+### Questions about the books
+
+"Ask the accountant what this was", "what is the accountant asking us?",
+"has anybody answered my question about the check?":
+
+1. **list_questions** with `organization` (and `state=open`) for what
+   waits there, or with `about` and `id` for one thing: a transaction, a
+   statement, a project or a payee. **get_question** opens one by the id
+   at the end of a link the person pastes.
+2. **ask_question** only when the person asks you to, in their words, about
+   the thing they mean; **reply_to_question** the same. A reply by anybody
+   but the one who asked answers the question. Give the person the
+   question's `url`: it is the link they can paste into their own email
+   when it cannot wait for the weekly one.
+3. **mark_question_answered** is for the one who asked, when the answer
+   came some other way. Anybody else answers by replying.
+4. A question answered on a transaction counts as context: it moves the
+   transaction to "Context added". A viewer reads questions and asks none;
+   say so rather than trying again.
+5. **get_weekly_email_settings** says when the person's weekly email comes.
+   Changing it is theirs, on their profile; give them its `url`.
+
 ### Explaining an amount
 
 "What did this payment cover?", "why is the card payment more than the

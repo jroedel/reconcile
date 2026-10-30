@@ -345,6 +345,9 @@ func TestTheAPIsWritesAreTheList(t *testing.T) {
 		"POST /api/v1/payees/{payee}/join books:write",
 		"POST /api/v1/payees/{payee}/split books:write",
 		"POST /api/v1/projects books:write",
+		"POST /api/v1/questions books:write",
+		"POST /api/v1/questions/{question}/answered books:write",
+		"POST /api/v1/questions/{question}/replies books:write",
 		"POST /api/v1/receipts books:write",
 		"POST /api/v1/receipts/{receipt}/attach books:write",
 		"POST /api/v1/receipts/{receipt}/check books:write",
@@ -396,10 +399,12 @@ func TestNobodyKeepsTheBooksTheyWereNotGiven(t *testing.T) {
 	payee := strings.TrimPrefix(addedPayee(t, k.e.owner, k.e.org+"/payees", "Hilltop Plumbing"), "/payees/")
 	other := strings.TrimPrefix(addedPayee(t, k.e.owner, k.e.org+"/payees", "HILLTOP PLUMBING LLC"), "/payees/")
 
+	question := strings.TrimPrefix(asked(t, k.e.owner, "transaction", grocery, "Whose groceries?"), "/questions/")
+
 	ids := strings.NewReplacer(
 		"{account}", k.account, "{transaction}", grocery, "{receipt}", k.receipt,
 		"{rule}", field(rule, "rule", "id").(string), "{project}", strings.TrimPrefix(k.e.project, "/projects/"),
-		"{payee}", payee,
+		"{payee}", payee, "{question}", question,
 	)
 
 	bodies := map[string]any{
@@ -420,6 +425,8 @@ func TestNobodyKeepsTheBooksTheyWereNotGiven(t *testing.T) {
 		"split_payee":        map[string]string{"spelling": "Hilltop Plumbing"},
 		"set_payee":          map[string]string{"name": "Mine now"},
 		"pair_pending":       map[string]string{"posted": grocery},
+		"ask_question":       map[string]string{"about": "transaction", "id": grocery, "text": "Mine?"},
+		"reply_to_question":  map[string]string{"text": "Mine."},
 	}
 
 	var idx struct {
@@ -458,10 +465,11 @@ func TestNobodyKeepsTheBooksTheyWereNotGiven(t *testing.T) {
 
 		rec := s.api(e.Method, path, theirs, raw)
 
-		// A project made in the treasurer's organization is as much theirs
-		// as anything with an id in its path.
+		// A project made in the treasurer's organization, or a question
+		// asked about their transaction, is as much theirs as anything
+		// with an id in its path.
 		switch {
-		case strings.Contains(e.Path, "{") || e.Tool == "create_project":
+		case strings.Contains(e.Path, "{") || e.Tool == "create_project" || e.Tool == "ask_question":
 			if rec.Code != http.StatusNotFound {
 				t.Errorf("a stranger: %s %s = %d, want 404\n%s", e.Method, e.Path, rec.Code, rec.Body)
 			}
@@ -470,8 +478,8 @@ func TestNobodyKeepsTheBooksTheyWereNotGiven(t *testing.T) {
 		}
 	}
 
-	if walked != 18 {
-		t.Errorf("%d keeping endpoints were walked, want 18", walked)
+	if walked != 21 {
+		t.Errorf("%d keeping endpoints were walked, want 21", walked)
 	}
 
 	if payees := list(t, s.get(t, "/api/v1/payees?organization="+strings.TrimPrefix(k.e.org, "/orgs/"), k.key), "payees"); len(payees) != 2 {

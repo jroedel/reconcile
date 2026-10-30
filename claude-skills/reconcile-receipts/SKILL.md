@@ -78,7 +78,11 @@ up as `docs/claude.md` says.
      to the charge instead of sending it again.
    - A refusal says what to fix. Fix it, or tell the person; never retry the
      same request unchanged.
-6. **End with `list_changes`** and a short summary: what was attached to
+6. **A charge nobody can find a receipt for**, when the person wants to
+   know what it was: offer to ask about it with `ask_question`, in their
+   words, so that whoever knows answers on the site. Give them the
+   question's `url`.
+7. **End with `list_changes`** and a short summary: what was attached to
    which charge, what waits in an inbox, what you found nothing for, with
    the links.
 
