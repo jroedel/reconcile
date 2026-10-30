@@ -186,8 +186,14 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	// refusal there leaves open a session its owner asked to close.
 	mux.HandleFunc("POST /sign-out", a.signOut)
 
+	// The script that gives the sign-in forms and the profile the device's
+	// time zone: a file in the binary, nobody's data, served to anybody,
+	// since the sign-in forms are before anybody is signed in.
+	mux.HandleFunc("GET /account/static/{file}", serveStatic)
+
 	mux.Handle("GET /account", guard(http.HandlerFunc(a.account)))
 	mux.Handle("POST /account/profile", guard(http.HandlerFunc(a.setProfile)))
+	mux.Handle("POST /account/weekly", guard(http.HandlerFunc(a.setWeekly)))
 	mux.Handle("POST /account/backup-codes", guard(http.HandlerFunc(a.issueCodes)))
 	mux.Handle("POST /account/sign-out-everywhere", guard(http.HandlerFunc(a.signOutEverywhere)))
 
@@ -510,6 +516,13 @@ func (a app) finish(w http.ResponseWriter, r *http.Request, user userbus.User, s
 	mid.SetSession(w, session, a.cfg.Now().Add(userbus.SessionLife))
 	a.claim(r, user)
 
+	// The device's time zone, which every sign-in form carries when its
+	// script ran (static/tz.mjs), kept only when the person has none. Not
+	// worth failing a sign-in for.
+	if err := a.cfg.Users.SetZoneOnce(r.Context(), a.cfg.Now(), user.ID, r.PostFormValue("tz")); err != nil {
+		a.cfg.Log.Error("the time zone could not be kept", "request_id", web.RequestIDFrom(r.Context()), "error", err)
+	}
+
 	a.cfg.Log.Info("signed in", "request_id", web.RequestIDFrom(r.Context()), "user_id", user.ID.String())
 
 	http.Redirect(w, r, next(to), http.StatusSeeOther)
@@ -555,6 +568,18 @@ type accountView struct {
 	// refused.
 	NewEmail string
 
+	// Weekly is the weekly email's settings, Zone the time zone (as typed,
+	// when what was typed was refused), and Next when the next email is
+	// due, in that zone, or zero when it is off (weekly.go).
+	Weekly userbus.Weekly
+	Zone   string
+	Next   time.Time
+
+	// Days, Hours and Zones are what the weekly email's form offers.
+	Days  []time.Weekday
+	Hours []int
+	Zones []string
+
 	// Translates is whether the user may translate, which is whether the
 	// page links to the review screen. Everybody may hold an API key.
 	Translates bool
@@ -577,6 +602,18 @@ func (a app) accountFor(ctx context.Context, u userbus.User) accountView {
 		a.cfg.Log.Error("the backup codes could not be counted", "user_id", u.ID.String(), "error", err)
 	} else {
 		view.Left = left
+	}
+
+	if w, err := a.cfg.Users.Weekly(ctx, u.ID); err != nil {
+		a.cfg.Log.Error("the weekly email's settings could not be read", "user_id", u.ID.String(), "error", err)
+		view.Weekly = userbus.DefaultWeekly
+	} else {
+		view.Weekly = w
+	}
+
+	view.Zone, view.Days, view.Hours, view.Zones = u.Zone, Weekdays, Hours, Zones
+	if view.Weekly.Enabled {
+		view.Next = view.Weekly.Next(a.cfg.Now(), userbus.Location(u.Zone))
 	}
 
 	if may, err := a.translates(ctx, u); err != nil {

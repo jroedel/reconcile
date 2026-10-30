@@ -4,6 +4,7 @@
 
 {{if .Welcome}}<p class="notice ok">{{t "Welcome. Add your name, so the people you work with know who you are, and make a set of backup codes for the day the email does not come."}}</p>{{end}}
 {{if eq .Done "profile"}}<p class="notice ok" role="status">{{t "Saved."}}</p>{{end}}
+{{if eq .Done "weekly"}}<p class="notice ok" role="status">{{t "Saved."}}</p>{{end}}
 {{if eq .Done "email"}}<p class="notice ok" role="status">{{t "Your address is changed. Sign in with the new one from now on."}}</p>{{end}}
 {{template "problem" .Problem}}
 
@@ -26,6 +27,43 @@
   <button type="submit">{{t "Save"}}</button>
 </form>
 </section>
+
+{{/* The weekly email (docs/accountant.md, 5). The sentence saying when
+     the next one comes is how a wrong time zone is noticed. */}}
+<section class="card" id="weekly">
+<h2>{{t "Weekly email"}}</h2>
+<p class="hint">{{t "Once a week, links to what was added that you can look at, and to the questions waiting for you. Never an amount or a name, and no email at all in a week with nothing new."}}</p>
+<form method="post" action="/account/weekly">
+  <label class="choice"><input type="checkbox" name="enabled" value="1"{{if .Weekly.Enabled}} checked{{end}}> {{t "Send me a weekly email of what is new"}}</label>
+  <div class="search-more">
+    <div class="field">
+      <label for="weekday">{{t "Day"}}</label>
+      <select id="weekday" name="weekday">
+        {{range .Days}}<option value="{{printf "%d" .}}"{{if eq . $.Data.Weekly.Weekday}} selected{{end}}>{{template "weekday" .}}</option>
+        {{end}}
+      </select>
+    </div>
+    <div class="field">
+      <label for="hour">{{t "Hour"}}</label>
+      <select id="hour" name="hour">
+        {{range .Hours}}<option value="{{.}}"{{if eq . $.Data.Weekly.Hour}} selected{{end}}>{{printf "%02d:00" .}}</option>
+        {{end}}
+      </select>
+    </div>
+  </div>
+  <div class="field">
+    <label for="tz">{{t "Time zone"}}</label>
+    <input id="tz" name="tz" type="text" list="zones" value="{{.Zone}}" required autocomplete="off" spellcheck="false">
+    <datalist id="zones">{{range .Zones}}<option value="{{.}}">{{end}}</datalist>
+    <p class="hint" data-zone-offer="tz" data-say="{{t "Your device says {zone}." "zone" "{zone}"}}" hidden><span></span> <button type="button" class="link">{{t "Use it"}}</button></p>
+    {{if not .Zone}}<p class="hint">{{t "No time zone yet, so the hours are UTC. Type your city's region and city, such as America/Chicago or America/Sao_Paulo."}}</p>{{end}}
+  </div>
+  {{if .Weekly.Enabled}}{{if not .Next.IsZero}}<p class="hint">{{if .Zone}}{{t "The next one, if there is anything new for you, comes on {date} at {hour}, your time." "date" (.Next.Format "2006-01-02") "hour" (.Next.Format "15:04")}}{{else}}{{t "The next one, if there is anything new for you, comes on {date} at {hour} UTC." "date" (.Next.Format "2006-01-02") "hour" (.Next.Format "15:04")}}{{end}}</p>{{end}}
+  {{else}}<p class="hint">{{t "You get no weekly email."}}</p>{{end}}
+  <button type="submit">{{t "Save"}}</button>
+</form>
+</section>
+<script type="module" src="/account/static/tz.mjs"></script>
 
 <section class="card" id="email">
 <h2>{{t "Email address"}}</h2>

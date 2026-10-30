@@ -14,6 +14,11 @@ import (
 	"syscall"
 	"time"
 
+	// Every time zone, in the binary: the server is a static file on a
+	// host whose zone database may be old or missing, and a person's weekly
+	// email comes at their own hour (userbus.Weekly).
+	_ "time/tzdata"
+
 	"github.com/jroedel/reconcile/app/sdk/muxer"
 	"github.com/jroedel/reconcile/app/sdk/page"
 	"github.com/jroedel/reconcile/business/domain/budget/budgetbus"
