@@ -559,6 +559,40 @@ Then the tests that cross all of it (Verification), and the translations.
   lists `list_questions`, `get_question` and `get_weekly_email_settings`,
   and a key that keeps the books the three that write as well.
 
+### The tests that cross it
+
+Where each line of Verification is kept, so that the next change knows
+which test to grow:
+
+- **Roles**: `TestTheRoleTable` in `questionbus`, every role on the
+  organization, the account and the project, and somebody with none,
+  asking, reading, listing, replying, and marking their own question and
+  the owner's answered. Its edges are in `TestWhoMayAsk`.
+- **Isolation**: the stranger walks in `app/sdk/muxer` -- every route in
+  `tenancy_test.go`, the API's reading in `books_test.go`, its keeping and
+  the MCP tools in `keeping_test.go` -- and the email in
+  `isolation_test.go`: a second organization's owner is sent only their
+  own, and finds nothing behind the first one's links; a role on a project
+  or an account alone finds no "For the accountant" page and is sent no
+  word of the organization's lists; the link that stops an email, the one
+  link that needs no sign-in, opens a page naming nobody.
+- **Accounts for reference**: never to do in the ledger's tests
+  (`accountant_test.go` in `ledgerbus`), and, in `isolation_test.go`, in no
+  count on the page or in the email, nor in the list with that account
+  chosen.
+- **Colour**: `TestTheColoursCanBeRead` in `app/sdk/page` reads `app.css`.
+  The text pairs all pass with room to spare (the lowest is the muted hint
+  on the dark scheme's yellow, 5.3 to 1). The rules under the tabs are
+  1.8 to 1 (yellow) and 2.2 to 1 (green) against the light page, below the
+  3 to 1 a mark needs when it alone shows a state; it does not alone, as
+  the shown tab is set apart by weight and says its list in words, so the
+  test checks the weight instead. Darkening `--warn-line` and `--ok-line`
+  would change every notice's and badge's border, which is a choice about
+  the whole app and not this work's.
+- **Words for each state**: "More context needed" and "Context added" on
+  the tabs and the transaction's line in `muxer/accountant_test.go`;
+  "Open" and "Answered" in their badges in `muxer/questions_test.go`.
+
 ## Verification
 
 - **Each reason and each kind of context**, in both lists, in a
@@ -579,7 +613,7 @@ Then the tests that cross all of it (Verification), and the translations.
   opening the link to stop it stops nothing.
 - **Colour**: a test reads the stylesheet's colours and checks that the
   text on yellow and on green, and the hint lines, have a contrast of at
-  least 4.5 to 1, and the tabs' rules at least 3 to 1, light and dark.
-  Each state shows its words.
+  least 4.5 to 1, light and dark. The tabs' rules are not the only sign of
+  the shown list (see As built). Each state shows its words.
 - **On a phone**: every new page at 360 px, light and dark, looked at
   before its pull request.
