@@ -281,9 +281,11 @@ func TestNobodyReadsTheBooksTheyWereNotGiven(t *testing.T) {
 	stranger := signUp(t, s.h, s.sent, "stranger@example.org")
 	theirs := keyFor(t, stranger, "Claude", "books-read")
 
+	question := strings.TrimPrefix(asked(t, b.e.owner, "transaction", b.first, "What was the opening deposit?"), "/questions/")
+
 	ids := strings.NewReplacer(
 		"{account}", b.account, "{statement}", b.statement, "{transaction}", b.first,
-		"{project}", strings.TrimPrefix(b.e.project, "/projects/"),
+		"{project}", strings.TrimPrefix(b.e.project, "/projects/"), "{question}", question,
 	)
 
 	var idx struct {
@@ -317,9 +319,10 @@ func TestNobodyReadsTheBooksTheyWereNotGiven(t *testing.T) {
 		rec := s.api(e.Method, path, theirs, "")
 
 		// A list of payees is the treasurer's by the organization or the
-		// account asked for, as a path's id is, and so is a search in the
-		// treasurer's organization; a search in their account finds nothing.
-		if strings.Contains(e.Path, "{") || strings.HasPrefix(e.Path, "/api/v1/payees") || e.Path == "/api/v1/transactions" {
+		// account asked for, as a path's id is, and so are a search and
+		// the questions in the treasurer's organization; a search in their
+		// account finds nothing.
+		if strings.Contains(e.Path, "{") || strings.HasPrefix(e.Path, "/api/v1/payees") || e.Path == "/api/v1/transactions" || e.Path == "/api/v1/questions" {
 			if rec.Code != http.StatusNotFound {
 				t.Errorf("a stranger: %s %s = %d, want 404", e.Method, e.Path, rec.Code)
 			}

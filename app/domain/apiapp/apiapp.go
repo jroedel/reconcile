@@ -157,7 +157,7 @@ func (a app) Endpoints() []Endpoint {
 	return append([]Endpoint{{
 		Method: http.MethodGet, Path: Prefix, Summary: "This index: every endpoint, what it takes, and the rules.",
 		Returns: "This document.", handler: a.index,
-	}}, slices.Concat(a.bookEndpoints(), a.keepEndpoints(), a.receiptEndpoints(), a.payeeEndpoints(), a.inboxEndpoints(), a.translationEndpoints())...)
+	}}, slices.Concat(a.bookEndpoints(), a.keepEndpoints(), a.receiptEndpoints(), a.payeeEndpoints(), a.questionEndpoints(), a.inboxEndpoints(), a.translationEndpoints())...)
 }
 
 func (a app) index(w http.ResponseWriter, r *http.Request) {

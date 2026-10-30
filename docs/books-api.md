@@ -204,6 +204,9 @@ from (`docs/design.md`). Lists take `limit` and a `cursor`.
 | `GET /api/v1/payees?organization=\|account=` | `list_payees` | **New** (`docs/payees.md`, 5; `ledgerbus.Payees`): a list of payees, each with its spellings and how many payments it has. An account in an organization answers with the organization's list |
 | `GET /api/v1/payees/suggestions?organization=\|account=` | `suggest_payee_joins` | **New** (`PayeeSuggestions`): payees that may be one, each pair with both payees' spellings and latest payments, so that Claude can say why |
 | `GET /api/v1/payees/{payee}/payments?year=` | `get_payee_payments` | **New** (`docs/payees.md`, 4; `PayeeInYear`): a payee's payments in a calendar year as the year's page counts them, each with the day that put it there and which day that was, and its check images' receipt ids |
+| `GET /api/v1/questions?about=&id=\|organization=&state=&mine=` | `list_questions` | **New** (`docs/accountant.md`, 6; `questionbus.Summary`, `InOrg`): the questions about one transaction, statement, project or payee, with `can_ask`; or an organization's, open or answered, or only the person's own. Each has its replies, who wrote each and through which key, and the `url` of its page, the link a person pastes into an email |
+| `GET /api/v1/questions/{question}` | `get_question` | **New** (`questionbus.Question`): one question by the id at the end of its link, with `can_reply` and `can_mark_answered` |
+| `GET /api/v1/me/weekly-email` | `get_weekly_email_settings` | **New** (`userbus.Weekly`): the key's own person's weekly email: on or off, the day, the hour, the time zone it is read in (UTC when none), and when the next one comes. Read only: changing them is the person's, on their profile |
 
 ### Keeping the books (`books:write`)
 
@@ -228,6 +231,9 @@ from (`docs/design.md`). Lists take `limit` and a `cursor`.
 | `POST /api/v1/payees/{payee}/join` `{from}` | `join_payees` | **New** (`docs/payees.md`, 5; `JoinPayees`): payees of one list into another, with their spellings and payments |
 | `POST /api/v1/payees/{payee}/split` `{spelling, into}` | `split_payee` | **New** (`SplitPayee`): a spelling and its payments back out, into a payee of its own or another; it undoes a join |
 | `PUT /api/v1/transactions/{transaction}/payee` `{payee \| name}` | `set_payee` | **New** (`SetPayee`): whom a payment went to, a payee of the list or a new name, as "Paid to" on its page |
+| `POST /api/v1/questions` `{about, id, text}` | `ask_question` | **New** (`docs/accountant.md`, 6; `questionbus.Ask`): a question about a transaction, statement, project or payee, as the person. It needs a role that may note on the thing, as on the site: a viewer's key is refused. Nobody is emailed; the weekly email tells of it |
+| `POST /api/v1/questions/{question}/replies` `{text}` | `reply_to_question` | **New** (`Reply`): a reply, which answers the question when anybody but its asker writes it |
+| `POST /api/v1/questions/{question}/answered` | `mark_question_answered` | **New** (`MarkAnswered`): the asker's alone, as on the site |
 
 Both inbox tools read every file waiting, which is longer than the proxy in front of the server lets a request last when the inbox is full (issue #107). Each runs its reading as a job (`foundation/jobs`, in this process) and waits ten seconds: a short inbox answers as above, and a longer one answers `202 {working, job, stage, done, of, note}`. The same tool called again with `job` asks after it, and once it is done answers as above. A job is the key's person's and the tool's; the site restarting forgets it, and asking after it is then a 404 that says to call again without it. That is safe for an import, which recognizes what it imported before.
 

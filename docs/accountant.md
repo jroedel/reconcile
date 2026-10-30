@@ -543,6 +543,22 @@ Then the tests that cross all of it (Verification), and the translations.
   through because it carries neither `Sec-Fetch-Site` nor `Origin`.
   Stopping keeps the day and the hour for when it is turned back on.
 
+### Through the API
+
+- **`get_question`** too, a read the table did not have: a person pastes
+  a question's link into the conversation, and Claude opens it by the id
+  at its end. The list's questions carry their replies already.
+- **`list_questions`** takes `about` and `id` for one thing, or
+  `organization` with `state` (`open`, `answered`, or both when left out)
+  and `mine`. Every question has who asked and who replied, by name,
+  `asked_by_you` and `by_you`, and `through` for what a key wrote.
+- **Refusals in the API's words**: a viewer's key asking or replying is a
+  403 that says a viewer reads only; marking another's question, a 403
+  that says it is the asker's; a stranger's, a 404 as for anything else.
+- **The tools** come from the index, as every tool does: a reading key
+  lists `list_questions`, `get_question` and `get_weekly_email_settings`,
+  and a key that keeps the books the three that write as well.
+
 ## Verification
 
 - **Each reason and each kind of context**, in both lists, in a

@@ -146,10 +146,13 @@ type Books struct {
 	Rules      Rules
 	Pictures   Pictures
 	Uploads    Uploads
+	Questions  Questions
+	People     People
 }
 
 func (b Books) complete() bool {
-	return b.Ledger != nil && b.Tenancy != nil && b.Categories != nil && b.Receipts != nil && b.History != nil && b.Rules != nil && b.Pictures != nil && b.Uploads != nil
+	return b.Ledger != nil && b.Tenancy != nil && b.Categories != nil && b.Receipts != nil && b.History != nil && b.Rules != nil && b.Pictures != nil && b.Uploads != nil &&
+		b.Questions != nil && b.People != nil
 }
 
 // --- the endpoints ----------------------------------------------------------------
@@ -466,6 +469,7 @@ type reader struct {
 	cats   map[types.ID]map[types.ID]categorybus.Category
 	names  map[types.ID]string
 	accts  map[types.ID]tenancybus.Account
+	people map[types.ID]string
 	failed error
 }
 
@@ -474,9 +478,10 @@ func (a app) reader(r *http.Request) *reader {
 
 	return &reader{
 		a: a, ctx: r.Context(), me: u.ID,
-		cats:  map[types.ID]map[types.ID]categorybus.Category{},
-		names: map[types.ID]string{},
-		accts: map[types.ID]tenancybus.Account{},
+		cats:   map[types.ID]map[types.ID]categorybus.Category{},
+		names:  map[types.ID]string{},
+		accts:  map[types.ID]tenancybus.Account{},
+		people: map[types.ID]string{},
 	}
 }
 
