@@ -129,6 +129,11 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		payment = tx
 	}
 
+	// A question about the payment, and one about each of the owner's
+	// own things, nobody else's.
+	question := asked(t, e.owner, "transaction", strings.TrimPrefix(payment, "/transactions/"), "What was this for?")
+	ownQuestion := asked(t, e.owner, "project", strings.TrimPrefix(e.ownProject, "/projects/"), "When do we go?")
+
 	report := saveReport(t, e.owner, e.org, url.Values{"style": {"income-expenses-by-month"}, "title": {"P&L"}})
 	projectReport := saveReport(t, e.owner, e.project, url.Values{"style": {"project"}, "title": {"Retreats"}, "gap": {"45"}})
 
@@ -153,7 +158,8 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		e.account + "/transactions?q=coffee&category=kind:expense&receipts=without", e.ownAccount + "/transactions?from=2026-01-01&check=byrule",
 		e.org + "/transactions", e.org + "/transactions?category=unsorted&account=" + strings.TrimPrefix(e.account, "/accounts/"),
 		e.project + "/transactions", e.ownProject + "/transactions?q=coffee",
-		e.org + "/accountant", e.org + "/accountant?context=added&month=2026-07",
+		e.org + "/accountant", e.org + "/accountant?context=added&month=2026-07", e.org + "/accountant?context=questions&state=answered&mine=1",
+		question, ownQuestion,
 		e.account + "/months", e.ownAccount + "/months",
 		e.account + "/rules", e.ownAccount + "/rules",
 		e.account + "/sort?month=2026-07", e.ownAccount + "/sort?month=2026-07",
@@ -212,6 +218,12 @@ func TestNobodyReachesWhatTheyWereNotGiven(t *testing.T) {
 		{e.org + "/payees", url.Values{"name": {"Mine now"}}},
 		{e.ownAccount + "/payees", url.Values{"name": {"Mine now"}}},
 		{payment + "/payee", url.Values{"payee": {"Mine now"}}},
+		{question + "/reply", url.Values{"body": {"Mine now"}}},
+		{question + "/answered", nil},
+		{ownQuestion + "/reply", url.Values{"body": {"Mine now"}}},
+		{"/questions", url.Values{"kind": {"transaction"}, "id": {strings.TrimPrefix(payment, "/transactions/")}, "body": {"Mine now?"}}},
+		{"/questions", url.Values{"kind": {"project"}, "id": {strings.TrimPrefix(e.ownProject, "/projects/")}, "body": {"Mine now?"}}},
+		{"/questions", url.Values{"kind": {"statement"}, "id": {strings.TrimPrefix(e.org, "/orgs/")}, "body": {"Mine now?"}}},
 	}
 
 	for _, p := range []string{payee, ownPayee} {

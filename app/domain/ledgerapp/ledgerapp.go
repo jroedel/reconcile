@@ -35,6 +35,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/importing/importbus"
 	"github.com/jroedel/reconcile/business/domain/importing/sources/csvsource"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
+	"github.com/jroedel/reconcile/business/domain/question/questionbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
 	"github.com/jroedel/reconcile/business/domain/rule/rulebus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
@@ -66,6 +67,23 @@ type Renderer interface {
 	Render(w http.ResponseWriter, r *http.Request, status int, name string, data any)
 }
 
+// Questions is the questions about a transaction or a statement, for its
+// page, and an organization's, for the accountant's (questionbus).
+type Questions interface {
+	Summary(ctx context.Context, actor types.ID, about questionbus.About) (questionbus.Summary, error)
+	InOrg(ctx context.Context, actor, orgID types.ID, state questionbus.State, askedBy types.ID) ([]questionbus.Listed, error)
+}
+
+// summary is the questions about a thing for its page, or none when the
+// app was given no way to ask.
+func (a app) summary(ctx context.Context, me types.ID, about questionbus.About) (questionbus.Summary, error) {
+	if a.cfg.Questions == nil {
+		return questionbus.Summary{}, nil
+	}
+
+	return a.cfg.Questions.Summary(ctx, me, about)
+}
+
 // Users names who imported a statement.
 type Users interface {
 	ByID(ctx context.Context, id types.ID) (userbus.User, error)
@@ -84,6 +102,10 @@ type Config struct {
 
 	// Receipts are shown on a transaction, a month and a project's book.
 	Receipts *receiptbus.Business
+
+	// Questions are shown on a transaction, a statement and the
+	// accountant's page. Nil shows none.
+	Questions Questions
 
 	// Rules is where the transaction page's "always sort charges like
 	// this" box writes.

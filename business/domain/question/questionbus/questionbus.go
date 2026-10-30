@@ -115,6 +115,23 @@ type Question struct {
 	Replies []Reply
 }
 
+// openingLen is how much of a question its one line in a list shows.
+const openingLen = 120
+
+// Opening is the question's first line, shortened for a list: what a
+// thing's page and an organization's list show of it, the whole being on
+// its own page.
+func (q Question) Opening() string {
+	line, _, _ := strings.Cut(q.Body, "\n")
+	line = strings.TrimSpace(line)
+
+	if utf8.RuneCountInString(line) > openingLen {
+		line = strings.TrimSpace(string([]rune(line)[:openingLen-1])) + "…"
+	}
+
+	return line
+}
+
 // Reply is a message in a question's thread after the question.
 type Reply struct {
 	ID         types.ID
@@ -136,6 +153,8 @@ const (
 type Access interface {
 	AccessTo(ctx context.Context, actor types.ID, scope types.Scope) (tenancybus.Access, error)
 	Project(ctx context.Context, actor, id types.ID) (tenancybus.Project, tenancybus.Access, error)
+	Contents(ctx context.Context, actor, orgID types.ID) ([]tenancybus.Account, []tenancybus.Project, error)
+	AccountNamed(ctx context.Context, id types.ID) (tenancybus.Account, error)
 }
 
 // Ledger is the transactions, statements and payees questions are asked
@@ -166,6 +185,11 @@ type Storer interface {
 	// On is the questions about a thing, newest first, with their replies.
 	On(ctx context.Context, about About) ([]Question, error)
 
+	// InHomes is the questions whose home is any of the scopes, newest
+	// first, with their replies: those in a state, or in either when it is
+	// "", and those one person asked when askedBy is not zero.
+	InHomes(ctx context.Context, homes []types.Scope, state State, askedBy types.ID) ([]Question, error)
+
 	// Answered is which of some transactions have a question about them
 	// that has been answered.
 	Answered(ctx context.Context, ids []types.ID) (map[types.ID]bool, error)
@@ -186,11 +210,14 @@ func NewBusiness(log *slog.Logger, store Storer, access Access, ledger Ledger) *
 
 // thing is what a question is about, as this domain reaches it: where its
 // history goes, what the history calls it, and whether the actor may read
-// it and write on it.
+// it and write on it. A transaction's is t, and whole is whether the actor
+// may read its account, rather than only a project one of its parts is in.
 type thing struct {
 	home       types.Scope
 	what       string
 	read, note bool
+	t          ledgerbus.Transaction
+	whole      bool
 }
 
 // reach is the thing a question is about, for the actor, or ErrNotFound
@@ -209,8 +236,15 @@ func (b *Business) reach(ctx context.Context, actor types.ID, about About) (thin
 			return thing{}, err
 		}
 
-		th.home = types.AccountScope(t.AccountID)
+		th.home, th.t = types.AccountScope(t.AccountID), t
 		th.what = fmt.Sprintf("%s, %s", t.Shown(), t.PostedOn)
+
+		account, err := b.access.AccessTo(ctx, actor, th.home)
+		if err != nil {
+			return thing{}, err
+		}
+
+		th.whole = account.Can(tenancybus.Read)
 
 		if th.read, err = b.onTransaction(ctx, actor, t, tenancybus.Read); err != nil {
 			return thing{}, err
@@ -329,33 +363,174 @@ func (b *Business) Ask(ctx context.Context, now time.Time, actor types.ID, about
 	return q, nil
 }
 
-// Question is a question with its replies, for anyone who may read what it
-// is about, and whether they may reply.
-func (b *Business) Question(ctx context.Context, actor, id types.ID) (Question, bool, error) {
+// Thread is a question as its own page shows it, to one reader.
+type Thread struct {
+	Question
+
+	// What is what it is about, as the history names it.
+	What string
+
+	// CanReply is whether the reader may reply, and CanMark whether they
+	// may mark it answered: the asker, while it is open.
+	CanReply, CanMark bool
+
+	// Transaction is, for a question about one, the transaction as the
+	// reader may see it: all of it when Whole, which is when they may
+	// read its account; otherwise only its parts in the projects they
+	// were given, never the rest of the charge (docs/plan.md, "Domain
+	// model": roles). Account names it and its currency, nothing more.
+	Transaction ledgerbus.Transaction
+	Whole       bool
+	Account     tenancybus.Account
+}
+
+// Question is a question's thread, for anyone who may read what it is
+// about.
+func (b *Business) Question(ctx context.Context, actor, id types.ID) (Thread, error) {
 	q, err := b.store.ByID(ctx, id)
 	if err != nil {
-		return Question{}, false, err
+		return Thread{}, err
 	}
 
 	th, err := b.reach(ctx, actor, q.About)
 	if err != nil {
-		return Question{}, false, err
+		return Thread{}, err
 	}
 
-	return q, th.note, nil
+	t := Thread{
+		Question: q, What: th.what,
+		CanReply: th.note, CanMark: th.note && actor == q.AskedBy && q.State == Open,
+	}
+
+	if q.About.Kind != OnTransaction {
+		return t, nil
+	}
+
+	t.Transaction, t.Whole = th.t, th.whole
+
+	if !t.Whole {
+		var parts []ledgerbus.Split
+
+		for _, s := range th.t.Splits {
+			if s.ProjectID.Zero() {
+				continue
+			}
+
+			access, err := b.access.AccessTo(ctx, actor, types.ProjectScope(s.ProjectID))
+			if err != nil {
+				return Thread{}, err
+			}
+
+			if access.Can(tenancybus.Read) {
+				parts = append(parts, s)
+			}
+		}
+
+		t.Transaction.Splits = parts
+	}
+
+	if t.Account, err = b.access.AccountNamed(ctx, th.t.AccountID); err != nil {
+		return Thread{}, err
+	}
+
+	return t, nil
 }
 
-// On is the questions about a thing, newest first, for anyone who may read
-// it, and whether they may ask one.
-func (b *Business) On(ctx context.Context, actor types.ID, about About) ([]Question, bool, error) {
+// Summary is the questions about a thing, for the thing's own page.
+type Summary struct {
+	About About
+
+	// Open is those still waiting, and Answered the others, each newest
+	// first.
+	Open, Answered []Question
+
+	// CanAsk is whether the reader may ask one.
+	CanAsk bool
+}
+
+// Summary is the questions about a thing, for anyone who may read it.
+func (b *Business) Summary(ctx context.Context, actor types.ID, about About) (Summary, error) {
 	th, err := b.reach(ctx, actor, about)
 	if err != nil {
-		return nil, false, err
+		return Summary{}, err
 	}
 
 	qs, err := b.store.On(ctx, about)
+	if err != nil {
+		return Summary{}, err
+	}
 
-	return qs, th.note, err
+	s := Summary{About: about, CanAsk: th.note}
+
+	for _, q := range qs {
+		if q.State == Open {
+			s.Open = append(s.Open, q)
+		} else {
+			s.Answered = append(s.Answered, q)
+		}
+	}
+
+	return s, nil
+}
+
+// Listed is a question in an organization's list, with what it is about.
+type Listed struct {
+	Question
+	What string
+}
+
+// InOrg is the questions about anything in an organization -- its
+// accounts' transactions and statements, its projects, its payees --
+// newest first, for anyone who may read the organization, and so all of
+// it: those in a state, or either when it is "", and those one person
+// asked when askedBy is not zero.
+func (b *Business) InOrg(ctx context.Context, actor, orgID types.ID, state State, askedBy types.ID) ([]Listed, error) {
+	org := types.OrgScope(orgID)
+
+	access, err := b.access.AccessTo(ctx, actor, org)
+	if err != nil {
+		return nil, err
+	}
+
+	if !access.Can(tenancybus.Read) {
+		return nil, ErrNotFound
+	}
+
+	accounts, projects, err := b.access.Contents(ctx, actor, orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	homes := []types.Scope{org}
+	for _, a := range accounts {
+		homes = append(homes, types.AccountScope(a.ID))
+	}
+
+	for _, p := range projects {
+		homes = append(homes, types.ProjectScope(p.ID))
+	}
+
+	qs, err := b.store.InHomes(ctx, homes, state, askedBy)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]Listed, 0, len(qs))
+
+	for _, q := range qs {
+		th, err := b.reach(ctx, actor, q.About)
+
+		switch {
+		case errors.Is(err, ErrNotFound):
+			continue
+		case err != nil:
+			return nil, err
+		}
+
+		out = append(out, Listed{Question: q, What: th.what})
+	}
+
+	return out, nil
 }
 
 // Reply replies to a question. A reply by anybody but the asker answers it

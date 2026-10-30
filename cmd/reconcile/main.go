@@ -216,6 +216,7 @@ func run() error {
 		Budgets:    budgets,
 		Reports:    reportbus.NewBusiness(tenancy, ledger, categories, budgets, reportdb.NewStore(db)),
 		Receipts:   receipts,
+		Questions:  questions,
 		Export:     export,
 		BaseURL:    cfg.Server.BaseURL,
 

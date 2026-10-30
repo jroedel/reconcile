@@ -1,0 +1,49 @@
+{{define "title"}}{{t "Question"}}{{end}}
+{{define "content"}}{{$v := .Data}}{{$t := $v.Transaction}}
+{{with $v.Where.Path}}<p class="return no-print"><a href="{{.}}"><span aria-hidden="true">←</span> {{t "Back to {what}" "what" $v.What}}</a></p>{{end}}
+<h1>{{t "Question"}} {{if eq $v.State "open"}}<span class="badge warn">{{t "Open"}}</span>{{else}}<span class="badge ok">{{t "Answered"}}</span>{{end}}</h1>
+{{if eq $v.Done "asked"}}<p class="notice ok" role="status">{{t "Question asked."}}</p>
+{{else if eq $v.Done "replied"}}<p class="notice ok" role="status">{{t "Reply sent."}}</p>
+{{else if eq $v.Done "answered"}}<p class="notice ok" role="status">{{t "Marked answered."}}</p>{{end}}
+
+{{/* What it is about, as much as this reader may see: of a transaction
+     reached through a project, the project's part and no way to the rest. */}}
+<section class="card">
+<h2>{{t "What it is about"}}</h2>
+{{if eq $v.About.Kind "transaction"}}
+<p>{{$t.PostedOn}} · {{if $t.Shown}}{{$t.Shown}}{{else}}{{t "(no description)"}}{{end}} · <span class="money {{if lt $v.Where.Amount 0}}out{{else}}in{{end}}">{{money $v.Where.Amount $v.Account.Currency}}</span> · {{$v.Account.Name}}</p>
+{{if $v.Where.Part}}<p class="hint">{{t "Only the part of this charge in your projects is shown: {projects}." "projects" (join $v.Where.Projects ", ")}}</p>{{end}}
+{{with $v.Where.Path}}<p><a href="{{.}}">{{t "See the transaction"}}</a></p>{{end}}
+{{else if eq $v.About.Kind "statement"}}<p>{{t "The statement {name}" "name" $v.What}}</p><p><a href="{{$v.Where.Path}}">{{t "See the statement"}}</a></p>
+{{else if eq $v.About.Kind "project"}}<p>{{t "The project {name}" "name" $v.What}}</p><p><a href="{{$v.Where.Path}}">{{t "See the project"}}</a></p>
+{{else}}<p>{{t "The payee {name}" "name" $v.What}}</p><p><a href="{{$v.Where.Path}}">{{t "See the payee"}}</a></p>{{end}}
+</section>
+
+<ol class="thread">
+<li>{{template "writer" (dict "Who" $v.Asker "At" $v.AskedAt "Via" $v.Via)}}<p class="body">{{$v.Body}}</p></li>
+{{range $v.Replies}}<li>{{template "writer" (dict "Who" .Author "At" .At "Via" .Via)}}<p class="body">{{.Body}}</p></li>
+{{end}}</ol>
+
+{{if $v.CanReply}}<section class="card" id="reply">
+<h2>{{t "Reply"}}</h2>
+{{if eq $v.Problem "body"}}<p class="notice" role="alert">{{t "Write the reply, in at most 2,000 characters."}}</p>{{end}}
+<form method="post" action="/questions/{{$v.ID}}/reply">
+<div class="field">
+  <label for="reply-body">{{t "Your reply"}}</label>
+  <textarea id="reply-body" name="body" rows="4" maxlength="2000" required>{{$v.Draft}}</textarea>
+  {{if eq $v.State "open"}}<p class="hint">{{t "A reply from anybody but the person who asked answers the question."}}</p>{{end}}
+</div>
+<button type="submit">{{t "Send reply"}}</button>
+</form>
+{{if $v.CanMark}}<form method="post" action="/questions/{{$v.ID}}/answered" class="inline">
+<button type="submit" class="quiet">{{t "Mark answered"}}</button>
+</form>{{end}}
+</section>
+{{else}}<p class="hint">{{t "Your role here lets you read questions, not ask or answer them."}}</p>{{end}}
+
+<div class="field">
+  <label for="question-link">{{t "Link to this question"}}</label>
+  <input id="question-link" type="text" readonly value="{{$v.Link}}">
+  <p class="hint">{{t "Paste it into an email when it cannot wait. It opens only for people who can see what the question is about, after they sign in."}}</p>
+</div>
+{{end}}

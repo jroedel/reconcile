@@ -182,6 +182,35 @@ func (s *Store) On(ctx context.Context, about questionbus.About) ([]questionbus.
 		string(about.Kind), about.ID.String())
 }
 
+// InHomes is the questions whose home is any of the scopes, newest first.
+func (s *Store) InHomes(ctx context.Context, homes []types.Scope, state questionbus.State, askedBy types.ID) ([]questionbus.Question, error) {
+	if len(homes) == 0 {
+		return nil, nil
+	}
+
+	pairs := make([]string, len(homes))
+	args := make([]any, 0, 2*len(homes)+2)
+
+	for i, h := range homes {
+		pairs[i] = "(home_kind = ? AND home_id = ?)"
+		args = append(args, string(h.Kind), h.ID.String())
+	}
+
+	where := "(" + strings.Join(pairs, " OR ") + ")"
+
+	if state != "" {
+		where += " AND state = ?"
+		args = append(args, string(state))
+	}
+
+	if !askedBy.Zero() {
+		where += " AND asked_by = ?"
+		args = append(args, askedBy.String())
+	}
+
+	return s.questions(ctx, `SELECT `+questionColumns+` FROM questions WHERE `+where+` ORDER BY asked_at DESC, rowid DESC`, args...)
+}
+
 // Answered is which of the transactions have an answered question.
 func (s *Store) Answered(ctx context.Context, ids []types.ID) (map[types.ID]bool, error) {
 	marks := make([]string, len(ids))

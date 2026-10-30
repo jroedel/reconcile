@@ -1037,6 +1037,22 @@ func (b *Business) ProjectNames(ctx context.Context, ids []types.ID) (map[types.
 	return out, nil
 }
 
+// AccountNamed is an account's name and currency, and its organization,
+// asking nobody's permission, and nothing more of it.
+//
+// For a question about a transaction (questionbus) read through a project
+// the reader was given, which names the account the project's part is in
+// as a project's list of transactions does (ledgerdb.ProjectAccounts):
+// where a part of the money is, never what else the account holds.
+func (b *Business) AccountNamed(ctx context.Context, id types.ID) (Account, error) {
+	a, err := b.store.AccountByID(ctx, id)
+	if err != nil {
+		return Account{}, err
+	}
+
+	return Account{ID: a.ID, OrgID: a.OrgID, Name: a.Name, Currency: a.Currency}, nil
+}
+
 // --- the site administrator's list ------------------------------------------
 
 // Names is every organization and account by name, for the site

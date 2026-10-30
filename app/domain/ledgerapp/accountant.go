@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
+	"github.com/jroedel/reconcile/business/domain/question/questionbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/types"
 )
@@ -33,6 +34,26 @@ type accountantView struct {
 	// Months is the six latest, newest first, as a quick way to choose
 	// one; any other is a day or two in the form.
 	Months []string
+
+	// Asking is whether the page offers the organization's questions, a
+	// third tab; OpenQuestions is how many are open. On that tab, Asked is
+	// the questions in State, "open" or "answered", only the reader's own
+	// when Mine.
+	Asking        bool
+	OpenQuestions int
+	Asked         []asked
+	State         questionbus.State
+	Mine          bool
+}
+
+// questionsTab is the third tab's List: not one of the ledger's lists,
+// but the organization's questions (docs/accountant.md, 4).
+const questionsTab ledgerbus.ForAccountant = "questions"
+
+// asked is a question in the tab, with who asked it.
+type asked struct {
+	questionbus.Listed
+	Asker string
 }
 
 // shownMonths is how many months the page offers as links.
@@ -66,6 +87,13 @@ func (a app) accountant(w http.ResponseWriter, r *http.Request) {
 	// sends another opens the same tab.
 	s := &view.Search
 	s.fixed = true
+
+	view.Asking = a.cfg.Questions != nil
+	if view.Asking && r.URL.Query().Get("context") == string(questionsTab) {
+		a.accountantQuestions(w, r, me.ID, id, view)
+
+		return
+	}
 
 	if s.Context == "" {
 		s.Context = string(ledgerbus.ContextAdded)
@@ -116,6 +144,17 @@ func (a app) accountant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if view.Asking {
+		open, err := a.cfg.Questions.InOrg(ctx, me.ID, id, questionbus.Open, types.ID{})
+		if err != nil {
+			a.failed(w, r, err)
+
+			return
+		}
+
+		view.OpenQuestions = len(open)
+	}
+
 	for _, p := range s.Kept() {
 		if p.Key != "context" {
 			view.Tabs = append(view.Tabs, p)
@@ -126,6 +165,77 @@ func (a app) accountant(w http.ResponseWriter, r *http.Request) {
 	for range shownMonths {
 		view.Months = append(view.Months, month.Format("2006-01"))
 		month = time.Date(month.Year(), month.Month()-1, 1, 0, 0, 0, 0, time.UTC)
+	}
+
+	a.cfg.Render.Render(w, r, http.StatusOK, "accountant", view)
+}
+
+// accountantQuestions is the third tab: the organization's questions,
+// open or answered, everybody's or the reader's own, and the two lists'
+// counts for their tabs.
+func (a app) accountantQuestions(w http.ResponseWriter, r *http.Request, me, id types.ID, view accountantView) {
+	ctx := r.Context()
+	q := r.URL.Query()
+
+	view.List, view.State, view.Mine = questionsTab, questionbus.Open, q.Get("mine") == "1"
+	if q.Get("state") == string(questionbus.Answered) {
+		view.State = questionbus.Answered
+	}
+
+	for _, c := range []struct {
+		list ledgerbus.ForAccountant
+		into *int
+	}{{ledgerbus.MoreContextNeeded, &view.Needed}, {ledgerbus.ContextAdded, &view.Added}} {
+		ex, err := a.cfg.Ledger.Explore(ctx, me, types.OrgScope(id), ledgerbus.Criteria{Accountant: c.list, Limit: 1})
+		if err != nil {
+			a.failed(w, r, err)
+
+			return
+		}
+
+		*c.into = ex.Total
+	}
+
+	open, err := a.cfg.Questions.InOrg(ctx, me, id, questionbus.Open, types.ID{})
+	if err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
+	view.OpenQuestions = len(open)
+
+	var by types.ID
+	if view.Mine {
+		by = me
+	}
+
+	listed := open
+	if view.State != questionbus.Open || view.Mine {
+		if listed, err = a.cfg.Questions.InOrg(ctx, me, id, view.State, by); err != nil {
+			a.failed(w, r, err)
+
+			return
+		}
+	}
+
+	names := map[types.ID]string{}
+
+	for _, l := range listed {
+		name, ok := names[l.AskedBy]
+		if !ok {
+			u, err := a.cfg.Users.ByID(ctx, l.AskedBy)
+			if err != nil {
+				a.failed(w, r, err)
+
+				return
+			}
+
+			name = u.Named()
+			names[l.AskedBy] = name
+		}
+
+		view.Asked = append(view.Asked, asked{Listed: l, Asker: name})
 	}
 
 	a.cfg.Render.Render(w, r, http.StatusOK, "accountant", view)

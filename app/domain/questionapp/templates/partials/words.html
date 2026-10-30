@@ -1,0 +1,14 @@
+{{/* role is the words for a role beside a writer's name. */}}
+{{define "role"}}
+{{- if eq . "owner"}}{{t "owner"}}
+{{- else if eq . "bookkeeper"}}{{t "bookkeeper"}}
+{{- else if eq . "contributor"}}{{t "contributor"}}
+{{- else if eq . "accountant"}}{{t "accountant"}}
+{{- else if eq . "viewer"}}{{t "viewer"}}{{end}}
+{{- end}}
+
+{{/* writer is who wrote a message, when, and through which key. */}}
+{{define "writer"}}<p class="who"><strong>{{.Who.Name}}</strong>{{with .Who.Role}}<span class="hint">, {{template "role" .}}</span>{{end}} <span class="hint">· {{.At.Format "2006-01-02"}}</span>{{with .Via}} <span class="badge">{{t "through {key}" "key" .}}</span>{{end}}</p>{{end}}
+
+{{/* problem is what went wrong that was not the reader's doing. */}}
+{{define "problem"}}{{if eq . "server"}}<p class="notice" role="alert">{{t "Something went wrong at our end. Please try again in a few minutes."}}</p>{{end}}{{end}}

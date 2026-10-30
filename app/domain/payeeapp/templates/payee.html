@@ -2,6 +2,7 @@
 {{define "content"}}{{$v := .Data}}{{$p := $v.Payee}}
 {{template "crumbs" (trail $ $v.OwnerName $v.OwnerPath (t "Payees") $v.ListPath)}}
 <h1>{{$p.Name}}</h1>
+{{template "questions-notice" $v.Questions}}
 {{if $p.Archived}}<p class="notice">{{t "Archived: off the choices, and still the payee of the payments below."}}</p>{{end}}
 {{with $p.Via}}<p class="hint"><span class="badge">{{t "by {name}" "name" .}}</span> {{t "A program made, joined or split this payee through the API key “{name}”. The spellings it brought in are marked. Saving its name, changed or not, says a person has checked it." "name" .}}</p>{{end}}
 {{template "done" $v.Done}}
@@ -96,4 +97,6 @@
 {{if $v.More}}<p class="hint">{{t "The most recent {count} are shown." "count" (len $v.Payments)}}</p>{{end}}
 {{else}}<p class="hint">{{t "No payments yet."}}</p>{{end}}
 </section>
+
+{{template "questions" $v.Questions}}
 {{end}}

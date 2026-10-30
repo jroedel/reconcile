@@ -112,7 +112,8 @@ func newSite(t *testing.T, want sqldb.Expected, configure func(*Config)) (http.H
 	receipts := receiptbus.NewBusiness(log, receiptdb.NewStore(db), tenancy, ledger, files)
 	ledger.OnImport(receipts.AfterImport)
 	ledger.OnReceipts(receipts.Counts)
-	ledger.OnAnswered(questionbus.NewBusiness(log, questiondb.NewStore(db), tenancy, ledger).Answered)
+	questions := questionbus.NewBusiness(log, questiondb.NewStore(db), tenancy, ledger)
+	ledger.OnAnswered(questions.Answered)
 
 	cfg := Config{
 		Log: log, DB: db, Expected: want, Render: render,
@@ -128,6 +129,7 @@ func newSite(t *testing.T, want sqldb.Expected, configure func(*Config)) (http.H
 		Budgets:    budgets,
 		Reports:    reportbus.NewBusiness(tenancy, ledger, categories, budgets, reportdb.NewStore(db)),
 		Receipts:   receipts,
+		Questions:  questions,
 		Export:     exportbus.NewBusiness(log, tenancy, ledger, receipts, categories, files),
 		BaseURL:    base,
 		Mail:       sent,
