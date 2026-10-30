@@ -24,6 +24,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/category/categorybus"
 	"github.com/jroedel/reconcile/business/domain/event/eventbus"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
+	"github.com/jroedel/reconcile/business/domain/question/questionbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/user/userbus"
 	"github.com/jroedel/reconcile/business/types"
@@ -67,6 +68,11 @@ type Latester interface {
 	Latest(ctx context.Context, actor, orgID types.ID, n int) ([]ledgerbus.Row, error)
 }
 
+// Questions is the questions about a thing, for its page (questionbus).
+type Questions interface {
+	Summary(ctx context.Context, actor types.ID, about questionbus.About) (questionbus.Summary, error)
+}
+
 // Figurer is the part of ledgerbus this app uses for an organization's
 // lists: beside each account and project, its days, how many transactions
 // and how much money, so that a busy one is told from a quiet one without
@@ -106,6 +112,10 @@ type Config struct {
 	// Latest is the organization's newest transactions, for its page. Nil
 	// shows none.
 	Latest Latester
+
+	// Questions is the questions about a project, for its page. Nil shows
+	// none.
+	Questions Questions
 
 	// Mail may be nil: an invitation is then logged as not sent, and the
 	// grant is made all the same -- the person can still sign in.
@@ -990,6 +1000,9 @@ type projectView struct {
 	Project tenancybus.Project
 	Org     tenancybus.Org
 	Fields  tenancybus.ProjectFields
+
+	// Questions is the questions asked about it.
+	Questions questionbus.Summary
 }
 
 func (a app) projectPage(w http.ResponseWriter, r *http.Request, id types.ID, status int, edit func(*projectView)) {
@@ -1016,6 +1029,14 @@ func (a app) projectPage(w http.ResponseWriter, r *http.Request, id types.ID, st
 	if !p.OrgID.Zero() {
 		if o, _, err := a.cfg.Tenancy.Org(r.Context(), me.ID, p.OrgID); err == nil {
 			view.Org = o
+		}
+	}
+
+	if a.cfg.Questions != nil {
+		if view.Questions, err = a.cfg.Questions.Summary(r.Context(), me.ID, questionbus.About{Kind: questionbus.OnProject, ID: p.ID}); err != nil {
+			a.failed(w, r, err)
+
+			return
 		}
 	}
 

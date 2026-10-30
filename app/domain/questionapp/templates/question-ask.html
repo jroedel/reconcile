@@ -1,0 +1,14 @@
+{{define "title"}}{{t "Ask a question"}}{{end}}
+{{define "content"}}{{$v := .Data}}
+<h1>{{t "Ask a question"}}</h1>
+<p class="notice" role="alert">{{t "Write the question, in at most 2,000 characters."}}</p>
+<form method="post" action="/questions">
+<input type="hidden" name="kind" value="{{$v.About.Kind}}">
+<input type="hidden" name="id" value="{{$v.About.ID}}">
+<div class="field">
+  <label for="question-body">{{t "Your question"}}</label>
+  <textarea id="question-body" name="body" rows="6" maxlength="2000" required>{{$v.Draft}}</textarea>
+</div>
+<button type="submit">{{t "Ask a question"}}</button>
+</form>
+{{end}}

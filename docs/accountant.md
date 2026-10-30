@@ -443,7 +443,22 @@ Then the tests that cross all of it (Verification), and the translations.
   "answered ...", naming the thing, never the question's words: a line
   of history is read by everyone who reads the account, and the words
   are the thread's.
-- No pages yet: the thread, its link, and the cards come next.
+### Questions, the pages
+
+- **`questionapp`** has the question's own page and the forms that ask,
+  reply and mark answered. The card on a thing's page and the line at its
+  top are partials in `page/assets/app/base.html`, shared by `ledgerapp`
+  (a transaction, a statement), `tenancyapp` (a project) and `payeeapp`
+  (a payee) from the `questionbus.Summary` each asks for: a partial of
+  any one app would have been copied into three, and no app imports
+  another.
+- **The third tab** is on `ledgerapp`'s "For the accountant", from
+  `questionbus.InOrg`: open or answered, everybody's or yours.
+- **A role on a project alone** reads a question about a charge as the
+  project's part of it, the project named, with no link to the
+  transaction (`questionbus.Thread`, `tenancybus.AccountNamed` for the
+  account's name and currency and nothing more).
+- **Dates are shown as days** until people have a time zone (5).
 
 ## Verification
 

@@ -6,6 +6,7 @@ import (
 	"net/url"
 
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
+	"github.com/jroedel/reconcile/business/domain/question/questionbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/types"
@@ -15,6 +16,7 @@ import (
 
 type statementView struct {
 	Review      ledgerbus.Review
+	Questions   questionbus.Summary
 	ImportedBy  string
 	CanBookkeep bool
 	Done        string
@@ -86,6 +88,12 @@ func (a app) statementPage(w http.ResponseWriter, r *http.Request, status int, f
 		CanBookkeep: rv.Access.Can(tenancybus.Bookkeep),
 		Done:        r.URL.Query().Get("done"),
 		Form:        form,
+	}
+
+	if view.Questions, err = a.summary(ctx, me.ID, questionbus.About{Kind: questionbus.OnStatement, ID: st.ID}); err != nil {
+		a.failed(w, r, err)
+
+		return
 	}
 
 	if view.Form.From == "" && view.Form.To == "" {

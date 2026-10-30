@@ -201,12 +201,12 @@ func (w *world) ask(actor types.ID, about questionbus.About, text string) questi
 func (w *world) state(id types.ID) questionbus.Question {
 	w.t.Helper()
 
-	q, _, err := w.questions.Question(w.t.Context(), w.owner, id)
+	th, err := w.questions.Question(w.t.Context(), w.owner, id)
 	if err != nil {
 		w.t.Fatal(err)
 	}
 
-	return q
+	return th.Question
 }
 
 func onTx(t ledgerbus.Transaction) questionbus.About {
@@ -272,9 +272,9 @@ func TestAskingAndAnswering(t *testing.T) {
 		t.Errorf("given: %v", g)
 	}
 
-	on, can, err := w.questions.On(ctx, accountant, onTx(w.electric))
-	if err != nil || len(on) != 1 || !can {
-		t.Errorf("the questions about the check: %d, may ask %v, %v", len(on), can, err)
+	sum, err := w.questions.Summary(ctx, accountant, onTx(w.electric))
+	if err != nil || len(sum.Open) != 0 || len(sum.Answered) != 1 || !sum.CanAsk {
+		t.Errorf("the questions about the check: %+v, %v", sum, err)
 	}
 }
 
@@ -334,8 +334,8 @@ func TestWhoMayAsk(t *testing.T) {
 
 	q := w.ask(w.owner, onTx(w.grocery), "Which part was the retreat's?")
 
-	if _, can, err := w.questions.Question(ctx, viewer, q.ID); err != nil || can {
-		t.Errorf("a viewer reading: may reply %v, %v", can, err)
+	if th, err := w.questions.Question(ctx, viewer, q.ID); err != nil || th.CanReply || th.CanMark || !th.Whole {
+		t.Errorf("a viewer reading: %+v, %v", th, err)
 	}
 
 	if _, err := w.questions.Ask(ctx, now, viewer, onTx(w.grocery), "Me too?"); !errors.Is(err, questionbus.ErrForbidden) {
@@ -346,9 +346,20 @@ func TestWhoMayAsk(t *testing.T) {
 		t.Errorf("a viewer replying: %v", err)
 	}
 
-	// The pilgrim reaches the groceries through the project's part.
+	// The pilgrim reaches the groceries through the project's part, and
+	// sees that part and none of the rest.
 	if _, err := w.questions.Reply(ctx, now, pilgrim, q.ID, "The twenty dollars."); err != nil {
 		t.Errorf("the pilgrim replying about the groceries: %v", err)
+	}
+
+	th, err := w.questions.Question(ctx, pilgrim, q.ID)
+	if err != nil || th.Whole || len(th.Transaction.Splits) != 1 || th.Transaction.Splits[0].ProjectID != w.project ||
+		th.Account.Name != "Parish checking" || th.Account.Currency == "" {
+		t.Errorf("the groceries, to the pilgrim: %+v, %v", th, err)
+	}
+
+	if whole, err := w.questions.Question(ctx, w.owner, q.ID); err != nil || !whole.Whole || len(whole.Transaction.Splits) != 2 {
+		t.Errorf("the groceries, to the owner: %+v, %v", whole, err)
 	}
 
 	for _, about := range []questionbus.About{
@@ -366,15 +377,16 @@ func TestWhoMayAsk(t *testing.T) {
 
 	for name, call := range map[string]func() error{
 		"ask":      func() error { _, err := w.questions.Ask(ctx, now, stranger, onTx(w.grocery), "?"); return err },
-		"read":     func() error { _, _, err := w.questions.Question(ctx, stranger, q.ID); return err },
-		"list":     func() error { _, _, err := w.questions.On(ctx, stranger, onTx(w.grocery)); return err },
+		"read":     func() error { _, err := w.questions.Question(ctx, stranger, q.ID); return err },
+		"list":     func() error { _, err := w.questions.Summary(ctx, stranger, onTx(w.grocery)); return err },
+		"org":      func() error { _, err := w.questions.InOrg(ctx, stranger, w.org, "", types.ID{}); return err },
 		"reply":    func() error { _, err := w.questions.Reply(ctx, now, stranger, q.ID, "?"); return err },
 		"answered": func() error { return w.questions.MarkAnswered(ctx, now, stranger, q.ID) },
 		"nothing": func() error {
 			_, err := w.questions.Ask(ctx, now, w.owner, questionbus.About{Kind: "account", ID: w.account}, "?")
 			return err
 		},
-		"missing": func() error { _, _, err := w.questions.Question(ctx, w.owner, types.NewID()); return err },
+		"missing": func() error { _, err := w.questions.Question(ctx, w.owner, types.NewID()); return err },
 	} {
 		if err := call(); !errors.Is(err, questionbus.ErrNotFound) {
 			t.Errorf("%s: %v, want not found", name, err)
@@ -439,7 +451,7 @@ func TestQuestionsGoWithTheirStatement(t *testing.T) {
 	}
 
 	for _, id := range []types.ID{onCoffee.ID, onStatement.ID} {
-		if _, _, err := w.questions.Question(ctx, w.owner, id); !errors.Is(err, questionbus.ErrNotFound) {
+		if _, err := w.questions.Question(ctx, w.owner, id); !errors.Is(err, questionbus.ErrNotFound) {
 			t.Errorf("a question about what was removed: %v", err)
 		}
 	}
@@ -449,7 +461,64 @@ func TestQuestionsGoWithTheirStatement(t *testing.T) {
 		t.Errorf("replies left: %d, %v", replies, err)
 	}
 
-	if _, _, err := w.questions.Question(ctx, w.owner, onProject.ID); err != nil {
+	if _, err := w.questions.Question(ctx, w.owner, onProject.ID); err != nil {
 		t.Errorf("the project's question: %v", err)
+	}
+}
+
+// An organization's list is every question about anything in it, newest
+// first, open or answered, and those one person asked.
+func TestAnOrganizationsQuestions(t *testing.T) {
+	w := newWorld(t)
+	ctx := t.Context()
+
+	accountant := w.given("accountant@example.org", types.OrgScope(w.org), tenancybus.Accountant)
+
+	coffee := w.ask(accountant, onTx(w.coffee), "Whose coffee?")
+	w.ask(w.owner, questionbus.About{Kind: questionbus.OnProject, ID: w.project}, "When do we leave?")
+	statement := w.ask(accountant, questionbus.About{Kind: questionbus.OnStatement, ID: w.statement.ID}, "Is July all here?")
+
+	if err := w.questions.MarkAnswered(ctx, now, accountant, statement.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	count := func(state questionbus.State, by types.ID) int {
+		t.Helper()
+
+		got, err := w.questions.InOrg(ctx, w.owner, w.org, state, by)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for _, l := range got {
+			if l.What == "" {
+				t.Errorf("a question about nothing named: %+v", l)
+			}
+		}
+
+		return len(got)
+	}
+
+	all, open, answered, theirs := count("", types.ID{}), count(questionbus.Open, types.ID{}), count(questionbus.Answered, types.ID{}), count(questionbus.Open, accountant)
+	if all != 3 || open != 2 || answered != 1 || theirs != 1 {
+		t.Errorf("all %d, open %d, answered %d, the accountant's open %d", all, open, answered, theirs)
+	}
+
+	got, err := w.questions.InOrg(ctx, accountant, w.org, questionbus.Open, accountant)
+	if err != nil || len(got) != 1 || got[0].ID != coffee.ID || !strings.Contains(got[0].What, "COFFEE CART") {
+		t.Errorf("the accountant's open questions: %+v, %v", got, err)
+	}
+}
+
+// A list shows a question's first line, shortened.
+func TestAQuestionsOpening(t *testing.T) {
+	for body, want := range map[string]string{
+		"What was check 1322 for?":                      "What was check 1322 for?",
+		"What was it for?\nIt is not on the statement.": "What was it for?",
+		strings.Repeat("a", 200):                        strings.Repeat("a", 119) + "…",
+	} {
+		if got := (questionbus.Question{Body: body}).Opening(); got != want {
+			t.Errorf("Opening(%.20q) = %q", body, got)
+		}
 	}
 }

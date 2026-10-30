@@ -11,6 +11,7 @@ import (
 
 	"github.com/jroedel/reconcile/app/sdk/page"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
+	"github.com/jroedel/reconcile/business/domain/question/questionbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
 	"github.com/jroedel/reconcile/business/domain/rule/rulebus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
@@ -64,6 +65,9 @@ type transactionView struct {
 	// (docs/accountant.md): which of the two lists it is in, if either,
 	// why, and what it was given.
 	Accounting ledgerbus.Accounting
+
+	// Questions is the questions asked about it.
+	Questions questionbus.Summary
 
 	sortForm
 }
@@ -213,6 +217,12 @@ func (a app) transactionPage(w http.ResponseWriter, r *http.Request, status int,
 	view.ClearedBy = c.ClearedBy(id)
 
 	if view.Accounting, err = a.cfg.Ledger.AccountingOf(r.Context(), e); err != nil {
+		a.failed(w, r, err)
+
+		return
+	}
+
+	if view.Questions, err = a.summary(r.Context(), me.ID, questionbus.About{Kind: questionbus.OnTransaction, ID: id}); err != nil {
 		a.failed(w, r, err)
 
 		return

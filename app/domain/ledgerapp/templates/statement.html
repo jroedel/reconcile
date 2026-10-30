@@ -2,6 +2,7 @@
 {{define "content"}}{{$v := .Data}}{{$rv := $v.Review}}{{$st := $rv.Statement}}{{$cur := $rv.Account.Currency}}{{$r := $st.Reconciliation}}{{$hand := eq (printf "%s" $st.Format) "hand"}}
 {{template "crumbs" (trail $ $rv.Account.Name (printf "/accounts/%s" $rv.Account.ID) (t "Month by month") (printf "/accounts/%s/months" $rv.Account.ID))}}
 <h1>{{if $hand}}{{t "Entered by hand, {date}" "date" $st.Start}}{{else}}{{t "Statement, {start} to {end}" "start" $st.Start "end" $st.End}}{{end}}</h1>
+{{template "questions-notice" $v.Questions}}
 {{if eq $v.Done "imported"}}<p class="notice ok" role="status">{{t "Imported: {added} new transactions, and {already} that were here already." "added" $st.Added "already" $st.Already}}</p>{{end}}
 {{template "done" $v.Done}}
 {{template "problem" $v.Form.Problem}}
@@ -91,4 +92,5 @@
 </section>
 {{end}}
 {{if $v.Waiting}}<p class="hint"><a href="/receipts">{{t "{n} receipts waiting for a match" "n" $v.Waiting}}</a></p>{{end}}
+{{template "questions" $v.Questions}}
 {{end}}

@@ -432,6 +432,17 @@ table.ledger { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
 .tabs.lists.needed { border-bottom-color: var(--warn-line); }
 .tabs.lists.added { border-bottom-color: var(--ok-line); }
 
+/* A question's thread (docs/accountant.md, 4): who wrote and when, then
+   the words as they were written, their lines kept. */
+.thread { list-style: none; padding: 0; margin: 0 0 var(--gap); }
+.thread > li { padding: 0.75rem 0; border-bottom: 1px solid var(--line); }
+.thread .who { margin: 0; }
+.thread .body { white-space: pre-line; margin: 0.25rem 0 0; }
+#question-link { width: 100%; }
+/* After a form's buttons, which have no margin of their own; beside a
+   card above it, the two margins collapse into one. */
+#questions { margin-top: var(--gap); }
+
 /* A search's further choices (docs/explorer.md): one under another on a
    phone, side by side as the page widens. */
 .search-more { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 0 var(--gap); margin-top: var(--gap); }

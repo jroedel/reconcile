@@ -10,7 +10,9 @@
 <nav class="tabs lists {{$v.List}}" aria-label="{{t "The accountant's lists"}}">
 <a href="?{{range $v.Tabs}}{{.Key}}={{.Value}}&amp;{{end}}context=needed"{{if eq $v.List "needed"}} aria-current="page"{{end}}>{{t "More context needed ({n})" "n" $v.Needed}}</a>
 <a href="?{{range $v.Tabs}}{{.Key}}={{.Value}}&amp;{{end}}context=added"{{if eq $v.List "added"}} aria-current="page"{{end}}>{{t "Context added ({n})" "n" $v.Added}}</a>
+{{if $v.Asking}}<a href="?context=questions"{{if eq $v.List "questions"}} aria-current="page"{{end}}>{{t "Questions ({n} open)" "n" $v.OpenQuestions}}</a>{{end}}
 </nav>
+{{if eq $v.List "questions"}}{{template "asked" $v}}{{else}}
 {{if eq $v.List "needed"}}<p class="hint">{{t "The bank's description is all the accountant has of these. A description of its own, a receipt, whom it was paid to, a project or an explanation moves each to the next list."}}</p>
 {{else}}<p class="hint">{{t "Each has something the bank did not give: what it was for, its receipt, or whom it was paid to."}}</p>{{end}}
 
@@ -38,5 +40,29 @@
 <input type="hidden" name="context" value="{{$v.Search.Context}}">
 {{template "search-fields" (dict "Search" $v.Search "Found" $v.Found "Groups" $v.Groups "Path" (print $v.Path "/accountant?context=" $v.Search.Context) "Marks" true "Lists" false)}}
 </form>
+</section>
+{{end}}
+{{end}}
+
+{{/* asked is the third tab: the organization's questions, open or
+     answered, everybody's or the reader's own (docs/accountant.md, 4). */}}
+{{define "asked"}}
+<p class="hint">{{t "Questions about anything in the organization: its transactions, statements, projects and payees."}}</p>
+<ul class="months">
+<li><a href="?context=questions{{if .Mine}}&amp;mine=1{{end}}"{{if eq .State "open"}} aria-current="page"{{end}}>{{t "Open"}}</a></li>
+<li><a href="?context=questions&amp;state=answered{{if .Mine}}&amp;mine=1{{end}}"{{if eq .State "answered"}} aria-current="page"{{end}}>{{t "Answered"}}</a></li>
+</ul>
+<ul class="months">
+<li><a href="?context=questions{{if eq .State "answered"}}&amp;state=answered{{end}}"{{if not .Mine}} aria-current="page"{{end}}>{{t "Everybody's"}}</a></li>
+<li><a href="?context=questions{{if eq .State "answered"}}&amp;state=answered{{end}}&amp;mine=1"{{if .Mine}} aria-current="page"{{end}}>{{t "Those you asked"}}</a></li>
+</ul>
+<section class="card">
+{{if .Asked}}<ul class="list">
+{{range .Asked}}<li>{{if eq .State "open"}}<span class="badge warn">{{t "Open"}}</span>{{else}}<span class="badge ok">{{t "Answered"}}</span>{{end}} <a href="/questions/{{.ID}}">{{.Opening}}</a>
+<br><span class="hint">{{t "About {what}, asked by {name} on {date}" "what" .What "name" .Asker "date" (.AskedAt.Format "2006-01-02")}}</span></li>
+{{end}}</ul>
+{{else if .Mine}}<p>{{if eq .State "open"}}{{t "None of your questions here is waiting for its answer."}}{{else}}{{t "None of your questions here has been answered yet."}}{{end}}</p>
+{{else if eq .State "open"}}<p>{{t "No open questions. Ask one from any transaction, statement, project or payee."}}</p>
+{{else}}<p>{{t "No question here has been answered yet."}}</p>{{end}}
 </section>
 {{end}}

@@ -8,6 +8,7 @@
 package payeeapp
 
 import (
+	"context"
 	"embed"
 	"errors"
 	"io/fs"
@@ -20,6 +21,7 @@ import (
 	"github.com/jroedel/reconcile/app/sdk/mid"
 	"github.com/jroedel/reconcile/app/sdk/page"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
+	"github.com/jroedel/reconcile/business/domain/question/questionbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/domain/user/userbus"
 	"github.com/jroedel/reconcile/business/types"
@@ -39,6 +41,11 @@ type Renderer interface {
 	Text(lang types.Lang, name string, data any) (string, error)
 }
 
+// Questions is the questions about a thing, for its page (questionbus).
+type Questions interface {
+	Summary(ctx context.Context, actor types.ID, about questionbus.About) (questionbus.Summary, error)
+}
+
 // Config is what this app needs.
 type Config struct {
 	Log      *slog.Logger
@@ -46,6 +53,10 @@ type Config struct {
 	Tenancy  *tenancybus.Business
 	Receipts Receipts
 	Render   Renderer
+
+	// Questions is the questions about a payee, for its page. Nil shows
+	// none.
+	Questions Questions
 
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
@@ -319,6 +330,7 @@ func (a app) create(kind types.ScopeKind) http.HandlerFunc {
 
 type payeeView struct {
 	Payee       ledgerbus.Payee
+	Questions   questionbus.Summary
 	ListPath    string
 	OwnerPath   string
 	OwnerName   string
@@ -399,6 +411,14 @@ func (a app) payee(w http.ResponseWriter, r *http.Request) {
 
 	for _, s := range p.BroughtVia {
 		view.Brought[s] = true
+	}
+
+	if a.cfg.Questions != nil {
+		if view.Questions, err = a.cfg.Questions.Summary(r.Context(), me.ID, questionbus.About{Kind: questionbus.OnPayee, ID: p.ID}); err != nil {
+			a.failed(w, r, err)
+
+			return
+		}
 	}
 
 	for _, o := range list {

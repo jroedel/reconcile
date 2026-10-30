@@ -25,6 +25,7 @@ import (
 	"github.com/jroedel/reconcile/app/domain/mcpapp"
 	"github.com/jroedel/reconcile/app/domain/oauthapp"
 	"github.com/jroedel/reconcile/app/domain/payeeapp"
+	"github.com/jroedel/reconcile/app/domain/questionapp"
 	"github.com/jroedel/reconcile/app/domain/receiptapp"
 	"github.com/jroedel/reconcile/app/domain/reportapp"
 	"github.com/jroedel/reconcile/app/domain/ruleapp"
@@ -39,6 +40,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/export/exportbus"
 	"github.com/jroedel/reconcile/business/domain/file/filebus"
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
+	"github.com/jroedel/reconcile/business/domain/question/questionbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
 	"github.com/jroedel/reconcile/business/domain/report/reportbus"
 	"github.com/jroedel/reconcile/business/domain/rule/rulebus"
@@ -58,7 +60,7 @@ import (
 // renderer rather than this package, because the strings it reads out of
 // these are registered for translation before anything is served.
 func Templates() []fs.FS {
-	return []fs.FS{homeapp.Templates, authapp.Templates, tenancyapp.Templates, ledgerapp.Templates, categoryapp.Templates, payeeapp.Templates, receiptapp.Templates, ruleapp.Templates, budgetapp.Templates, reportapp.Templates, exportapp.Templates, adminapp.Templates, oauthapp.Templates, translationapp.Templates}
+	return []fs.FS{homeapp.Templates, authapp.Templates, tenancyapp.Templates, ledgerapp.Templates, categoryapp.Templates, payeeapp.Templates, questionapp.Templates, receiptapp.Templates, ruleapp.Templates, budgetapp.Templates, reportapp.Templates, exportapp.Templates, adminapp.Templates, oauthapp.Templates, translationapp.Templates}
 }
 
 // Config is everything the routes need, gathered by main and passed in.
@@ -78,6 +80,7 @@ type Config struct {
 	Budgets    *budgetbus.Business
 	Reports    *reportbus.Business
 	Receipts   *receiptbus.Business
+	Questions  *questionbus.Business
 	Export     *exportbus.Business
 	Shapes     *shapebus.Business
 
@@ -193,6 +196,7 @@ func New(cfg Config) (http.Handler, error) {
 			Holders:    cfg.Ledger,
 			Figures:    cfg.Ledger,
 			Latest:     cfg.Ledger,
+			Questions:  cfg.Questions,
 		}, guard)
 
 		ledgerapp.Routes(mux, ledgerapp.Config{
@@ -205,6 +209,7 @@ func New(cfg Config) (http.Handler, error) {
 
 			Categories: cfg.Categories,
 			Receipts:   cfg.Receipts,
+			Questions:  cfg.Questions,
 			Rules:      cfg.Rules,
 			Jobs:       cfg.Jobs,
 			JobWait:    cfg.JobWait,
@@ -262,11 +267,21 @@ func New(cfg Config) (http.Handler, error) {
 		}, guard)
 
 		payeeapp.Routes(mux, payeeapp.Config{
-			Log:      cfg.Log,
-			Ledger:   cfg.Ledger,
-			Tenancy:  cfg.Tenancy,
-			Receipts: cfg.Receipts,
-			Render:   cfg.Render,
+			Log:       cfg.Log,
+			Ledger:    cfg.Ledger,
+			Tenancy:   cfg.Tenancy,
+			Receipts:  cfg.Receipts,
+			Questions: cfg.Questions,
+			Render:    cfg.Render,
+		}, guard)
+
+		questionapp.Routes(mux, questionapp.Config{
+			Log:       cfg.Log,
+			Questions: cfg.Questions,
+			Users:     cfg.Users,
+			Access:    cfg.Tenancy,
+			Render:    cfg.Render,
+			BaseURL:   cfg.BaseURL,
 		}, guard)
 
 		adminapp.Routes(mux, adminapp.Config{
