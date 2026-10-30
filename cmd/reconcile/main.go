@@ -25,6 +25,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/budget/stores/budgetdb"
 	"github.com/jroedel/reconcile/business/domain/category/categorybus"
 	"github.com/jroedel/reconcile/business/domain/category/stores/categorydb"
+	"github.com/jroedel/reconcile/business/domain/digest/stores/digestdb"
 	"github.com/jroedel/reconcile/business/domain/event/eventbus"
 	"github.com/jroedel/reconcile/business/domain/event/stores/eventdb"
 	"github.com/jroedel/reconcile/business/domain/export/exportbus"
@@ -264,6 +265,7 @@ func prepare(ctx context.Context, db *sql.DB) error {
 		{"the statements and transactions", ledgerdb.Init},
 		{"the receipts", receiptdb.Init},
 		{"the questions about the books", questiondb.Init},
+		{"what each weekly email saw", digestdb.Init},
 		{"the layouts of statements seen", shapedb.Init},
 		{"the saved reports", reportdb.Init},
 	} {
@@ -296,6 +298,7 @@ func expectedSchema() sqldb.Expected {
 		ledgerdb.Expected,
 		receiptdb.Expected,
 		questiondb.Expected,
+		digestdb.Expected,
 		shapedb.Expected,
 		reportdb.Expected,
 	} {
