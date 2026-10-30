@@ -16,6 +16,7 @@ import (
 	"github.com/jroedel/reconcile/business/domain/budget/stores/budgetdb"
 	"github.com/jroedel/reconcile/business/domain/category/categorybus"
 	"github.com/jroedel/reconcile/business/domain/category/stores/categorydb"
+	"github.com/jroedel/reconcile/business/domain/digest/stores/digestdb"
 	"github.com/jroedel/reconcile/business/domain/event/eventbus"
 	"github.com/jroedel/reconcile/business/domain/event/stores/eventdb"
 	"github.com/jroedel/reconcile/business/domain/export/exportbus"
@@ -73,7 +74,7 @@ func newSite(t *testing.T, want sqldb.Expected, configure func(*Config)) (http.H
 	}
 
 	for _, init := range []func(context.Context, *sql.DB) error{
-		translationdb.Init, userdb.Init, eventdb.Init, tenancydb.Init, filedb.Init, categorydb.Init, ruledb.Init, ledgerdb.Init, receiptdb.Init, questiondb.Init, budgetdb.Init, shapedb.Init, reportdb.Init,
+		translationdb.Init, userdb.Init, eventdb.Init, tenancydb.Init, filedb.Init, categorydb.Init, ruledb.Init, ledgerdb.Init, receiptdb.Init, questiondb.Init, digestdb.Init, budgetdb.Init, shapedb.Init, reportdb.Init,
 	} {
 		if err := init(t.Context(), db); err != nil {
 			t.Fatal(err)

@@ -484,6 +484,26 @@ Then the tests that cross all of it (Verification), and the translations.
 - **When the next one comes** is said under the form, in the person's
   zone, or in UTC with "UTC" when they have none yet.
 
+### What the weekly email says
+
+- **Remembered, not read from the history.** Attaching a receipt writes
+  no line of history, on purpose, and the other ways of giving context
+  name the transaction unevenly. So each email keeps what it saw: the
+  transactions in each list for that person (`digest_seen`), and the next
+  one's "new" is what is in a list now and was not then, however it got
+  there. It is not a mark anybody sets; it is what the email told them,
+  as its cursor is.
+- **Organizations only**, as "For the accountant" is: an account with no
+  organization has no lists page to link to.
+- **Whose lines**: whoever may keep the books hears of transactions
+  newly needing more context; an accountant who does not, of those newly
+  ready; whoever may write, of questions others asked since and of
+  answers others gave to theirs. A viewer hears nothing.
+- **The first email only looks**: it sees the lists and says nothing of
+  them, and looks back a week for questions, so that somebody given a
+  role today hears of this week's and not a year's.
+- Sending it, on the person's day and hour, and stopping it, come next.
+
 ## Verification
 
 - **Each reason and each kind of context**, in both lists, in a
