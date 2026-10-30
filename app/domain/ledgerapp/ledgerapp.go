@@ -144,6 +144,7 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	handle("POST /transactions/{id}/explain/settle", a.settle)
 	handle("GET /projects/{id}/book", a.book)
 	handle("GET /orgs/{id}/transactions", a.orgTransactions)
+	handle("GET /orgs/{id}/accountant", a.accountant)
 	handle("GET /projects/{id}/transactions", a.projectTransactions)
 	handle("GET /imports", a.bulk)
 	handle(BulkPatterns[0], a.bulkUpload)
