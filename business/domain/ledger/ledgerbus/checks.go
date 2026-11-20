@@ -62,6 +62,14 @@ func (b *Business) WithCheck(ctx context.Context, account types.ID, number strin
 	return b.store.WithCheck(ctx, account, number)
 }
 
+// CheckNumbers is every check number the account's transactions have,
+// each once, in no order, asking nobody's permission: for a domain that
+// has asked already, as receiptbus asks before it says which numbers a
+// checkbook has used.
+func (b *Business) CheckNumbers(ctx context.Context, account types.ID) ([]string, error) {
+	return b.store.CheckNumbers(ctx, account)
+}
+
 // SetPayee writes down to whom a payment was made -- a check, read off its
 // image, or any other payment, chosen on its page -- or takes it away with
 // "". It is whoever may attach receipts to the account's transactions who

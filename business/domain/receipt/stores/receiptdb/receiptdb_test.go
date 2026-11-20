@@ -172,3 +172,77 @@ func TestInitMarksOldCheckImages(t *testing.T) {
 		t.Errorf("the schema after Init: %v", err)
 	}
 }
+
+// receiptsBeforeVoid is the receipts table as the release before a check
+// could be voided made it.
+const receiptsBeforeVoid = `
+CREATE TABLE receipts (
+    id               TEXT    PRIMARY KEY,
+    account_id       TEXT    REFERENCES accounts (id),
+    project_id       TEXT    REFERENCES projects (id),
+    uploaded_by      TEXT    NOT NULL,
+    spent_on         TEXT    NOT NULL DEFAULT '',
+    amount           INTEGER,
+    merchant         TEXT    NOT NULL DEFAULT '',
+    note             TEXT    NOT NULL DEFAULT '',
+    created_at       INTEGER NOT NULL,
+    removed_at       INTEGER,
+    check_number     TEXT    NOT NULL DEFAULT '',
+    check_image      INTEGER NOT NULL DEFAULT 0,
+    check_memo       TEXT    NOT NULL DEFAULT '',
+    check_written_on TEXT    NOT NULL DEFAULT '',
+    CHECK ((account_id IS NULL) <> (project_id IS NULL))
+) STRICT;
+`
+
+// A database from before gains receipts.check_voided_at, and no check in
+// it is void.
+func TestInitBeforeVoid(t *testing.T) {
+	db, err := sqldb.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() { db.Close() })
+
+	ctx := t.Context()
+
+	for _, init := range []func(context.Context, *sql.DB) error{userdb.Init, eventdb.Init, tenancydb.Init, filedb.Init, categorydb.Init, ledgerdb.Init} {
+		if err := init(ctx, db); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.ExecContext(ctx, receiptsBeforeVoid); err != nil {
+		t.Fatal(err)
+	}
+
+	check := types.NewID()
+
+	if _, err := db.ExecContext(ctx, `INSERT INTO receipts (id, account_id, uploaded_by, check_number, check_image, created_at) VALUES (?, ?, ?, '1190', 1, 1)`,
+		check.String(), types.NewID().String(), types.NewID().String()); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys = ON`); err != nil {
+		t.Fatal(err)
+	}
+
+	for range 2 {
+		if err := receiptdb.Init(ctx, db); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if r, err := receiptdb.NewStore(db).ByID(ctx, check); err != nil || r.Voided() || r.Check != "1190" {
+		t.Errorf("the old check: %+v, %v", r, err)
+	}
+
+	if err := sqldb.CheckSchema(ctx, db, receiptdb.Expected); err != nil {
+		t.Errorf("the schema after Init: %v", err)
+	}
+}

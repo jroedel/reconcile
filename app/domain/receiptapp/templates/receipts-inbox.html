@@ -58,6 +58,13 @@
 </section>
 {{end}}
 
+{{if $v.Inbox.Voided}}
+<details><summary>{{t "Void checks"}}</summary>
+<p class="hint">{{t "Checks that were spoiled or never sent, kept with their numbers so that the accountant can see why each was skipped. They are not outstanding, and nothing is matched to them."}}</p>
+<ul class="receipts">{{range $v.Inbox.Voided}}<li>{{template "receipt-line" .}}</li>{{end}}</ul>
+</details>
+{{end}}
+
 {{if $v.Inbox.Removed}}
 <details><summary>{{t "Removed receipts"}}</summary>
 <ul class="receipts">{{range $v.Inbox.Removed}}<li>{{template "receipt-line" .}}</li>{{end}}</ul>

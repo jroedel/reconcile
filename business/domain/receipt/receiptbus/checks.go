@@ -383,6 +383,8 @@ func (b *Business) NumberCheck(ctx context.Context, now time.Time, actor, id typ
 		return r, Invalid{Field: "number", Err: errors.New("only the image of a check has a check number")}
 	case r.Removed():
 		return r, ErrRemoved
+	case r.Voided():
+		return r, ErrVoided
 	case !r.Waiting():
 		return r, ErrAttached
 	}
@@ -580,6 +582,8 @@ func (b *Business) ReadCheck(ctx context.Context, now time.Time, actor, id types
 		return r, Invalid{Field: "receipt", Err: errors.New("it is not the image of a check")}
 	case r.Removed():
 		return r, ErrRemoved
+	case r.Voided():
+		return r, ErrVoided
 	case !r.Waiting():
 		return r, ErrAttached
 	}

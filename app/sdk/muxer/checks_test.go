@@ -223,3 +223,43 @@ func TestACheckNumberedTwiceIsOneCheck(t *testing.T) {
 	wantBody(t, e.owner.get(e.account+"/receipts"), "2 pages")
 	wantBody(t, e.owner.get(e.account), "added an image to check 1190, which was already waiting, as more of its pages")
 }
+
+// A waiting check is voided on its page, and listed apart; the mark comes
+// off the same way. A viewer may not, and a stranger finds nothing.
+func TestVoidingACheckOnItsPage(t *testing.T) {
+	t.Parallel()
+
+	h, sent := newSite(t, sqldb.Infrastructure, nil)
+	e := newEstate(t, h, sent)
+
+	rec := e.owner.receipts(e.account+"/checks", nil, [2]string{"1190.jpg", photoOf("1190")})
+	inbox := e.owner.get(rec.Header().Get("Location"))
+
+	checks := receiptsOn(inbox.Body.String())
+	if len(checks) != 1 {
+		t.Fatalf("the checks: %v", checks)
+	}
+
+	check := checks[0]
+
+	wantBody(t, e.owner.get(check), `action="`+check+`/void"`, "Void this check")
+	wantRedirect(t, e.owner.post(check+"/void", url.Values{"voided": {"1"}}), check+"?done=voided")
+	wantBody(t, e.owner.get(check+"?done=voided"), "Voided. It is kept here with its number", "The image of a check that was voided", "It is not void")
+	wantBody(t, e.owner.get(e.account+"/receipts"), "Void checks", "check 1190")
+	wantBody(t, e.owner.get(e.account), "voided check 1190")
+
+	wantRedirect(t, e.owner.post(check+"/void", url.Values{"voided": {"0"}}), check+"?done=unvoided")
+	wantBody(t, e.owner.get(e.account+"/receipts"), "waiting for the transaction that paid it")
+
+	wantRedirect(t, e.owner.post(e.account+"/people", url.Values{"email": {"viewer@example.org"}, "role": {"viewer"}}), e.account+"?done=granted")
+	viewer := signUp(t, h, sent, "viewer@example.org")
+
+	if rec := viewer.post(check+"/void", url.Values{"voided": {"1"}}); rec.Code != http.StatusForbidden {
+		t.Errorf("a viewer voiding: %d", rec.Code)
+	}
+
+	stranger := signUp(t, h, sent, "stranger@example.org")
+	if rec := stranger.post(check+"/void", url.Values{"voided": {"1"}}); rec.Code != http.StatusNotFound {
+		t.Errorf("a stranger voiding: %d", rec.Code)
+	}
+}

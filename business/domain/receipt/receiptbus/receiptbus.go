@@ -67,6 +67,10 @@ var (
 	// ErrFiled is filing a check from a person's own inbox that is filed
 	// already, or removed (inbox.go).
 	ErrFiled = errors.New("the check was filed already")
+
+	// ErrVoided is numbering, reading or attaching the image of a check
+	// that was voided (sent.go).
+	ErrVoided = errors.New("the check was voided")
 )
 
 // The actions written into an inbox's history. Attaching is not one: the
@@ -88,6 +92,15 @@ const (
 	// account becoming more pages of it, rather than a second check
 	// (checks.go, join).
 	Joined eventbus.Action = "receipt.joined"
+
+	// CheckSent is a check printed by a program and sent with what was
+	// printed on it (sent.go, SendCheck).
+	CheckSent eventbus.Action = "receipt.check_sent"
+
+	// CheckVoided and CheckUnvoided are a check marked void, and the mark
+	// taken off by a person who made a mistake (sent.go).
+	CheckVoided   eventbus.Action = "receipt.check_voided"
+	CheckUnvoided eventbus.Action = "receipt.check_unvoided"
 )
 
 // Accept is the kinds of file a receipt may be.
@@ -130,6 +143,10 @@ type Receipt struct {
 	// read it (checks.go). Check is "" for any other receipt.
 	CheckImage bool
 	Check      string
+
+	// VoidedAt is when the check was voided, zero while it is not
+	// (sent.go): kept and listed, never outstanding and never matched.
+	VoidedAt time.Time
 }
 
 // Details is what a person may type about a receipt, all of it optional.
@@ -157,8 +174,12 @@ type Link struct {
 // Removed reports whether it was taken out of its inbox.
 func (r Receipt) Removed() bool { return !r.RemovedAt.IsZero() }
 
-// Waiting reports whether it is in its inbox and on no transaction.
-func (r Receipt) Waiting() bool { return len(r.Links) == 0 && !r.Removed() }
+// Voided reports whether it is the image of a check that was voided.
+func (r Receipt) Voided() bool { return !r.VoidedAt.IsZero() }
+
+// Waiting reports whether it is in its inbox and on no transaction, and
+// not a check that was voided, which waits for nothing.
+func (r Receipt) Waiting() bool { return len(r.Links) == 0 && !r.Removed() && !r.Voided() }
 
 // AttachedTo reports whether it is on the transaction.
 func (r Receipt) AttachedTo(id types.ID) bool {
@@ -177,6 +198,7 @@ type Ledger interface {
 	LookupAll(ctx context.Context, ids []types.ID) ([]ledgerbus.Transaction, error)
 	Matching(ctx context.Context, accounts []types.ID, amount money.Amount, on types.Date, days int) ([]ledgerbus.Transaction, error)
 	WithCheck(ctx context.Context, account types.ID, number string) ([]ledgerbus.Transaction, error)
+	CheckNumbers(ctx context.Context, account types.ID) ([]string, error)
 	SetCheckPayee(ctx context.Context, now time.Time, actor, id types.ID, payee string) (ledgerbus.Transaction, error)
 	SetWritten(ctx context.Context, now time.Time, actor, id types.ID, memo string, on types.Date) (ledgerbus.Transaction, error)
 	ClearedHolds(ctx context.Context, actor, accountID types.ID) (map[types.ID]types.ID, error)
@@ -232,6 +254,14 @@ type Storer interface {
 	// they came from, with the history, in one transaction (checks.go).
 	// Filing an item that is not waiting is ErrFiled.
 	Join(ctx context.Context, j Join, ev eventbus.Event) error
+
+	// Numbered is the account's images of checks with the number, not
+	// removed, voided or not; CheckNumbers is every number they have;
+	// SetVoided marks one void, or unmarks it with the zero time, with
+	// the history (sent.go).
+	Numbered(ctx context.Context, account types.ID, number string) ([]Receipt, error)
+	CheckNumbers(ctx context.Context, account types.ID) ([]string, error)
+	SetVoided(ctx context.Context, id types.ID, at time.Time, ev eventbus.Event) error
 
 	// The check inbox of a person (inbox.go): adding to it, reading it,
 	// asking whether it holds some bytes, removing one and bringing it
@@ -626,6 +656,9 @@ type Inbox struct {
 	Waiting []Receipt
 	Matched []Receipt
 	Removed []Receipt
+
+	// Voided is the images of checks that were voided (sent.go).
+	Voided []Receipt
 }
 
 // Inbox is one inbox, for a reader of its account or project.
@@ -650,6 +683,8 @@ func (b *Business) Inbox(ctx context.Context, actor types.ID, home types.Scope) 
 		switch {
 		case r.Removed():
 			in.Removed = append(in.Removed, r)
+		case r.Voided():
+			in.Voided = append(in.Voided, r)
 		case r.Waiting():
 			in.Waiting = append(in.Waiting, r)
 		default:
@@ -831,8 +866,11 @@ func (b *Business) Attach(ctx context.Context, now time.Time, actor, receiptID, 
 		return Receipt{}, err
 	}
 
-	if r.Removed() {
+	switch {
+	case r.Removed():
 		return Receipt{}, ErrRemoved
+	case r.Voided():
+		return Receipt{}, ErrVoided
 	}
 
 	_, may, err := b.transaction(ctx, actor, transactionID)
