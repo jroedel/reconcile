@@ -19,6 +19,12 @@
 // be. Claude is the program this was built for; another is a decision for
 // the site, and a line in trustedHosts.
 //
+// One program is known without a document: the site's own program that
+// prints checks (builtIns), a native program on a person's computer with
+// nowhere to publish a document, signing in through the browser with a
+// loopback redirect (RFC 8252). Its key may only send checks, and there is
+// one for each computer it is on (userbus.Grant.Device).
+//
 // Anybody signed in may agree. What the key may do is what they may: read
 // their books, as far as their roles reach, and -- for the administrator
 // and translators -- translate. The page says which before they agree.
@@ -42,6 +48,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -74,9 +81,34 @@ const (
 // failed connection to debug.
 var trustedHosts = []string{"claude.ai", "claude.com", "anthropic.com"}
 
+// ChecksClient is the client_id of the program that prints checks
+// (docs/checks.md): a name rather than a URL, since it is no document.
+const ChecksClient = "reconcile-checks"
+
+// builtIn is a program this site knows without reading a document about
+// it, and the scopes its key has whatever the person may do besides.
+type builtIn struct {
+	client oauth.Client
+	scopes []userbus.Scope
+}
+
+// builtIns are the programs that are this site's own. The program that
+// prints checks runs on a person's computer and listens for the browser's
+// return on whatever loopback port it is given, which its redirects mean
+// (oauth.Client.RedirectAllowed, RFC 8252 7.3): only there, so that a code
+// for it can be sent nowhere off the computer that asked. Not localhost,
+// which RFC 8252 asks a native program not to use, and which this one
+// does not.
+var builtIns = map[string]builtIn{
+	ChecksClient: {
+		client: oauth.Client{ID: ChecksClient, Name: "Reconcile Checks", RedirectURIs: []string{"http://127.0.0.1/callback", "http://[::1]/callback"}},
+		scopes: []userbus.Scope{userbus.Checks},
+	},
+}
+
 // Users is the slice of userbus this app uses.
 type Users interface {
-	GrantAccess(ctx context.Context, now time.Time, userID types.ID, clientID, name, redirect, challenge string, scopes []userbus.Scope) (string, error)
+	GrantAccess(ctx context.Context, now time.Time, userID types.ID, clientID, name, device, redirect, challenge string, scopes []userbus.Scope) (string, error)
 	RedeemGrant(ctx context.Context, now time.Time, presented, clientID, redirect, verifier string) (userbus.APIKey, string, error)
 }
 
@@ -144,8 +176,14 @@ func (a app) metadata(w http.ResponseWriter, _ *http.Request) {
 // the form's hidden fields on the way out. Both are read the same way and
 // checked the same way: the hidden fields are only the query carried across
 // one page, and a person's browser can change them as easily.
+//
+// Device is the computer's name, for a program that has a key on each
+// (builtIns): the program offers its own, and the person may change it
+// on the page.
 type request struct {
 	ClientID, Redirect, State, Challenge, Method, ResponseType string
+
+	Device string
 }
 
 func requestFrom(v url.Values) request {
@@ -156,12 +194,23 @@ func requestFrom(v url.Values) request {
 		Challenge:    v.Get("code_challenge"),
 		Method:       v.Get("code_challenge_method"),
 		ResponseType: v.Get("response_type"),
+		Device:       v.Get("device_name"),
 	}
 }
 
 // client reads and checks the program and its redirect: the checks whose
 // failure is answered on our own page, as a problem the page words.
 func (a app) client(ctx context.Context, req request) (oauth.Client, string, error) {
+	if b, ok := builtIns[req.ClientID]; ok {
+		if !b.client.RedirectAllowed(req.Redirect) {
+			a.cfg.Log.Warn("an OAuth request asked to go back somewhere its program does not list", "client_id", req.ClientID, "redirect_uri", req.Redirect)
+
+			return oauth.Client{}, "bad-redirect", errBadRedirect
+		}
+
+		return b.client, "", nil
+	}
+
 	if !trusted(req.ClientID) {
 		a.cfg.Log.Warn("an OAuth request from a program that is not trusted", "client_id", req.ClientID)
 
@@ -250,6 +299,12 @@ type connectView struct {
 	// Translates is whether the key will translate as well as read.
 	Translates bool
 
+	// Checks is whether the program is the one that prints checks
+	// (builtIns), whose page says what its key may do, and asks the
+	// computer's name, in Device.
+	Checks bool
+	Device string
+
 	// Problem is a code the page words.
 	Problem string
 }
@@ -257,9 +312,14 @@ type connectView struct {
 // scopesFor is what a program connected as this person may do: keep their
 // books, and translate if they may. The consent's box narrows keeping to
 // reading (answer); claude.ai sends no scope worth trusting, so what the
-// person chose on the page is the key's scopes.
-func (a app) scopesFor(w http.ResponseWriter, r *http.Request) (userbus.User, []userbus.Scope, bool) {
+// person chose on the page is the key's scopes. A program of the site's
+// own has its own scopes, whatever the person may do besides.
+func (a app) scopesFor(w http.ResponseWriter, r *http.Request, clientID string) (userbus.User, []userbus.Scope, bool) {
 	me, _ := mid.UserFrom(r.Context())
+
+	if b, ok := builtIns[clientID]; ok {
+		return me, slices.Clone(b.scopes), true
+	}
 
 	ok, err := a.cfg.Translators.MayTranslateAny(r.Context(), translationbus.Translator{ID: me.ID, SiteAdmin: me.SiteAdmin})
 	if err != nil {
@@ -294,7 +354,7 @@ func (a app) ask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, scopes, ok := a.scopesFor(w, r)
+	_, scopes, ok := a.scopesFor(w, r, req.ClientID)
 	if !ok {
 		return
 	}
@@ -325,7 +385,7 @@ func (a app) answer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	me, scopes, ok := a.scopesFor(w, r)
+	me, scopes, ok := a.scopesFor(w, r, req.ClientID)
 	if !ok {
 		return
 	}
@@ -345,7 +405,12 @@ func (a app) answer(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	code, err := a.cfg.Users.GrantAccess(r.Context(), a.cfg.Now(), me.ID, req.ClientID, keyName(c), req.Redirect, req.Challenge, scopes)
+	device := ""
+	if _, ok := builtIns[req.ClientID]; ok {
+		device = userbus.DeviceName(req.Device)
+	}
+
+	code, err := a.cfg.Users.GrantAccess(r.Context(), a.cfg.Now(), me.ID, req.ClientID, keyName(c, req), device, req.Redirect, req.Challenge, scopes)
 
 	switch {
 	case errors.Is(err, userbus.ErrTooManyGrants):
@@ -375,17 +440,21 @@ func (a app) show(w http.ResponseWriter, r *http.Request, status int, c oauth.Cl
 	// must allow; see page.AllowFormTo.
 	page.AllowFormTo(w.Header(), back.Scheme+"://"+back.Host)
 
-	a.cfg.Render.Render(w, r, status, "connect", connectView{
+	view := connectView{
 		Request: req,
 		Name:    cmp.Or(c.Name, c.Host()),
 		Host:    c.Host(),
-		KeyName: keyName(c),
+		KeyName: keyName(c, req),
 		BackTo:  back.Host,
 		Email:   me.Email.String(),
 		Problem: problem,
+		Device:  req.Device,
 
 		Translates: userbus.Allows(scopes, userbus.Translate),
-	})
+	}
+	_, view.Checks = builtIns[req.ClientID]
+
+	a.cfg.Render.Render(w, r, status, "connect", view)
 }
 
 func (a app) refuse(w http.ResponseWriter, r *http.Request, status int, problem string) {
@@ -394,8 +463,13 @@ func (a app) refuse(w http.ResponseWriter, r *http.Request, status int, problem 
 
 // keyName is what /account/keys lists the program's key as: its own name,
 // and the host its document is on, since the name is only what the document
-// says about itself.
-func keyName(c oauth.Client) string {
+// says about itself. A program of the site's own has no host, and is
+// named with the computer it is on.
+func keyName(c oauth.Client, req request) string {
+	if _, ok := builtIns[c.ID]; ok {
+		return c.Name + " — " + userbus.DeviceName(req.Device)
+	}
+
 	if c.Name == "" {
 		return c.Host()
 	}
@@ -451,9 +525,15 @@ func (a app) token(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	scopes := make([]string, len(k.Scopes))
+	for i, s := range k.Scopes {
+		scopes[i] = string(s)
+	}
+
 	web.WriteJSON(w, http.StatusOK, oauth.Token{
 		AccessToken: key,
 		TokenType:   "Bearer",
 		ExpiresIn:   int64(k.ExpiresAt.Sub(now) / time.Second),
+		Scope:       strings.Join(scopes, " "),
 	})
 }

@@ -3,6 +3,7 @@ package userbus_test
 import (
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/jroedel/reconcile/business/domain/user/userbus"
@@ -22,7 +23,7 @@ func TestAGrantBecomesAKeyOnceAndOnlyForItsProgram(t *testing.T) {
 	b := newBus(t)
 	u := signUp(t, b, "treasurer@example.org")
 
-	code, err := b.GrantAccess(t.Context(), start, u.ID, claudeAI, "Claude", callback, challenge, []userbus.Scope{userbus.BooksRead, userbus.Translate})
+	code, err := b.GrantAccess(t.Context(), start, u.ID, claudeAI, "Claude", "", callback, challenge, []userbus.Scope{userbus.BooksRead, userbus.Translate})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +62,7 @@ func TestAGrantExpiresAndNeedsS256(t *testing.T) {
 	b := newBus(t)
 	u := signUp(t, b, "treasurer@example.org")
 
-	code, err := b.GrantAccess(t.Context(), start, u.ID, claudeAI, "Claude", callback, challenge, []userbus.Scope{userbus.BooksRead, userbus.Translate})
+	code, err := b.GrantAccess(t.Context(), start, u.ID, claudeAI, "Claude", "", callback, challenge, []userbus.Scope{userbus.BooksRead, userbus.Translate})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,12 +72,12 @@ func TestAGrantExpiresAndNeedsS256(t *testing.T) {
 	}
 
 	for _, c := range []string{"", "plain-text-challenge", challenge + "AA"} {
-		if _, err := b.GrantAccess(t.Context(), start, u.ID, claudeAI, "Claude", callback, c, []userbus.Scope{userbus.BooksRead, userbus.Translate}); !errors.Is(err, userbus.ErrChallenge) {
+		if _, err := b.GrantAccess(t.Context(), start, u.ID, claudeAI, "Claude", "", callback, c, []userbus.Scope{userbus.BooksRead, userbus.Translate}); !errors.Is(err, userbus.ErrChallenge) {
 			t.Errorf("challenge %q: %v", c, err)
 		}
 	}
 
-	if _, err := b.GrantAccess(t.Context(), start, u.ID, "", "Claude", callback, challenge, []userbus.Scope{userbus.BooksRead, userbus.Translate}); !errors.Is(err, userbus.ErrClient) {
+	if _, err := b.GrantAccess(t.Context(), start, u.ID, "", "Claude", "", callback, challenge, []userbus.Scope{userbus.BooksRead, userbus.Translate}); !errors.Is(err, userbus.ErrClient) {
 		t.Errorf("no client: %v", err)
 	}
 }
@@ -91,7 +92,7 @@ func TestConnectingAgainReplacesTheProgramsKey(t *testing.T) {
 	connect := func() (string, error) {
 		t.Helper()
 
-		code, err := b.GrantAccess(t.Context(), start, u.ID, claudeAI, "Claude", callback, challenge, []userbus.Scope{userbus.BooksRead, userbus.Translate})
+		code, err := b.GrantAccess(t.Context(), start, u.ID, claudeAI, "Claude", "", callback, challenge, []userbus.Scope{userbus.BooksRead, userbus.Translate})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -134,5 +135,66 @@ func TestConnectingAgainReplacesTheProgramsKey(t *testing.T) {
 
 	if _, err := connect(); !errors.Is(err, userbus.ErrDenied) {
 		t.Errorf("a disabled person's grant: %v", err)
+	}
+}
+
+// A program with a key on each computer: connecting a second computer
+// keeps the first's key, connecting the first again replaces only its
+// own, and the key lasts as long as its scopes say -- a year for one that
+// may only send checks.
+func TestAKeyForEachComputer(t *testing.T) {
+	b := newBus(t)
+	u := signUp(t, b, "treasurer@example.org")
+
+	const (
+		program  = "reconcile-checks"
+		loopback = "http://127.0.0.1:50123/callback"
+	)
+
+	connect := func(device string) (userbus.APIKey, string) {
+		t.Helper()
+
+		code, err := b.GrantAccess(t.Context(), start, u.ID, program, "Reconcile Checks — "+device, device, loopback, challenge, []userbus.Scope{userbus.Checks})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		k, key, err := b.RedeemGrant(t.Context(), start, code, program, loopback, verifier)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		return k, key
+	}
+
+	office, officeKey := connect("Office")
+	_, homeKey := connect("Rectory")
+
+	if office.Device != "Office" || office.Name != "Reconcile Checks — Office" || office.ExpiresAt != start.Add(userbus.UploadKeyLife) {
+		t.Errorf("the office's key: %+v", office)
+	}
+
+	for name, key := range map[string]string{"office": officeKey, "rectory": homeKey} {
+		if _, _, err := b.AuthenticateAPIKey(t.Context(), start, key); err != nil {
+			t.Errorf("the %s's key after both connected: %v", name, err)
+		}
+	}
+
+	_, again := connect("Office")
+
+	if _, _, err := b.AuthenticateAPIKey(t.Context(), start, officeKey); !errors.Is(err, userbus.ErrDenied) {
+		t.Error("the office's first key still works after it connected again")
+	}
+
+	for name, key := range map[string]string{"office": again, "rectory": homeKey} {
+		if _, _, err := b.AuthenticateAPIKey(t.Context(), start, key); err != nil {
+			t.Errorf("the %s's key now: %v", name, err)
+		}
+	}
+
+	for typed, want := range map[string]string{"": "this computer", "  Office   PC ": "Office PC", strings.Repeat("x", 50): strings.Repeat("x", userbus.MaxDeviceName)} {
+		if got := userbus.DeviceName(typed); got != want {
+			t.Errorf("DeviceName(%q) = %q, want %q", typed, got, want)
+		}
 	}
 }

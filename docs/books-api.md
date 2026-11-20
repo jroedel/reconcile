@@ -112,6 +112,11 @@ cannot mark a month reconciled, reopen one, or remove a statement or a
 receipt." A box narrows it to reading. claude.ai sends no `scope` worth
 trusting, so the person's choice on this screen is the key's scopes.
 
+**The check printer** (`docs/checks.md`, "Signing in") is the one program
+the consent knows without a document: `client_id=reconcile-checks`, loopback
+redirects only, and a key with `checks` and nothing else, one for each
+computer it is on.
+
 ## The inbox, and the script that fills it
 
 ### On the site

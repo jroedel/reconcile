@@ -149,6 +149,11 @@ type APIKey struct {
 	// client_id (oauth.go); "" for a key a person made on the keys screen.
 	Client string
 
+	// Device is the computer such a program is on, as the person named it
+	// when they agreed, for a program that has a key on each computer;
+	// "" otherwise (oauth.go).
+	Device string
+
 	// Scopes is what it may be used for, at least one.
 	Scopes []Scope
 }

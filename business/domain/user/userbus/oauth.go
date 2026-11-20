@@ -78,6 +78,11 @@ type Grant struct {
 	RedirectURI string
 	Challenge   string
 
+	// Device is the computer the program is on, as the person named it,
+	// for a program that is one key to a computer (DeviceName); "" for
+	// Claude, which is one program wherever it runs.
+	Device string
+
 	// Scopes is what the person agreed the program's key may be used for.
 	Scopes []Scope
 
@@ -87,11 +92,13 @@ type Grant struct {
 }
 
 // GrantAccess records that a person agreed to let a program act as them,
-// for the scopes they agreed to, and returns the code to send it back with.
+// for the scopes they agreed to, on the device named ("" for a program
+// that is not one to a computer), and returns the code to send it back
+// with.
 // The caller has read the program's metadata document and checked redirect
 // against it, and has asked whether the person may hold each scope; this is
 // the rule about what a code is bound to, not about which programs may ask.
-func (b *Business) GrantAccess(ctx context.Context, now time.Time, userID types.ID, clientID, name, redirect, challenge string, scopes []Scope) (string, error) {
+func (b *Business) GrantAccess(ctx context.Context, now time.Time, userID types.ID, clientID, name, device, redirect, challenge string, scopes []Scope) (string, error) {
 	name = keyName(name)
 	scopes = tidyScopes(scopes)
 
@@ -108,7 +115,7 @@ func (b *Business) GrantAccess(ctx context.Context, now time.Time, userID types.
 
 	made, err := b.store.CreateGrant(ctx, Grant{
 		ID: cred.id, UserID: userID, Hash: cred.hash,
-		ClientID: clientID, ClientName: name, RedirectURI: redirect, Challenge: challenge, Scopes: scopes,
+		ClientID: clientID, ClientName: name, RedirectURI: redirect, Challenge: challenge, Scopes: scopes, Device: device,
 		CreatedAt: now, ExpiresAt: now.Add(GrantLife),
 	}, maxLiveGrants)
 
@@ -194,7 +201,7 @@ func (b *Business) RedeemGrant(ctx context.Context, now time.Time, presented, cl
 	cred := mintCredential()
 	k := APIKey{
 		ID: cred.id, UserID: u.ID, Name: g.ClientName, Hash: cred.hash,
-		CreatedAt: now, ExpiresAt: now.Add(APIKeyLife), Client: g.ClientID, Scopes: g.Scopes,
+		CreatedAt: now, ExpiresAt: now.Add(lifeOf(g.Scopes)), Client: g.ClientID, Scopes: g.Scopes, Device: g.Device,
 	}
 
 	made, err := b.store.ReplaceAPIKey(ctx, k, MaxAPIKeys)
@@ -215,6 +222,24 @@ func (b *Business) RedeemGrant(ctx context.Context, now time.Time, presented, cl
 	b.log.Info("API key given through OAuth", "user_id", u.ID.String(), "key_id", k.ID.String(), "client_id", g.ClientID)
 
 	return k, APIKeyPrefix + cred.String(), nil
+}
+
+// MaxDeviceName is the longest name a computer may be given.
+const MaxDeviceName = 40
+
+// DeviceName is a computer's name as a person typed it, fit to be kept: one
+// line, at most MaxDeviceName characters, and "this computer" for nothing.
+func DeviceName(name string) string {
+	name = strings.Join(strings.Fields(name), " ")
+	if name == "" {
+		return "this computer"
+	}
+
+	if utf8.RuneCountInString(name) > MaxDeviceName {
+		name = string([]rune(name)[:MaxDeviceName])
+	}
+
+	return name
 }
 
 // keyName fits a program's name to a key's: one line, at most MaxKeyName

@@ -47,8 +47,8 @@ var Expected = sqldb.Expected{
 	"backup_codes":  {"id", "user_id", "hash", "created_at", "used_at"},
 	"sessions":      {"id", "user_id", "hash", "created_at", "expires_at"},
 	"bootstrap":     {"id", "claimed_at"},
-	"api_keys":      {"id", "user_id", "name", "hash", "created_at", "expires_at", "last_used_at", "client", "scopes"},
-	"oauth_grants":  {"id", "user_id", "hash", "client_id", "client_name", "redirect_uri", "challenge", "created_at", "expires_at", "used_at", "scopes"},
+	"api_keys":      {"id", "user_id", "name", "hash", "created_at", "expires_at", "last_used_at", "client", "scopes", "device"},
+	"oauth_grants":  {"id", "user_id", "hash", "client_id", "client_name", "redirect_uri", "challenge", "created_at", "expires_at", "used_at", "scopes", "device"},
 
 	"notification_prefs": {"user_id", "digest_enabled", "digest_weekday", "digest_hour", "sent_up_to", "unsubscribe_hash"},
 }
@@ -203,6 +203,19 @@ CREATE INDEX IF NOT EXISTS oauth_grants_user ON oauth_grants (user_id, expires_a
 	// A person's time zone by its IANA name (userbus.Weekly), a later
 	// column: '' is none yet, which the weekly email reads as UTC.
 	if err := sqldb.AddColumn(ctx, db, "users", "tz", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+
+	// The computer a program's key was given to through OAuth, as the
+	// person named it (userbus.Grant.Device), carried from the consent to
+	// the key: a program on two computers has a key on each, and
+	// connecting one again replaces its own. Later columns; '' for Claude,
+	// which is one program wherever it runs, and for every key from before.
+	if err := sqldb.AddColumn(ctx, db, "api_keys", "device", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+
+	if err := sqldb.AddColumn(ctx, db, "oauth_grants", "device", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
 
@@ -678,7 +691,8 @@ WHERE (SELECT count(*) FROM api_keys WHERE user_id = ? AND expires_at > ?) < ?`
 }
 
 // ReplaceAPIKey records a key given to a program through OAuth, removing any
-// key the person gave the same program before, and keeps the limit as
+// key the person gave the same program on the same computer before, and
+// keeps the limit as
 // CreateAPIKey does. In one transaction, so that a refusal at the limit
 // leaves the old key where it was: a person who cannot connect again must
 // not also lose the connection they had.
@@ -689,17 +703,17 @@ func (s *Store) ReplaceAPIKey(ctx context.Context, k userbus.APIKey, limit int) 
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.ExecContext(ctx, `DELETE FROM api_keys WHERE user_id = ? AND client = ?`, k.UserID.String(), k.Client); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM api_keys WHERE user_id = ? AND client = ? AND device = ?`, k.UserID.String(), k.Client, k.Device); err != nil {
 		return false, fmt.Errorf("removing the earlier API key: %w", err)
 	}
 
 	const q = `
-INSERT INTO api_keys (id, user_id, name, hash, created_at, expires_at, client, scopes)
-SELECT ?, ?, ?, ?, ?, ?, ?, ?
+INSERT INTO api_keys (id, user_id, name, hash, created_at, expires_at, client, scopes, device)
+SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
 WHERE (SELECT count(*) FROM api_keys WHERE user_id = ? AND expires_at > ?) < ?`
 
 	res, err := tx.ExecContext(ctx, q,
-		k.ID.String(), k.UserID.String(), k.Name, k.Hash, msOf(k.CreatedAt), msOf(k.ExpiresAt), k.Client, scopesOf(k.Scopes),
+		k.ID.String(), k.UserID.String(), k.Name, k.Hash, msOf(k.CreatedAt), msOf(k.ExpiresAt), k.Client, scopesOf(k.Scopes), k.Device,
 		k.UserID.String(), msOf(k.CreatedAt), limit)
 	if err != nil {
 		return false, fmt.Errorf("inserting the API key: %w", err)
@@ -717,7 +731,7 @@ WHERE (SELECT count(*) FROM api_keys WHERE user_id = ? AND expires_at > ?) < ?`
 	return true, nil
 }
 
-const apiKeyColumns = `id, user_id, name, hash, created_at, expires_at, last_used_at, client, scopes`
+const apiKeyColumns = `id, user_id, name, hash, created_at, expires_at, last_used_at, client, scopes, device`
 
 // APIKeyByID finds a key by identifier.
 func (s *Store) APIKeyByID(ctx context.Context, id types.ID) (userbus.APIKey, error) {
@@ -794,7 +808,7 @@ func scanAPIKey(row rowScanner) (userbus.APIKey, error) {
 		used                   sql.NullInt64
 	)
 
-	if err := row.Scan(&rawID, &rawUser, &k.Name, &k.Hash, &created, &expires, &used, &k.Client, &scopes); err != nil {
+	if err := row.Scan(&rawID, &rawUser, &k.Name, &k.Hash, &created, &expires, &used, &k.Client, &scopes, &k.Device); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return userbus.APIKey{}, err
 		}
@@ -836,12 +850,12 @@ func scopesOf(scopes []userbus.Scope) string {
 // ones: the count and the insert in one statement, as for links.
 func (s *Store) CreateGrant(ctx context.Context, g userbus.Grant, limit int) (bool, error) {
 	const q = `
-INSERT INTO oauth_grants (id, user_id, hash, client_id, client_name, redirect_uri, challenge, created_at, expires_at, scopes)
-SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+INSERT INTO oauth_grants (id, user_id, hash, client_id, client_name, redirect_uri, challenge, created_at, expires_at, scopes, device)
+SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 WHERE (SELECT count(*) FROM oauth_grants WHERE user_id = ? AND expires_at > ? AND used_at IS NULL) < ?`
 
 	res, err := s.db.ExecContext(ctx, q,
-		g.ID.String(), g.UserID.String(), g.Hash, g.ClientID, g.ClientName, g.RedirectURI, g.Challenge, msOf(g.CreatedAt), msOf(g.ExpiresAt), scopesOf(g.Scopes),
+		g.ID.String(), g.UserID.String(), g.Hash, g.ClientID, g.ClientName, g.RedirectURI, g.Challenge, msOf(g.CreatedAt), msOf(g.ExpiresAt), scopesOf(g.Scopes), g.Device,
 		g.UserID.String(), msOf(g.CreatedAt), limit)
 	if err != nil {
 		return false, fmt.Errorf("inserting the OAuth grant: %w", err)
@@ -860,8 +874,8 @@ func (s *Store) GrantByID(ctx context.Context, id types.ID) (userbus.Grant, erro
 	)
 
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, user_id, hash, client_id, client_name, redirect_uri, challenge, created_at, expires_at, used_at, scopes FROM oauth_grants WHERE id = ?`,
-		id.String()).Scan(&rawID, &rawUser, &g.Hash, &g.ClientID, &g.ClientName, &g.RedirectURI, &g.Challenge, &created, &expires, &used, &scopes)
+		`SELECT id, user_id, hash, client_id, client_name, redirect_uri, challenge, created_at, expires_at, used_at, scopes, device FROM oauth_grants WHERE id = ?`,
+		id.String()).Scan(&rawID, &rawUser, &g.Hash, &g.ClientID, &g.ClientName, &g.RedirectURI, &g.Challenge, &created, &expires, &used, &scopes, &g.Device)
 
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
