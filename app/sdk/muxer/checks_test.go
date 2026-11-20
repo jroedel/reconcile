@@ -190,3 +190,36 @@ func TestCheckImages(t *testing.T) {
 		t.Errorf("a stranger numbering a check: %d", rec.Code)
 	}
 }
+
+// A screenshot numbered on its page with the number of a check already
+// waiting becomes more pages of that check: the person is taken to the
+// check, which says so, and the account's history has the line.
+func TestACheckNumberedTwiceIsOneCheck(t *testing.T) {
+	t.Parallel()
+
+	h, sent := newSite(t, sqldb.Infrastructure, nil)
+	e := newEstate(t, h, sent)
+
+	rec := e.owner.receipts(e.account+"/checks", nil,
+		[2]string{"1190.jpg", photoOf("1190")}, [2]string{"Screenshot_20260712-101500.png", photoOf("phone")})
+	inbox := e.owner.get(rec.Header().Get("Location"))
+
+	var check, shot string
+
+	for _, rc := range receiptsOn(inbox.Body.String()) {
+		if strings.Contains(e.owner.get(rc).Body.String(), "whose number has not been said") {
+			shot = rc
+		} else {
+			check = rc
+		}
+	}
+
+	if shot == "" || check == "" {
+		t.Fatalf("the check %q and the screenshot %q", check, shot)
+	}
+
+	wantRedirect(t, e.owner.post(shot+"/number", url.Values{"number": {"1190"}}), check+"?done=joined")
+	wantBody(t, e.owner.get(check+"?done=joined"), "This check was already waiting here, so the image was added to it as more pages.", "Check 1190")
+	wantBody(t, e.owner.get(e.account+"/receipts"), "2 pages")
+	wantBody(t, e.owner.get(e.account), "added an image to check 1190, which was already waiting, as more of its pages")
+}

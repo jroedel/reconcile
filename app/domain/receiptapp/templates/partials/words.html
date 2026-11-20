@@ -21,6 +21,7 @@
 {{- else if eq . "removed"}}{{t "Removed. It is under Removed receipts below, and can be brought back."}}
 {{- else if eq . "restored"}}{{t "Brought back. It is waiting for a match."}}
 {{- else if eq . "numbered"}}{{t "Saved. It is attached as soon as one transaction in the account is this check."}}
+{{- else if eq . "joined"}}{{t "This check was already waiting here, so the image was added to it as more pages."}}
 {{- end}}</p>{{end}}{{end}}{{end}}
 
 {{define "uploaded"}}
