@@ -263,3 +263,58 @@ func TestVoidingACheckOnItsPage(t *testing.T) {
 		t.Errorf("a stranger voiding: %d", rec.Code)
 	}
 }
+
+// A statement's checks outstanding are those that were out when it ended,
+// and stay so: check 1190, written in July and paid in August, is on
+// July's statement before August is imported and after, saying when it
+// cleared, while the account's months, which are about now, no longer
+// list it.
+func TestAStatementKeepsItsChecksOutstanding(t *testing.T) {
+	t.Parallel()
+
+	h, sent := newSite(t, sqldb.Infrastructure, nil)
+	e := newEstate(t, h, sent)
+
+	importChecks := func(name, file string) string {
+		t.Helper()
+
+		form := columns("import")
+		form.Set("check", "Check Number")
+
+		rec := e.owner.post(uploaded(t, e.owner, e.account, name, file), form)
+		loc := rec.Header().Get("Location")
+		if rec.Code != http.StatusSeeOther || !strings.HasSuffix(loc, "?done=imported") {
+			t.Fatalf("importing %s: %d to %q\n%s", name, rec.Code, loc, rec.Body)
+		}
+
+		return strings.TrimSuffix(loc, "?done=imported")
+	}
+
+	july := importChecks("july.csv", "Date,Description,Amount,Balance,Check Number\n"+
+		"2026-07-01,OPENING DEPOSIT,1000.00,1000.00,\n"+
+		"2026-07-09,CHECK,-30.00,970.00,1177\n")
+
+	rec := e.owner.receipts(e.account+"/checks", nil, [2]string{"1190.jpg", photoOf("1190")})
+	checks := receiptsOn(e.owner.get(rec.Header().Get("Location")).Body.String())
+	if len(checks) != 1 {
+		t.Fatalf("check 1190: %v", checks)
+	}
+
+	if rec := e.owner.post(checks[0]+"/details", url.Values{
+		"amount": {"45.50"}, "merchant": {"Diocesan Office"}, "memo": {""}, "written_on": {"2026-07-05"},
+	}); rec.Code != http.StatusSeeOther {
+		t.Fatalf("its amount and day: %d\n%s", rec.Code, rec.Body)
+	}
+
+	wantBody(t, e.owner.get(july), "Checks written by 2026-07-09 that the bank had not paid by that day", "Check 1190", "Checks outstanding: 1, for $45.50 in all.")
+
+	importChecks("august.csv", "Date,Description,Amount,Balance,Check Number\n"+
+		"2026-08-04,CHECK,-45.50,924.50,1190\n")
+
+	page := e.owner.get(july)
+	wantBody(t, page, "Check 1190", "cleared 2026-08-04", "Checks outstanding: 1, for $45.50 in all.")
+
+	if strings.Contains(e.owner.get(e.account+"/months").Body.String(), "Checks outstanding") {
+		t.Error("the account's months still list check 1190 as outstanding")
+	}
+}

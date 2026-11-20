@@ -4,6 +4,7 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
@@ -44,7 +45,7 @@ func TestSendingAPrintedCheck(t *testing.T) {
 		t.Errorf("the check: %+v", c)
 	}
 
-	out, err := w.receipts.OutstandingChecks(w.ctx, w.owner, acct, types.Date{})
+	out, err := w.receipts.OutstandingChecks(w.ctx, w.owner, acct, types.Date{}, time.UTC)
 	if err != nil || len(out.Checks) != 1 || out.Total.String() != "12.34" {
 		t.Errorf("outstanding: %+v, %v", out, err)
 	}
@@ -173,7 +174,7 @@ func TestVoidingACheck(t *testing.T) {
 		t.Errorf("voided twice: %+v, %v", again, err)
 	}
 
-	if out, _ := w.receipts.OutstandingChecks(w.ctx, w.owner, acct, types.Date{}); len(out.Checks) != 0 {
+	if out, _ := w.receipts.OutstandingChecks(w.ctx, w.owner, acct, types.Date{}, time.UTC); len(out.Checks) != 0 {
 		t.Errorf("a void check is outstanding: %+v", out)
 	}
 
