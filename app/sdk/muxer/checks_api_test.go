@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jroedel/reconcile/business/domain/user/userbus"
+	"github.com/jroedel/reconcile/foundation/oauth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -282,5 +284,101 @@ func TestNobodyPrintsChecksWhereTheyWereNotGiven(t *testing.T) {
 	// Keeping the books includes printing checks.
 	if rec := s.sendCheck(keeper, acct, printed, pdf); rec.Code != http.StatusCreated {
 		t.Errorf("a keeping key: %d %s", rec.Code, rec.Body)
+	}
+}
+
+// The check printer signs in as a native program: the browser, the
+// person's yes on a page that says what its key may do and asks the
+// computer's name, and back to a loopback port, where the program trades
+// the code for a key that may only send checks and lasts a year. A second
+// computer keeps the first's key; the first connecting again replaces
+// only its own. A redirect off the computer is refused on our own page.
+func TestTheCheckPrinterSignsIn(t *testing.T) {
+	t.Parallel()
+
+	s := newTranslatingSite(t)
+
+	const loopback = "http://127.0.0.1:50123/callback"
+
+	asked := func(device string) url.Values {
+		return url.Values{
+			"response_type": {"code"}, "client_id": {"reconcile-checks"}, "redirect_uri": {loopback},
+			"state": {"the-programs-state"}, "code_challenge": {challenge}, "code_challenge_method": {"S256"}, "device_name": {device},
+		}
+	}
+
+	connect := func(device string) oauth.Token {
+		t.Helper()
+
+		form := asked(device)
+		form.Set("answer", "allow")
+
+		rec := s.admin.post("/oauth/authorize", form)
+
+		to, err := url.Parse(rec.Header().Get("Location"))
+		if rec.Code != http.StatusSeeOther || err != nil || to.Scheme+"://"+to.Host+to.Path != loopback || to.Query().Get("state") != "the-programs-state" {
+			t.Fatalf("not sent back to the program: %d %q", rec.Code, rec.Header().Get("Location"))
+		}
+
+		rec = s.program("/oauth/token", url.Values{
+			"grant_type": {"authorization_code"}, "code": {to.Query().Get("code")}, "client_id": {"reconcile-checks"},
+			"redirect_uri": {loopback}, "code_verifier": {verifier},
+		})
+
+		var tok oauth.Token
+		if err := json.Unmarshal(rec.Body.Bytes(), &tok); rec.Code != http.StatusOK || err != nil {
+			t.Fatalf("the trade: %d %s", rec.Code, rec.Body)
+		}
+
+		return tok
+	}
+
+	page := s.admin.get(authorize(asked("Office")))
+	wantBody(t, page, "Let the check printer on this computer work as you?", "Reconcile Checks — Office", `name="device_name"`, "It cannot read your transactions")
+
+	if csp := page.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "http://127.0.0.1:50123") {
+		t.Errorf("the page's policy: %s", csp)
+	}
+
+	if strings.Contains(page.Body.String(), `name="reading"`) {
+		t.Error("the check printer's page offers reading only")
+	}
+
+	office := connect("Office")
+	if office.Scope != "checks" || office.ExpiresIn < int64(userbus.UploadKeyLife.Seconds())-60 {
+		t.Errorf("the office's token: scope %q, expires_in %d", office.Scope, office.ExpiresIn)
+	}
+
+	if rec := s.api(http.MethodGet, "/api/v1/checks/accounts", office.AccessToken, ""); rec.Code != http.StatusOK {
+		t.Errorf("the check routes with its key: %d %s", rec.Code, rec.Body)
+	}
+
+	if rec := s.api(http.MethodGet, "/api/v1/me", office.AccessToken, ""); rec.Code != http.StatusForbidden {
+		t.Errorf("the books with its key: %d", rec.Code)
+	}
+
+	// A second computer, and the first again.
+	rectory := connect("Rectory")
+	again := connect("Office")
+
+	for name, c := range map[string]struct {
+		key  string
+		want int
+	}{"the office's first": {office.AccessToken, http.StatusUnauthorized}, "the rectory's": {rectory.AccessToken, http.StatusOK}, "the office's again": {again.AccessToken, http.StatusOK}} {
+		if rec := s.api(http.MethodGet, "/api/v1/checks/accounts", c.key, ""); rec.Code != c.want {
+			t.Errorf("%s key: %d, want %d", name, rec.Code, c.want)
+		}
+	}
+
+	wantBody(t, s.admin.get("/account/keys"), "Reconcile Checks — Office", "Reconcile Checks — Rectory", "connected from the check printer")
+
+	// Off the computer, or localhost: refused here, and nothing sent.
+	for _, to := range []string{"https://somewhere.invalid/callback", "http://localhost:50123/callback"} {
+		q := asked("Office")
+		q.Set("redirect_uri", to)
+
+		if rec := s.admin.get(authorize(q)); rec.Code != http.StatusBadRequest || rec.Header().Get("Location") != "" {
+			t.Errorf("redirect %s: %d %q", to, rec.Code, rec.Header().Get("Location"))
+		}
 	}
 }

@@ -200,3 +200,103 @@ func TestInitGivesOldPeopleNoTimeZone(t *testing.T) {
 		t.Errorf("what the email kept: %d %q, %v", sent, hash, err)
 	}
 }
+
+// beforeDevices is the keys and the codes as they stood before a program
+// could have a key on each computer.
+const beforeDevices = `
+CREATE TABLE IF NOT EXISTS api_keys (
+    id            TEXT    PRIMARY KEY,
+    user_id       TEXT    NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    name          TEXT    NOT NULL,
+    hash          BLOB    NOT NULL,
+    created_at    INTEGER NOT NULL,
+    expires_at    INTEGER NOT NULL,
+    last_used_at  INTEGER,
+    client        TEXT    NOT NULL DEFAULT '',
+    scopes        TEXT    NOT NULL DEFAULT 'translate'
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS api_keys_user ON api_keys (user_id, expires_at);
+
+CREATE TABLE IF NOT EXISTS oauth_grants (
+    id            TEXT    PRIMARY KEY,
+    user_id       TEXT    NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    hash          BLOB    NOT NULL,
+    client_id     TEXT    NOT NULL,
+    client_name   TEXT    NOT NULL,
+    redirect_uri  TEXT    NOT NULL,
+    challenge     TEXT    NOT NULL,
+    created_at    INTEGER NOT NULL,
+    expires_at    INTEGER NOT NULL,
+    used_at       INTEGER,
+    scopes        TEXT    NOT NULL DEFAULT 'translate'
+) STRICT;
+`
+
+// A database from before devices gets them: Claude's key from before is on
+// no device, and connecting Claude again still replaces it.
+func TestInitBeforeDevices(t *testing.T) {
+	db, err := sqldb.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	const users = `
+CREATE TABLE IF NOT EXISTS users (
+    id          TEXT    PRIMARY KEY,
+    email       TEXT    NOT NULL UNIQUE,
+    name        TEXT    NOT NULL DEFAULT '',
+    lang        TEXT    NOT NULL DEFAULT '',
+    site_admin  INTEGER NOT NULL DEFAULT 0,
+    enabled     INTEGER NOT NULL DEFAULT 1,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+) STRICT;
+`
+
+	if _, err := db.ExecContext(t.Context(), users+beforeDevices); err != nil {
+		t.Fatal(err)
+	}
+
+	user, key := types.NewID(), types.NewID()
+	ends := time.Now().Add(time.Hour)
+
+	if _, err := db.ExecContext(t.Context(),
+		`INSERT INTO users (id, email, created_at, updated_at) VALUES (?, 'treasurer@example.org', 1, 1)`, user.String()); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.ExecContext(t.Context(),
+		`INSERT INTO api_keys (id, user_id, name, hash, created_at, expires_at, client, scopes) VALUES (?, ?, 'Claude', x'00', 1, ?, 'https://claude.ai/x', 'books:write')`,
+		key.String(), user.String(), ends.UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+
+	for range 2 {
+		if err := userdb.Init(t.Context(), db); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := sqldb.CheckSchema(t.Context(), db, userdb.Expected); err != nil {
+		t.Fatal(err)
+	}
+
+	store := userdb.NewStore(db)
+
+	if got, err := store.APIKeyByID(t.Context(), key); err != nil || got.Device != "" || got.Client != "https://claude.ai/x" {
+		t.Fatalf("the old key: %+v, %v", got, err)
+	}
+
+	again := userbus.APIKey{ID: types.NewID(), UserID: user, Name: "Claude", Hash: []byte{1}, CreatedAt: time.Now(), ExpiresAt: ends,
+		Client: "https://claude.ai/x", Scopes: []userbus.Scope{userbus.BooksWrite}}
+
+	if made, err := store.ReplaceAPIKey(t.Context(), again, 5); err != nil || !made {
+		t.Fatalf("connecting again: %v, %v", made, err)
+	}
+
+	if _, err := store.APIKeyByID(t.Context(), key); err == nil {
+		t.Error("the old key is still there")
+	}
+}

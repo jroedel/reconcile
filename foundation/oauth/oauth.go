@@ -291,4 +291,8 @@ type Token struct {
 	AccessToken string `json:"access_token"`
 	TokenType   string `json:"token_type"`
 	ExpiresIn   int64  `json:"expires_in"`
+
+	// Scope is what the token may be used for, space-separated (RFC 6749,
+	// 5.1): the server's word, since the request's is not taken.
+	Scope string `json:"scope,omitempty"`
 }

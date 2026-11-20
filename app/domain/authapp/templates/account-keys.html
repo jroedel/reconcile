@@ -29,7 +29,7 @@
 {{if .Keys}}
 <ul class="list">
 {{range .Keys}}<li>
-  <strong>{{.Name}}</strong>{{if .Program}} · {{t "connected from Claude"}}{{else if eq .Purpose "upload"}} · {{t "sends statements to your inbox"}}{{else if eq .Purpose "checks"}} · {{t "prints checks"}}{{else if eq .Purpose "books-read"}} · {{t "reads your books"}}{{else if eq .Purpose "books-keep"}} · {{t "keeps your books"}}{{else if eq .Purpose "translate"}} · {{t "translates"}}{{end}}
+  <strong>{{.Name}}</strong>{{if and .Program (eq .Purpose "checks")}} · {{t "connected from the check printer"}}{{else if .Program}} · {{t "connected from Claude"}}{{else if eq .Purpose "upload"}} · {{t "sends statements to your inbox"}}{{else if eq .Purpose "checks"}} · {{t "prints checks"}}{{else if eq .Purpose "books-read"}} · {{t "reads your books"}}{{else if eq .Purpose "books-keep"}} · {{t "keeps your books"}}{{else if eq .Purpose "translate"}} · {{t "translates"}}{{end}}
   <br><span class="hint">{{if .LastUse}}{{t "Made {made} · ends {ends} · last used {used}" "made" .Created "ends" .Expires "used" .LastUse}}{{else}}{{t "Made {made} · ends {ends} · not used yet" "made" .Created "ends" .Expires}}{{end}}</span>
   <form method="post" action="/account/keys/{{.ID}}/revoke" class="inline">
     <button type="submit" class="quiet">{{t "Revoke"}}</button>

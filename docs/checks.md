@@ -83,10 +83,9 @@ reach", so that a stranger learns nothing. A program that took a 404 for
 
 ### For the program
 
-- **Signing in**: until OAuth for native programs arrives (#166, the last
-  pull request), the person makes a key on `/account/keys` for "A program
-  that prints checks" and pastes it, with the site's address, into the
-  program's settings. On any `401`, ask for a key again.
+- **Signing in**: through the browser, below. A key made by hand on
+  `/account/keys`, for "A program that prints checks", works the same way,
+  for a computer with no browser. On any `401`, sign in again.
 - **Before printing**, propose `highest + 1` and let the person confirm it
   against the paper. Then ask `GET …/checks/{number}`: print only on `free`,
   and if the person goes ahead anyway, the send's `409` still catches the
@@ -99,6 +98,47 @@ reach", so that a stranger learns nothing. A program that took a 404 for
 - **Never** send or print a full account number.
 - **Taking a void mark off** is the person's, on the check's page. There is
   no route for it, as there is none for restoring a removed receipt.
+
+## Signing in (`oauthapp`)
+
+The program signs in as a native program (RFC 8252): authorization code
+with PKCE, in the person's own browser, back to a loopback port. It never
+handles the person's email code or a session.
+
+1. `GET {site}/.well-known/oauth-authorization-server` gives the endpoints.
+2. Listen on `127.0.0.1` on any port, or `[::1]`, at the path `/callback`.
+   Then open the browser at:
+
+   ```
+   /oauth/authorize?response_type=code&client_id=reconcile-checks
+     &redirect_uri=http://127.0.0.1:{port}/callback
+     &code_challenge={S256 of the verifier}&code_challenge_method=S256
+     &state={random}&device_name={this computer's name}
+   ```
+
+   The person signs in there if they are not signed in already. A page
+   then says what the key may and may not do, and offers the computer's
+   name, which the person can change.
+3. The browser comes back to the callback with `code`, `state` and `iss`.
+   Check that `state` is yours and that `iss` is the site.
+4. `POST /oauth/token` as a form, with `grant_type=authorization_code`,
+   `code`, `client_id=reconcile-checks`, the same `redirect_uri`, and
+   `code_verifier`. The answer is `{access_token, token_type: "Bearer",
+   expires_in, scope: "checks"}`.
+5. Keep the token in the system's keychain.
+
+- **`client_id` is `reconcile-checks`**, a name the site knows rather than a
+  metadata document (`builtIns`). Its redirects are only
+  `http://127.0.0.1/callback` and `http://[::1]/callback`, on any port. Any
+  other redirect, `localhost` among them, is refused on the site's own page,
+  and nothing is sent anywhere.
+- **The key may only send checks** (`checks`), whatever else the person may
+  do, and lasts a year. The keys page lists it as "Reconcile Checks —
+  Office · connected from the check printer".
+- **One key to a computer.** `device_name` names the key. Connecting another
+  computer keeps the first one's key; connecting the same computer again,
+  by the same name, replaces its key and no other. The name is at most 40
+  characters, and "this computer" when none is given.
 
 ## On the site
 
@@ -113,5 +153,3 @@ reach", so that a stranger learns nothing. A program that took a 404 for
 
 - **The accountant's package** does not list void checks yet. They are on
   the account's receipts page.
-- **Signing in through OAuth** as a native program is the next pull
-  request.

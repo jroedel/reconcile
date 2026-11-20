@@ -1,6 +1,36 @@
-{{define "title"}}{{t "Connect Claude"}}{{end}}
+{{define "title"}}{{if .Data.Checks}}{{t "Connect the check printer"}}{{else}}{{t "Connect Claude"}}{{end}}{{end}}
 {{define "content"}}{{with .Data}}
-{{if .Host}}
+{{if .Checks}}
+<h1>{{t "Let the check printer on this computer work as you?"}}</h1>
+<p>{{t "Reconcile Checks, the program that prints checks, is asking to send the checks it prints to this site, as you ({email})." "email" .Email}}</p>
+
+{{if eq .Problem "too-many"}}<p class="notice" role="alert">{{t "Too many programs have asked to connect as you in the last few minutes. Wait a while and try again."}}</p>{{end}}
+
+<section class="card">
+  <p>{{t "It can see the names and last four digits of the checking accounts you may add receipts to, the check numbers each has used, and the names of payees."}}</p>
+  <p>{{t "It can send each check it prints, with its image and what is printed on it, and void a check it printed. A check waits among the account's checks outstanding until the statement that pays it is imported."}}</p>
+  <p>{{t "It cannot read your transactions, statements or receipts, or change anything else in your books."}}</p>
+  <p>{{t "It gets a key that lasts a year. You can end it at any time on your API keys page, where it is listed as “{name}”." "name" .KeyName}}</p>
+  <p><a href="/account/keys">{{t "Your API keys"}}</a></p>
+</section>
+
+<form class="card" method="post" action="/oauth/authorize">
+  <input type="hidden" name="client_id" value="{{.Request.ClientID}}">
+  <input type="hidden" name="redirect_uri" value="{{.Request.Redirect}}">
+  <input type="hidden" name="state" value="{{.Request.State}}">
+  <input type="hidden" name="code_challenge" value="{{.Request.Challenge}}">
+  <input type="hidden" name="code_challenge_method" value="{{.Request.Method}}">
+  <input type="hidden" name="response_type" value="{{.Request.ResponseType}}">
+  <div class="field">
+    <label for="device_name">{{t "This computer's name"}}</label>
+    <input id="device_name" name="device_name" type="text" maxlength="40" value="{{.Device}}" aria-describedby="device-hint" autocomplete="off">
+    <p class="hint" id="device-hint">{{t "Such as “Office” or “Rectory”, so that you can tell its key from another computer's. Connecting this computer again replaces its key, and no other."}}</p>
+  </div>
+  <button type="submit" name="answer" value="allow">{{t "Allow"}}</button>
+  <button type="submit" name="answer" value="deny" class="quiet">{{t "No"}}</button>
+  <p class="hint">{{t "Either button takes you back to the program on this computer."}}</p>
+</form>
+{{else if .Host}}
 <h1>{{t "Let {program} work as you?" "program" .Name}}</h1>
 <p>{{t "{host} is asking to keep your books on this site, as you ({email})." "host" .Host "email" .Email}}</p>
 
@@ -30,7 +60,7 @@
 {{else}}
 <h1>{{t "Connect Claude"}}</h1>
 <p class="notice" role="alert">
-{{- if eq .Problem "not-claude"}}{{t "This site connects only to Claude. The link that brought you here came from another program, so nothing was sent to it."}}
+{{- if eq .Problem "not-claude"}}{{t "This site connects only to Claude and to its own check printer. The link that brought you here came from another program, so nothing was sent to it."}}
 {{- else if eq .Problem "cannot-read-client"}}{{t "We could not read who is asking to connect. Start again from Claude in a few minutes."}}
 {{- else if eq .Problem "bad-redirect"}}{{t "The program asked to send you back somewhere it does not list as its own, so nothing was sent to it. Start again from Claude."}}
 {{- else if eq .Problem "cannot-read"}}{{t "We could not read that. Start again from Claude."}}
