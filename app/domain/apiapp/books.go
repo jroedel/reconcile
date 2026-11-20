@@ -107,7 +107,7 @@ type Receipts interface {
 	File(ctx context.Context, actor, id types.ID, n int) (filebus.File, error)
 	ReadCheck(ctx context.Context, now time.Time, actor, id types.ID, rd receiptbus.CheckReading) (receiptbus.Receipt, error)
 	Detach(ctx context.Context, actor, receiptID, transactionID types.ID) (receiptbus.Receipt, error)
-	OutstandingChecks(ctx context.Context, actor, accountID types.ID, by types.Date) (receiptbus.Outstanding, error)
+	OutstandingChecks(ctx context.Context, actor, accountID types.ID, by types.Date, loc *time.Location) (receiptbus.Outstanding, error)
 
 	// Printed checks (checks.go).
 	SendCheck(ctx context.Context, now time.Time, actor, accountID, fileID types.ID, rd receiptbus.CheckReading) (receiptbus.Sent, error)
@@ -1111,14 +1111,14 @@ func (a app) accountMonths(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	out, err := a.books.Receipts.OutstandingChecks(r.Context(), rd.me, id, types.Date{})
+	out, err := a.books.Receipts.OutstandingChecks(r.Context(), rd.me, id, types.Date{}, time.UTC)
 	if a.bookRefused(w, r, err, "account") {
 		return
 	}
 
 	rd.done(w, r, map[string]any{
 		"account": id.String(), "months": months, "url": rd.url("/accounts/" + id.String() + "/months"),
-		"outstanding_checks": map[string]any{"checks": rd.receipts(out.Checks), "total": out.Total, "unpriced": out.Unpriced},
+		"outstanding_checks": map[string]any{"checks": rd.checkImages(out.Checks), "total": out.Total, "unpriced": out.Unpriced},
 	})
 }
 
@@ -1554,6 +1554,17 @@ func (a app) getTransaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rd.done(w, r, out)
+}
+
+// checkImages is checks outstanding as receipts, which is how the API
+// has always listed them.
+func (rd *reader) checkImages(lines []receiptbus.CheckLine) []map[string]any {
+	list := make([]receiptbus.Receipt, len(lines))
+	for i, l := range lines {
+		list[i] = l.Receipt
+	}
+
+	return rd.receipts(list)
 }
 
 func (rd *reader) receipts(list []receiptbus.Receipt) []map[string]any {

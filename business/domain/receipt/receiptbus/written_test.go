@@ -3,6 +3,7 @@ package receiptbus_test
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
@@ -71,7 +72,7 @@ func TestAChecksMemoAndDayWritten(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err := w.receipts.OutstandingChecks(w.ctx, w.owner, acct, types.Date{})
+	out, err := w.receipts.OutstandingChecks(w.ctx, w.owner, acct, types.Date{}, time.UTC)
 	if err != nil || len(out.Checks) != 3 || out.Total.String() != "85.00" || out.Unpriced != 1 {
 		t.Fatalf("outstanding: %+v, %v", out, err)
 	}
@@ -80,12 +81,14 @@ func TestAChecksMemoAndDayWritten(t *testing.T) {
 		t.Errorf("outstanding, in order: %s, %s, %s", out.Checks[0].Check, out.Checks[1].Check, out.Checks[2].Check)
 	}
 
-	july, err := w.receipts.OutstandingChecks(w.ctx, w.owner, acct, mustDate(t, "2026-07-31"))
-	if err != nil || len(july.Checks) != 2 || july.Total.String() != "75.00" || july.Unpriced != 1 {
+	// At the end of July, only 1195: 1199 was written in August, and 1200,
+	// whose day nobody read, counts from the day it was added, in August.
+	july, err := w.receipts.OutstandingChecks(w.ctx, w.owner, acct, mustDate(t, "2026-07-31"), time.UTC)
+	if err != nil || len(july.Checks) != 1 || july.Checks[0].Check != "1195" || july.Total.String() != "75.00" || july.Unpriced != 0 {
 		t.Errorf("outstanding at the end of July: %+v, %v", july, err)
 	}
 
-	if _, err := w.receipts.OutstandingChecks(w.ctx, w.pilgrim, acct, types.Date{}); !errors.Is(err, receiptbus.ErrNotFound) {
+	if _, err := w.receipts.OutstandingChecks(w.ctx, w.pilgrim, acct, types.Date{}, time.UTC); !errors.Is(err, receiptbus.ErrNotFound) {
 		t.Errorf("the pilgrim: %v", err)
 	}
 
@@ -113,7 +116,7 @@ func TestAChecksMemoAndDayWritten(t *testing.T) {
 		t.Errorf("check 1195's transaction: memo %q, written %s, posted %s", c.CheckMemo, c.WrittenOn, c.PostedOn)
 	}
 
-	if out, _ := w.receipts.OutstandingChecks(w.ctx, w.owner, acct, types.Date{}); len(out.Checks) != 2 || out.Total.String() != "10.00" {
+	if out, _ := w.receipts.OutstandingChecks(w.ctx, w.owner, acct, types.Date{}, time.UTC); len(out.Checks) != 2 || out.Total.String() != "10.00" {
 		t.Errorf("outstanding after August: %+v", out)
 	}
 

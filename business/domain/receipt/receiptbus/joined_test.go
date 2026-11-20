@@ -2,6 +2,7 @@ package receiptbus_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
 	"github.com/jroedel/reconcile/business/types"
@@ -74,7 +75,7 @@ func TestOneCheckOneReceipt(t *testing.T) {
 	}
 
 	// One check outstanding, for its amount once.
-	out, err := w.receipts.OutstandingChecks(w.ctx, w.owner, acct, types.Date{})
+	out, err := w.receipts.OutstandingChecks(w.ctx, w.owner, acct, types.Date{}, time.UTC)
 	if err != nil || len(out.Checks) != 1 || out.Checks[0].ID != check || out.Total.String() != "45.00" || out.Unpriced != 0 {
 		t.Errorf("outstanding: %+v, %v", out, err)
 	}

@@ -4,11 +4,13 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
 	"github.com/jroedel/reconcile/business/domain/question/questionbus"
 	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
 	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
+	"github.com/jroedel/reconcile/business/domain/user/userbus"
 	"github.com/jroedel/reconcile/business/types"
 )
 
@@ -39,9 +41,11 @@ type statementView struct {
 	// is when somebody looks.
 	Receipts []receiptbus.Receipt
 
-	// Outstanding is the account's checks written by the end of the period
-	// that no statement has paid yet: what the bank's closing balance
-	// leaves out, beside it as the treasurer compares it with the paper.
+	// Outstanding is the account's checks that were out at the end of the
+	// period -- written by then, and not paid or voided by then, however
+	// they have fared since: what the bank's closing balance leaves out,
+	// beside it as the treasurer compares it with the paper, and the same
+	// list a year later.
 	Outstanding receiptbus.Outstanding
 
 	Form statementForm
@@ -125,7 +129,7 @@ func (a app) statementPage(w http.ResponseWriter, r *http.Request, status int, f
 
 	_, end := st.Period()
 
-	if view.Outstanding, err = a.cfg.Receipts.OutstandingChecks(ctx, me.ID, st.AccountID, end); err != nil {
+	if view.Outstanding, err = a.cfg.Receipts.OutstandingChecks(ctx, me.ID, st.AccountID, end, userbus.Location(me.Zone)); err != nil {
 		a.failed(w, r, err)
 
 		return
@@ -320,7 +324,7 @@ func (a app) months(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if view.Outstanding, err = a.cfg.Receipts.OutstandingChecks(ctx, me.ID, id, types.Date{}); err != nil {
+	if view.Outstanding, err = a.cfg.Receipts.OutstandingChecks(ctx, me.ID, id, types.Date{}, time.UTC); err != nil {
 		a.failed(w, r, err)
 
 		return

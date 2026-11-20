@@ -678,27 +678,30 @@ func (b *Business) paidTo(ctx context.Context, now time.Time, actor types.ID, be
 	return nil
 }
 
-// Outstanding is the checks of an account that were written and not yet
-// cleared, as far as the site knows: images whose number has been read
-// and that are on no transaction, written on or before by when by is not
-// zero (one whose day written is not known is counted, since it may have
-// been). Total is the sum of those whose amount is known, and Unpriced how
+// Outstanding is the checks of an account that were written and not
+// cleared, as far as the site knows: images whose number has been read.
+// With no day, those on no transaction now. With a day, those outstanding
+// at its end (register.go): written by then, and neither cleared nor voided
+// by then, so that a statement from months ago lists the checks that were
+// out when it closed, the ones that cleared since among them, each saying
+// when. Total is the sum of those whose amount is known, and Unpriced how
 // many have none -- a number typed on its page, before anybody read its
 // amount -- so that a total is never taken for more than it adds up.
 type Outstanding struct {
-	Checks   []Receipt
+	Checks   []CheckLine
 	Total    money.Amount
 	Unpriced int
 
-	// By is the day they were written by, as asked; zero for all.
+	// By is the day asked about; zero for now.
 	By types.Date
 }
 
 // OutstandingChecks is an account's Outstanding, for anyone who may read
 // the account: a treasurer's list beside the bank's balance at a month's
 // end, and the accountant's of what was paid and has not left the bank.
-// Oldest written first, then by number.
-func (b *Business) OutstandingChecks(ctx context.Context, actor, accountID types.ID, by types.Date) (Outstanding, error) {
+// Oldest written first, then by number. loc is the reader's time zone,
+// for the day a check was voided or added; it matters only with a day.
+func (b *Business) OutstandingChecks(ctx context.Context, actor, accountID types.ID, by types.Date, loc *time.Location) (Outstanding, error) {
 	home := types.AccountScope(accountID)
 
 	if ok, err := b.can(ctx, actor, home, tenancybus.Read); err != nil {
@@ -707,22 +710,29 @@ func (b *Business) OutstandingChecks(ctx context.Context, actor, accountID types
 		return Outstanding{}, ErrNotFound
 	}
 
-	waiting, err := b.store.InHomes(ctx, []types.Scope{home}, true)
-	if err != nil {
-		return Outstanding{}, err
-	}
-
 	out := Outstanding{By: by}
 
-	for _, r := range waiting {
-		if !r.CheckImage || r.Check == "" || !by.Zero() && !r.WrittenOn.Zero() && r.WrittenOn.String() > by.String() {
-			continue
+	if by.Zero() {
+		waiting, err := b.store.InHomes(ctx, []types.Scope{home}, true)
+		if err != nil {
+			return Outstanding{}, err
 		}
 
-		out.Checks = append(out.Checks, r)
+		for _, r := range waiting {
+			if r.CheckImage && r.Check != "" {
+				out.Checks = append(out.Checks, CheckLine{Receipt: r, State: NumberOutstanding})
+			}
+		}
+	} else {
+		var err error
+		if out.Checks, err = b.outstandingOn(ctx, accountID, by, loc); err != nil {
+			return Outstanding{}, err
+		}
+	}
 
-		if r.HasAmount {
-			out.Total += r.Amount
+	for _, c := range out.Checks {
+		if c.HasAmount {
+			out.Total += c.Amount
 		} else {
 			out.Unpriced++
 		}
@@ -730,7 +740,7 @@ func (b *Business) OutstandingChecks(ctx context.Context, actor, accountID types
 
 	// Those whose day is not known after the rest; numbers as numbers,
 	// so that 998 comes before 1001.
-	slices.SortStableFunc(out.Checks, func(x, y Receipt) int {
+	slices.SortStableFunc(out.Checks, func(x, y CheckLine) int {
 		switch {
 		case x.WrittenOn.Zero() != y.WrittenOn.Zero():
 			return cmp.Compare(btoi(x.WrittenOn.Zero()), btoi(y.WrittenOn.Zero()))
