@@ -56,13 +56,13 @@ described:
 | Topic | Decision |
 |---|---|
 | Who may hold a key | **Anybody who has signed up**, for the scopes they choose. A key acts as its person, so it reaches only what that person's roles reach |
-| What a key may do | **Scopes**: `translate`, `upload`, `books:read`, `books:write`. A key holds one or more; an endpoint names the one it needs |
+| What a key may do | **Scopes**: `translate`, `upload`, `checks`, `books:read`, `books:write`. A key holds one or more; an endpoint names the one it needs |
 | How long a key lasts | 90 days, as now, except an `upload`-only key, which lasts a year: it lives in a script, reads nothing, and its whole power is to put a file in a queue |
 | What was done through the API | **Marked, and listable.** The history says "through Claude"; a transaction sorted and a rule written through the API say so on their pages until a person has looked; and the API answers "what changed through me since" |
 
 ## Scopes
 
-A key gains `scopes`, a set of four words.
+A key gains `scopes`, a set of five words.
 
 - **`translate`**: the translation endpoints, as now. Only the site
   administrator and translators may choose it (`translationbus.MayTranslate`).
@@ -75,7 +75,17 @@ A key gains `scopes`, a set of four words.
   transactions, rules, receipts and projects, as far as the person's roles
   reach, and the inbox's list.
 - **`books:write`**: the bookkeeping below. It implies `books:read`, since
-  nobody sorts a month blind.
+  nobody sorts a month blind, and `checks`.
+- **`checks`** (issue #166, `docs/checks.md`): what a program that prints
+  checks needs, and nothing else. It sees the checking accounts the person
+  may attach receipts in, by name and last four digits, the check numbers
+  each has used, and payee names. It may send the checks it prints and void
+  them. Asking whether one number is free can show the bank's amount and day
+  for that number, which sending a check for another amount would show
+  anyway; it reads no other transaction, statement or receipt. A key with
+  only `checks` lasts a year, like `upload`: it lives on the computer beside
+  the printer, and the worst it can do is a check among the outstanding
+  that a person voids.
 
 The route declares its scope in its `Endpoint` (a new `Scope` field, shown in
 the index), and a middleware beside `mid.RequireKey` refuses a key without it
@@ -86,7 +96,8 @@ nothing, because the viewer may not.
 **The keys screen opens to everybody** signed in, linked from the account
 page. Making a key asks what it is for, in plain words rather than scope
 names: *a script that sends statements* (`upload`), *reading my books*
-(`books:read`), *keeping my books* (`books:write`), and, for translators,
+(`books:read`), *keeping my books* (`books:write`), *a program that prints
+checks* (`checks`), and, for translators,
 *translating*. Each purpose is offered from the pull request that gives it
 something to reach, so that no key is made for an API that is not there. The list shows each key's purpose, when it was last used and
 when it ends.

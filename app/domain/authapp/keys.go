@@ -62,6 +62,7 @@ type keyRow struct {
 // choice, and what the list says of each key.
 var purposes = map[string][]userbus.Scope{
 	"upload":     {userbus.Upload},
+	"checks":     {userbus.Checks},
 	"books-read": {userbus.BooksRead},
 	"books-keep": {userbus.BooksWrite},
 	"translate":  {userbus.Translate},
