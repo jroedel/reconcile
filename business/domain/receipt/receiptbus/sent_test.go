@@ -230,12 +230,27 @@ func TestVoidingACheck(t *testing.T) {
 		t.Errorf("voiding a cleared check on its page: %v", err)
 	}
 
-	if _, err := w.receipts.VoidCheck(w.ctx, now, w.owner, acct, "4444"); !errors.Is(err, receiptbus.ErrNotFound) {
+	if _, err := w.receipts.VoidCheck(w.ctx, now, w.owner, acct, "4444"); !errors.Is(err, receiptbus.ErrNoCheck) {
 		t.Errorf("voiding no check: %v", err)
 	}
 
 	if _, err := w.receipts.VoidCheck(w.ctx, now, w.stranger, acct, "1191"); !errors.Is(err, receiptbus.ErrNotFound) {
 		t.Errorf("a stranger voiding: %v", err)
+	}
+
+	// The checks sent: outstanding, or all of them, newest written first.
+	outstanding, err := w.receipts.SentChecks(w.ctx, w.owner, acct, false)
+	if err != nil || len(outstanding) != 2 {
+		t.Errorf("outstanding: %d, %v", len(outstanding), err)
+	}
+
+	all, err := w.receipts.SentChecks(w.ctx, w.owner, acct, true)
+	if err != nil || len(all) != 4 {
+		t.Errorf("all: %d, %v", len(all), err)
+	}
+
+	if mine, _ := w.receipts.SentChecks(w.ctx, w.stranger, acct, true); len(mine) != 0 {
+		t.Errorf("a stranger's: %d", len(mine))
 	}
 }
 

@@ -157,7 +157,7 @@ func (a app) Endpoints() []Endpoint {
 	return append([]Endpoint{{
 		Method: http.MethodGet, Path: Prefix, Summary: "This index: every endpoint, what it takes, and the rules.",
 		Returns: "This document.", handler: a.index,
-	}}, slices.Concat(a.bookEndpoints(), a.keepEndpoints(), a.receiptEndpoints(), a.payeeEndpoints(), a.questionEndpoints(), a.inboxEndpoints(), a.translationEndpoints())...)
+	}}, slices.Concat(a.bookEndpoints(), a.keepEndpoints(), a.receiptEndpoints(), a.checkEndpoints(), a.payeeEndpoints(), a.questionEndpoints(), a.inboxEndpoints(), a.translationEndpoints())...)
 }
 
 func (a app) index(w http.ResponseWriter, r *http.Request) {
@@ -166,8 +166,8 @@ func (a app) index(w http.ResponseWriter, r *http.Request) {
 		Version: "v1",
 		BaseURL: a.base,
 		Authentication: "Send Authorization: Bearer <key> on every endpoint but this one. A person makes a key at " +
-			a.base + "/account/keys, for what they say it is for; it acts as them, is shown once, and lasts 90 days, or a year for one that may only upload. " +
-			"Each endpoint names the scope its key needs: upload, books:read, books:write (which includes books:read) or translate.",
+			a.base + "/account/keys, for what they say it is for; it acts as them, is shown once, and lasts 90 days, or a year for one that may only upload or only print checks. " +
+			"Each endpoint names the scope its key needs: upload, checks, books:read, books:write (which includes books:read and checks) or translate.",
 		Rules: []string{
 			"A key reaches only what its person may, and only for its scopes: something of somebody else's is answered 404, the same as something that does not exist.",
 			"Reading the books changes nothing. Start with get_overview. Every statement, transaction, rule, receipt and project in an answer has a url: send the person there to see it, or to do what is theirs to do, such as reconciling a month.",

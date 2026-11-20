@@ -96,6 +96,9 @@ func (e NumberUsed) Error() string {
 // one archived.
 var ErrNotChecking = errors.New("checks are drawn on a checking account")
 
+// ErrNoCheck is voiding a number no check in the account has.
+var ErrNoCheck = errors.New("no check in the account has that number")
+
 // Sent is what sending a check made.
 type Sent struct {
 	Check Receipt
@@ -267,7 +270,7 @@ func sameCheck(r Receipt, amount money.Amount, payee string, on types.Date) bool
 // VoidCheck marks the account's check of that number void, as a program
 // that printed it does when the paper was spoiled. One voided already is
 // the answer as it is. A check on its transaction has cleared, and is
-// ErrAttached; no check with the number is ErrNotFound.
+// ErrAttached; no check with the number is ErrNoCheck.
 func (b *Business) VoidCheck(ctx context.Context, now time.Time, actor, accountID types.ID, number string) (Receipt, error) {
 	if _, err := b.checksAccount(ctx, actor, accountID); err != nil && !errors.Is(err, ErrNotChecking) {
 		return Receipt{}, err
@@ -300,7 +303,33 @@ func (b *Business) VoidCheck(ctx context.Context, now time.Time, actor, accountI
 		return *void, nil
 	}
 
-	return Receipt{}, ErrNotFound
+	return Receipt{}, ErrNoCheck
+}
+
+// SentChecks is the actor's own checks in the account, numbered: those
+// outstanding, or all of them -- attached and void too -- the newest
+// written first. It is what a program that prints checks shows of the
+// checks it printed, to void one, and no more than that: a key that may
+// only send checks reads nobody else's.
+func (b *Business) SentChecks(ctx context.Context, actor, accountID types.ID, all bool) ([]Receipt, error) {
+	if _, err := b.checksAccount(ctx, actor, accountID); err != nil && !errors.Is(err, ErrNotChecking) {
+		return nil, err
+	}
+
+	every, err := b.store.InHomes(ctx, []types.Scope{types.AccountScope(accountID)}, !all)
+	if err != nil {
+		return nil, err
+	}
+
+	out := slices.DeleteFunc(every, func(r Receipt) bool {
+		return !r.CheckImage || r.Check == "" || r.Removed() || r.UploadedBy != actor
+	})
+
+	slices.SortStableFunc(out, func(x, y Receipt) int {
+		return cmp.Or(strings.Compare(y.WrittenOn.String(), x.WrittenOn.String()), cmp.Compare(len(y.Check), len(x.Check)), strings.Compare(y.Check, x.Check))
+	})
+
+	return out, nil
 }
 
 // SetCheckVoided marks a check's image void, or takes the mark off, on

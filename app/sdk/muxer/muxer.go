@@ -410,6 +410,12 @@ func New(cfg Config) (http.Handler, error) {
 	for _, pattern := range apiapp.ReceiptPatterns {
 		shape.Handle(pattern, web.Wrap(apiInner, web.Deadline(receiptapp.UploadTime), web.MaxBody(apiapp.MaxReceipt)))
 	}
+
+	// And the image of a check a program printed (apiapp, checks.go), the
+	// same size as a receipt's.
+	for _, pattern := range apiapp.CheckPatterns {
+		shape.Handle(pattern, web.Wrap(apiInner, web.Deadline(receiptapp.UploadTime), web.MaxBody(apiapp.MaxReceipt)))
+	}
 	for _, pattern := range ledgerapp.UploadPatterns {
 		shape.Handle(pattern, web.Wrap(inner,
 			web.Deadline(receiptapp.UploadTime), web.MaxBody(ledgerapp.MaxUpload), web.MultipartOnly()))
