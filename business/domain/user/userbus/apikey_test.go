@@ -173,8 +173,9 @@ func TestAKeyKeepsItsScopes(t *testing.T) {
 		t.Fatalf("authenticated with scopes %q: %v", got.Scopes, err)
 	}
 
-	// Keeping the books includes reading them; nothing includes uploading.
-	for s, want := range map[userbus.Scope]bool{userbus.BooksRead: true, userbus.BooksWrite: true, userbus.Translate: true, userbus.Upload: false} {
+	// Keeping the books includes reading them and sending checks; nothing
+	// includes uploading.
+	for s, want := range map[userbus.Scope]bool{userbus.BooksRead: true, userbus.BooksWrite: true, userbus.Checks: true, userbus.Translate: true, userbus.Upload: false} {
 		if got.Allows(s) != want {
 			t.Errorf("allows %s: %v", s, !want)
 		}
@@ -206,5 +207,31 @@ func TestAnUploadKeyLastsAYear(t *testing.T) {
 
 	if up.ExpiresAt != start.Add(userbus.UploadKeyLife) || both.ExpiresAt != start.Add(userbus.APIKeyLife) {
 		t.Errorf("an upload key ends %v, one that also reads %v", up.ExpiresAt, both.ExpiresAt)
+	}
+}
+
+// A key that may only send checks lasts a year too, beside the printer;
+// it includes nothing else, and reading the books does not include it.
+func TestAChecksKey(t *testing.T) {
+	b := newBus(t)
+	u := signUp(t, b, "treasurer@example.org")
+
+	k, _, err := b.CreateAPIKey(t.Context(), start, u.ID, "office printer", []userbus.Scope{userbus.Checks})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if k.ExpiresAt != start.Add(userbus.UploadKeyLife) {
+		t.Errorf("a checks key ends %v", k.ExpiresAt)
+	}
+
+	for s, want := range map[userbus.Scope]bool{userbus.Checks: true, userbus.BooksRead: false, userbus.BooksWrite: false, userbus.Upload: false} {
+		if k.Allows(s) != want {
+			t.Errorf("a checks key allows %s: %v", s, !want)
+		}
+	}
+
+	if userbus.Allows([]userbus.Scope{userbus.BooksRead}, userbus.Checks) {
+		t.Error("reading the books allows sending checks")
 	}
 }

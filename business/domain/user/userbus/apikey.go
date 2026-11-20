@@ -52,22 +52,42 @@ const (
 	// BooksWrite is keeping the books as far as the person's roles let
 	// them. It includes BooksRead: nobody sorts a month blind.
 	BooksWrite Scope = "books:write"
+
+	// Checks is what a program that prints checks needs (docs/checks.md):
+	// the checking accounts the person may add receipts to, by name and
+	// last four digits, the check numbers each has used, whether one
+	// number is free, payee names to complete as the person types, and
+	// sending and voiding the checks it prints. It reads nothing else of
+	// the books -- but whether a number is free can say the bank's amount
+	// and day for that one number, as sending a check for another amount
+	// would refuse with. BooksWrite includes it: whoever may keep the
+	// books may send a check.
+	Checks Scope = "checks"
 )
 
 // Scopes is every scope, in the order a page lists them.
-var Scopes = []Scope{Upload, BooksRead, BooksWrite, Translate}
+var Scopes = []Scope{Upload, Checks, BooksRead, BooksWrite, Translate}
 
 // Allows reports whether a key with these scopes may do what needs s.
 func Allows(scopes []Scope, s Scope) bool {
-	return slices.Contains(scopes, s) || (s == BooksRead && slices.Contains(scopes, BooksWrite))
+	switch {
+	case slices.Contains(scopes, s):
+		return true
+	case s == BooksRead, s == Checks:
+		return slices.Contains(scopes, BooksWrite)
+	}
+
+	return false
 }
 
 // lifeOf is how long a key with these scopes lasts: a year for a key that
 // may only upload, which lives in a script that nobody should have to open
-// every three months and whose worst use is a file waiting in a queue;
-// APIKeyLife for any other.
+// every three months and whose worst use is a file waiting in a queue, and
+// for one that may only send checks, which lives on the computer beside
+// the printer and whose worst use is a check that is not there among the
+// checks outstanding, for a person to void; APIKeyLife for any other.
 func lifeOf(scopes []Scope) time.Duration {
-	if len(scopes) == 1 && scopes[0] == Upload {
+	if len(scopes) == 1 && (scopes[0] == Upload || scopes[0] == Checks) {
 		return UploadKeyLife
 	}
 
