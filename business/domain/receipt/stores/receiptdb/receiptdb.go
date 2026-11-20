@@ -30,7 +30,7 @@ var _ receiptbus.Storer = (*Store)(nil)
 
 // Expected is what CheckSchema verifies at startup and on every /healthz.
 var Expected = sqldb.Expected{
-	"receipts":      {"id", "account_id", "project_id", "uploaded_by", "spent_on", "amount", "merchant", "note", "created_at", "removed_at", "check_number", "check_image", "check_memo", "check_written_on"},
+	"receipts":      {"id", "account_id", "project_id", "uploaded_by", "spent_on", "amount", "merchant", "note", "created_at", "removed_at", "check_number", "check_image", "check_memo", "check_written_on", "check_voided_at"},
 	"receipt_files": {"receipt_id", "position", "file_id"},
 	"receipt_links": {"receipt_id", "transaction_id", "linked_by", "linked_at"},
 	"check_inbox":   {"id", "user_id", "file_id", "added_at", "removed_at", "filed_at", "receipt_id"},
@@ -112,6 +112,12 @@ CREATE INDEX IF NOT EXISTS receipt_links_transaction ON receipt_links (transacti
 	}
 
 	if err := sqldb.AddColumn(ctx, db, "receipts", "check_written_on", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+
+	// When a check was voided (issue #166): a later column, NULL for
+	// every receipt that is not a voided check's.
+	if err := sqldb.AddColumn(ctx, db, "receipts", "check_voided_at", "INTEGER"); err != nil {
 		return err
 	}
 
@@ -356,6 +362,23 @@ UPDATE check_inbox SET filed_at = ?, receipt_id = ? WHERE id = ? AND filed_at IS
 	})
 }
 
+// SetVoided marks a check's image void, at a time, or takes the mark off
+// with the zero time, with the history (receiptbus, VoidCheck).
+func (s *Store) SetVoided(ctx context.Context, id types.ID, at time.Time, ev eventbus.Event) error {
+	var voided any
+	if !at.IsZero() {
+		voided = at.UnixMilli()
+	}
+
+	return s.inTx(ctx, &ev, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `UPDATE receipts SET check_voided_at = ? WHERE id = ? AND check_image = 1`, voided, id.String()); err != nil {
+			return fmt.Errorf("voiding a check: %w", err)
+		}
+
+		return nil
+	})
+}
+
 // --- reading ------------------------------------------------------------------
 
 // ByID finds one.
@@ -391,7 +414,7 @@ func (s *Store) InHomes(ctx context.Context, homes []types.Scope, waitingOnly bo
 
 	where := `(r.account_id IN (` + marks(len(accounts)) + `) OR r.project_id IN (` + marks(len(projects)) + `))`
 	if waitingOnly {
-		where += ` AND r.removed_at IS NULL AND NOT EXISTS (SELECT 1 FROM receipt_links l WHERE l.receipt_id = r.id)`
+		where += ` AND r.removed_at IS NULL AND r.check_voided_at IS NULL AND NOT EXISTS (SELECT 1 FROM receipt_links l WHERE l.receipt_id = r.id)`
 	}
 
 	args := make([]any, 0, len(accounts)+len(projects))
@@ -476,6 +499,41 @@ ORDER BY h.created_at, h.rowid LIMIT 1)`, account, project, sha256)
 	return rs[0], true, nil
 }
 
+// Numbered is the images of checks in the account with the number, not
+// removed: voided or not, waiting or attached, newest first.
+func (s *Store) Numbered(ctx context.Context, account types.ID, number string) ([]receiptbus.Receipt, error) {
+	return s.load(ctx, `r.account_id = ? AND r.check_number = ? AND r.check_image = 1 AND r.removed_at IS NULL`, account.String(), number)
+}
+
+// CheckNumbers is every number the account's images of checks have, not
+// removed, voided or not, each once and in no order.
+func (s *Store) CheckNumbers(ctx context.Context, account types.ID) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT DISTINCT check_number FROM receipts
+WHERE account_id = ? AND check_image = 1 AND check_number <> '' AND removed_at IS NULL`, account.String())
+	if err != nil {
+		return nil, fmt.Errorf("reading the numbers of checks: %w", err)
+	}
+	defer rows.Close()
+
+	var out []string
+
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			return nil, fmt.Errorf("reading the numbers of checks: %w", err)
+		}
+
+		out = append(out, n)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("reading the numbers of checks: %w", err)
+	}
+
+	return out, nil
+}
+
 // marks is n placeholders; none is a list that matches nothing.
 func marks(n int) string {
 	if n == 0 {
@@ -490,7 +548,7 @@ func marks(n int) string {
 func (s *Store) load(ctx context.Context, where string, args ...any) ([]receiptbus.Receipt, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT r.id, r.account_id, r.project_id, r.uploaded_by, r.spent_on, r.amount, r.merchant, r.note, r.created_at, r.removed_at, r.check_number, r.check_image,
-       r.check_memo, r.check_written_on
+       r.check_memo, r.check_written_on, r.check_voided_at
 FROM receipts r WHERE `+where+` ORDER BY r.created_at DESC, r.rowid DESC`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("reading receipts: %w", err)
@@ -620,10 +678,11 @@ func scan(row scanner) (receiptbus.Receipt, error) {
 		written          string
 		account, project sql.NullString
 		amount, removed  sql.NullInt64
+		voided           sql.NullInt64
 		at               int64
 	)
 
-	if err := row.Scan(&id, &account, &project, &by, &spent, &amount, &r.Merchant, &r.Note, &at, &removed, &r.Check, &r.CheckImage, &r.Memo, &written); err != nil {
+	if err := row.Scan(&id, &account, &project, &by, &spent, &amount, &r.Merchant, &r.Note, &at, &removed, &r.Check, &r.CheckImage, &r.Memo, &written, &voided); err != nil {
 		return r, fmt.Errorf("reading a receipt: %w", err)
 	}
 
@@ -653,6 +712,10 @@ func scan(row scanner) (receiptbus.Receipt, error) {
 
 	if removed.Valid {
 		r.RemovedAt = time.UnixMilli(removed.Int64).UTC()
+	}
+
+	if voided.Valid {
+		r.VoidedAt = time.UnixMilli(voided.Int64).UTC()
 	}
 
 	return r, nil

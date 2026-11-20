@@ -125,6 +125,7 @@ func Routes(mux *http.ServeMux, cfg Config, guard web.Middleware) {
 	handle("POST /receipts/{id}/attach", a.attach)
 	handle("POST /receipts/{id}/detach", a.detach)
 	handle("POST /receipts/{id}/remove", a.remove)
+	handle("POST /receipts/{id}/void", a.void)
 }
 
 // --- the shared tail --------------------------------------------------------
@@ -1129,6 +1130,57 @@ func (a app) detach(w http.ResponseWriter, r *http.Request) {
 	}
 
 	back(w, r, "/receipts/"+id.String(), "detached")
+}
+
+// void marks a check's image void, or takes the mark off
+// (receiptbus.SetCheckVoided).
+func (a app) void(w http.ResponseWriter, r *http.Request) {
+	me, ok := actor(w, r)
+	if !ok || !form(w, r) {
+		return
+	}
+
+	id, ok := a.pathID(w, r)
+	if !ok {
+		return
+	}
+
+	voided := r.PostForm.Get("voided") == "1"
+
+	_, err := a.cfg.Receipts.SetCheckVoided(r.Context(), a.cfg.Now(), me.ID, id, voided)
+
+	_, used := errors.AsType[receiptbus.NumberUsed](err)
+	_, invalid := errors.AsType[receiptbus.Invalid](err)
+
+	switch {
+	case errors.Is(err, receiptbus.ErrAttached):
+		a.receiptPage(w, r, http.StatusUnprocessableEntity, nil, "attached")
+
+		return
+	case errors.Is(err, receiptbus.ErrRemoved):
+		a.receiptPage(w, r, http.StatusUnprocessableEntity, nil, "removed")
+
+		return
+	case used:
+		a.receiptPage(w, r, http.StatusConflict, nil, "number-used")
+
+		return
+	case invalid:
+		a.receiptPage(w, r, http.StatusUnprocessableEntity, nil, "void")
+
+		return
+	case err != nil:
+		a.failed(w, r, err)
+
+		return
+	}
+
+	done := "unvoided"
+	if voided {
+		done = "voided"
+	}
+
+	http.Redirect(w, r, "/receipts/"+id.String()+"?done="+done, http.StatusSeeOther)
 }
 
 func (a app) remove(w http.ResponseWriter, r *http.Request) {

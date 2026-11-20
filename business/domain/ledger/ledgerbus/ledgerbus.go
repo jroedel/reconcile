@@ -283,6 +283,11 @@ type Storer interface {
 	// first makes p with made when made is not nil -- ErrPayeeTaken if
 	// another has its spelling by then (checks.go).
 	WithCheck(ctx context.Context, account types.ID, number string) ([]Transaction, error)
+
+	// CheckNumbers is every check number the account's transactions
+	// have, each once, in no order.
+	CheckNumbers(ctx context.Context, account types.ID) ([]string, error)
+
 	SetPayee(ctx context.Context, id types.ID, payee, via string, p Payee, made, ev *eventbus.Event) error
 
 	// Payees is an owner's list, not joined ones, archived last, with

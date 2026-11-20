@@ -704,6 +704,8 @@ func (a app) bookRefused(w http.ResponseWriter, r *http.Request, err error, what
 		web.WriteJSON(w, http.StatusConflict, web.Problem("match", "The account already has a rule with that text. Change that rule instead, or save the rule again with save_rule, which corrects the rule with the same text."))
 	case errors.Is(err, receiptbus.ErrRemoved):
 		web.WriteJSON(w, http.StatusConflict, web.Problem("", "That receipt was removed. Restoring it is its person's, on its page."))
+	case errors.Is(err, receiptbus.ErrVoided):
+		web.WriteJSON(w, http.StatusConflict, web.Problem("", "That check was voided: it is attached to nothing and read no further. If the person says it is not void after all, they take the mark off on its page."))
 	case errors.Is(err, receiptbus.ErrAttached):
 		web.WriteJSON(w, http.StatusConflict, web.Problem("", "That check's image is attached to a transaction already. If it is on the wrong one, detach_receipt it first, then read it again."))
 	case isDiffers:

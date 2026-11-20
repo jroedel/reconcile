@@ -2,7 +2,7 @@
 {{define "content"}}{{$v := .Data}}{{$r := $v.View.Receipt}}
 {{if $v.HomePath}}{{template "crumbs" (trail $ $v.HomeName $v.HomePath (t "Receipts") (printf "%s/receipts" $v.HomePath))}}{{end}}
 <h1>{{if $r.Check}}{{t "Check {number}" "number" $r.Check}}{{else if $r.CheckImage}}{{t "A check"}}{{else}}{{with $r.Label}}{{.}}{{else}}{{t "A receipt"}}{{end}}{{end}}</h1>
-{{if $r.CheckImage}}<p>{{if $r.Waiting}}{{if $r.Check}}{{t "The image of a check, waiting for the transaction that paid it: the check has not cleared, its statement is not imported yet, or several transactions in the account have its number."}}{{else}}{{t "The image of a check whose number has not been said. Once it has, the image is attached to the transaction with that number."}}{{end}}{{else}}{{t "The image of a check, attached to the transaction that paid it by its number."}}{{end}}{{with $r.Merchant}} {{t "Paid to {payee}." "payee" .}}{{end}}{{with $r.Memo}} {{t "Memo: {memo}." "memo" .}}{{end}}{{if not $r.WrittenOn.Zero}} {{t "Written on {date}." "date" $r.WrittenOn}}{{end}}</p>{{end}}
+{{if $r.CheckImage}}<p>{{if $r.Voided}}{{t "The image of a check that was voided: it is kept with its number, it is not outstanding, and no transaction will be matched to it."}}{{else if $r.Waiting}}{{if $r.Check}}{{t "The image of a check, waiting for the transaction that paid it: the check has not cleared, its statement is not imported yet, or several transactions in the account have its number."}}{{else}}{{t "The image of a check whose number has not been said. Once it has, the image is attached to the transaction with that number."}}{{end}}{{else}}{{t "The image of a check, attached to the transaction that paid it by its number."}}{{end}}{{with $r.Merchant}} {{t "Paid to {payee}." "payee" .}}{{end}}{{with $r.Memo}} {{t "Memo: {memo}." "memo" .}}{{end}}{{if not $r.WrittenOn.Zero}} {{t "Written on {date}." "date" $r.WrittenOn}}{{end}}</p>{{end}}
 <p class="hint">{{if $v.UploadedBy}}{{t "Added by {who} on {date}." "who" $v.UploadedBy "date" ($r.CreatedAt.Format "2006-01-02")}}{{else}}{{t "Added on {date}." "date" ($r.CreatedAt.Format "2006-01-02")}}{{end}}</p>
 {{template "done" $v.Done}}
 {{template "problem" $v.Problem}}
@@ -28,6 +28,8 @@
 {{if $v.View.CanEdit}}<form method="post" action="/receipts/{{$r.ID}}/detach" class="inline"><input type="hidden" name="transaction" value="{{.ID}}"><button type="submit" class="link">{{t "Take it off"}}</button></form>{{end}}
 </li>{{end}}
 </ul>
+{{else if $r.Voided}}
+<p>{{t "Nothing: the check was voided."}}</p>
 {{else}}
 <p>{{t "Nothing yet: it is waiting for a match."}}</p>
 {{template "suggestions" (dict "Receipt" $r "Transactions" $v.Suggestions "Accounts" $v.Accounts "Back" (printf "/receipts/%s" $r.ID))}}
@@ -42,6 +44,19 @@
   <p class="hint">{{t "As printed on the check, usually at its top right."}}</p></div>
   <button type="submit">{{t "Save"}}</button>
 </form>
+</section>
+{{end}}
+
+{{if and $v.View.CanEdit $r.CheckImage $r.Check (not $r.Removed) (not $v.View.Transactions)}}
+<section class="card" id="void">
+<h2>{{t "Void"}}</h2>
+{{if $r.Voided}}
+<p class="hint">{{t "Voided by mistake? Taking the mark off makes it outstanding again."}}</p>
+<form method="post" action="/receipts/{{$r.ID}}/void"><input type="hidden" name="voided" value="0"><button type="submit" class="quiet">{{t "It is not void"}}</button></form>
+{{else}}
+<p class="hint">{{t "Spoiled, torn up, or never sent? Voiding keeps it with its number, so that the accountant can see why the number was skipped, and it stops counting as outstanding."}}</p>
+<form method="post" action="/receipts/{{$r.ID}}/void"><input type="hidden" name="voided" value="1"><button type="submit" class="quiet">{{t "Void this check"}}</button></form>
+{{end}}
 </section>
 {{end}}
 
