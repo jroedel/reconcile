@@ -245,7 +245,7 @@ func TestVoidingACheckOnItsPage(t *testing.T) {
 	wantBody(t, e.owner.get(check), `action="`+check+`/void"`, "Void this check")
 	wantRedirect(t, e.owner.post(check+"/void", url.Values{"voided": {"1"}}), check+"?done=voided")
 	wantBody(t, e.owner.get(check+"?done=voided"), "Voided. It is kept here with its number", "The image of a check that was voided", "It is not void")
-	wantBody(t, e.owner.get(e.account+"/receipts"), "Void checks", "check 1190")
+	wantBody(t, e.owner.get(e.account+"/receipts"), "Void checks", "Check 1190", ">void<")
 	wantBody(t, e.owner.get(e.account), "voided check 1190")
 
 	wantRedirect(t, e.owner.post(check+"/void", url.Values{"voided": {"0"}}), check+"?done=unvoided")
