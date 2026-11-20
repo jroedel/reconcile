@@ -149,7 +149,10 @@ handles the person's email code or a session.
   printed", "voided check 1190", "took the void mark off check 1190", each
   with the key it came through.
 
-## Not yet
+## For the accountant
 
-- **The accountant's package** does not list void checks yet. They are on
-  the account's receipts page.
+- **An account's package** holds `checks.csv`: the checks written in the
+  period and those still out at its end, void ones among them, each as it
+  was on the period's last day, with its image (`docs/plan.md`, "Export").
+- **A statement's checks outstanding** are those out on its last day,
+  including those that cleared or were voided since, each saying when.

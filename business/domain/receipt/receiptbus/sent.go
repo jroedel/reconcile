@@ -507,7 +507,7 @@ func numbersFrom(all []string) Numbers {
 	}
 
 	slices.SortFunc(ns, func(x, y string) int {
-		return cmp.Or(cmp.Compare(len(y), len(x)), strings.Compare(y, x))
+		return byNumber(y, x)
 	})
 
 	out := Numbers{Last: ns[:min(len(ns), lastNumbers)]}

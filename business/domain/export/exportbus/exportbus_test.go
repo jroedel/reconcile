@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/csv"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -64,6 +65,17 @@ func TestNames(t *testing.T) {
 	if got := receiptPath(typed, grocery, 2, filebus.PDF); got != "receipts/2026-07-02_30.00_corner-grocery_2.pdf" {
 		t.Errorf("receiptPath = %q", got)
 	}
+
+	// A check no transaction of the period paid: by its number, the day
+	// written on it and its amount, as far as those were read.
+	void := receiptbus.Receipt{Check: "1190", Details: receiptbus.Details{WrittenOn: day("2026-07-05"), Amount: 4550, HasAmount: true, Merchant: "Diocesan Office"}}
+	if got := checkImagePath(void, 1, filebus.JPEG); got != "checks/1190_2026-07-05_45.50_diocesan-office_1.jpg" {
+		t.Errorf("checkImagePath = %q", got)
+	}
+
+	if got := checkImagePath(receiptbus.Receipt{Check: "1191"}, 2, filebus.PNG); got != "checks/1191_2.png" {
+		t.Errorf("checkImagePath, nothing read but the number = %q", got)
+	}
 }
 
 // files is invented bytes by file ID.
@@ -100,7 +112,11 @@ func TestWritingAPackage(t *testing.T) {
 		header[i] = "c" + string(rune('a'+i))
 	}
 
-	words := Words{Columns: header, Kinds: map[categorybus.Kind]string{categorybus.Expense: "Spent"}, Explanations: make([]string, ExplanationColumns)}
+	words := Words{
+		Columns: header, Kinds: map[categorybus.Kind]string{categorybus.Expense: "Spent"}, Explanations: make([]string, ExplanationColumns),
+		Checks:      []string{"Number", "Written", "Paid to", "Amount", "Memo", "At the end", "Cleared", "Voided", "Image"},
+		CheckStates: map[receiptbus.CheckState]string{receiptbus.NumberOutstanding: "Outstanding", receiptbus.NumberAttached: "Cleared", receiptbus.NumberVoid: "Void"},
+	}
 
 	var out bytes.Buffer
 	if err := b.Write(t.Context(), time.Date(2026, 8, 3, 9, 0, 0, 0, time.UTC), &out, p, words); err != nil {
@@ -152,7 +168,49 @@ func TestWritingAPackage(t *testing.T) {
 		t.Error("the photo changed on the way into the zip")
 	}
 
-	if err := b.Write(t.Context(), time.Now(), io.Discard, p, Words{Columns: header[:3], Explanations: words.Explanations}); err == nil {
+	if err := b.Write(t.Context(), time.Now(), io.Discard, p, Words{Columns: header[:3], Explanations: words.Explanations, Checks: words.Checks}); err == nil {
 		t.Error("a short header was written")
+	}
+
+	// With the period's checks: checks.csv after the transactions, a void
+	// one among them, its memo kept from running as a formula.
+	spoiled := receiptbus.Receipt{Check: "1190", Details: receiptbus.Details{Amount: 4550, HasAmount: true, Merchant: "Diocesan Office", Memo: "=SUM(A1)", WrittenOn: day("2026-07-05")}}
+	p.Checks = []CheckRow{
+		{CheckLine: receiptbus.CheckLine{Receipt: receiptbus.Receipt{Check: "1176", Details: receiptbus.Details{Amount: 12000, HasAmount: true, Merchant: "Hilltop Plumbing", WrittenOn: day("2026-06-28")}}, State: receiptbus.NumberAttached, ClearedOn: day("2026-07-02")}, Images: []string{"checks/1176_1.jpg", "checks/1176_2.jpg"}},
+		{CheckLine: receiptbus.CheckLine{Receipt: spoiled, State: receiptbus.NumberVoid, VoidedOn: day("2026-07-06")}, Images: []string{"checks/1190_2026-07-05_45.50_diocesan-office_1.jpg"}},
+		{CheckLine: receiptbus.CheckLine{Receipt: receiptbus.Receipt{Check: "1191"}, State: receiptbus.NumberOutstanding}},
+	}
+
+	out.Reset()
+	if err := b.Write(t.Context(), time.Date(2026, 8, 3, 9, 0, 0, 0, time.UTC), &out, p, words); err != nil {
+		t.Fatal(err)
+	}
+
+	if zr, err = zip.NewReader(bytes.NewReader(out.Bytes()), int64(out.Len())); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(zr.File) != 3 || zr.File[1].Name != "checks.csv" {
+		t.Fatalf("the zip with checks holds %+v", zr.File)
+	}
+
+	checks, err := csv.NewReader(strings.NewReader(strings.TrimPrefix(read(zr.File[1]), "\ufeff"))).ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantChecks := [][]string{
+		words.Checks,
+		{"1176", "2026-06-28", "Hilltop Plumbing", "120.00", "", "Cleared", "2026-07-02", "", "checks/1176_1.jpg; checks/1176_2.jpg"},
+		{"1190", "2026-07-05", "Diocesan Office", "45.50", "'=SUM(A1)", "Void", "", "2026-07-06", "checks/1190_2026-07-05_45.50_diocesan-office_1.jpg"},
+		{"1191", "", "", "", "", "Outstanding", "", "", ""},
+	}
+
+	if fmt.Sprint(checks) != fmt.Sprint(wantChecks) {
+		t.Errorf("checks.csv:\n got %q\nwant %q", checks, wantChecks)
+	}
+
+	if err := b.Write(t.Context(), time.Now(), io.Discard, p, Words{Columns: header, Explanations: words.Explanations, Checks: words.Checks[:8]}); err == nil {
+		t.Error("a short checks header was written")
 	}
 }

@@ -11,6 +11,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/jroedel/reconcile/business/types"
 )
 
 // unzipped is a download's files by name.
@@ -126,6 +129,65 @@ func TestTheAccountantsPackage(t *testing.T) {
 		t.Errorf("the grocery's second part: %q", p)
 	}
 
+	if _, ok := files["checks.csv"]; ok {
+		t.Error("a package with no checks holds checks.csv")
+	}
+
+	// Two checks written in July and not cleared, one of them spoiled and
+	// voided today: July's package lists both, with the images, and the
+	// spoiled one as it was at July's end -- out, voided since -- while a
+	// package running to this month has it void.
+	rec = e.owner.receipts(e.account+"/checks", nil, [2]string{"1190.jpg", photoOf("1190")}, [2]string{"1191.jpg", photoOf("1191")})
+	checks := map[string]string{}
+
+	for _, rc := range receiptsOn(e.owner.get(rec.Header().Get("Location")).Body.String()) {
+		for _, n := range []string{"1190", "1191"} {
+			if strings.Contains(e.owner.get(rc).Body.String(), "<h1>Check "+n) {
+				checks[n] = rc
+			}
+		}
+	}
+
+	for n, written := range map[string]string{"1190": "2026-07-05", "1191": "2026-07-06"} {
+		if rec := e.owner.post(checks[n]+"/details", url.Values{"amount": {"45.50"}, "merchant": {"Diocesan Office"}, "memo": {"=cleaning"}, "written_on": {written}}); rec.Code != http.StatusSeeOther {
+			t.Fatalf("check %s's details: %d\n%s", n, rec.Code, rec.Body)
+		}
+	}
+
+	wantRedirect(t, e.owner.post(checks["1190"]+"/void", url.Values{"voided": {"1"}}), checks["1190"]+"?done=voided")
+
+	today := types.DateOf(time.Now().UTC()).String()
+	checkRows := func(to string) [][]string {
+		t.Helper()
+
+		rec := e.owner.get(e.account + "/export?from=2026-07&to=" + to)
+		files := unzipped(t, rec.Body.Bytes())
+
+		if files["checks/1190_2026-07-05_45.50_diocesan-office_1.jpg"] != photoOf("1190") {
+			t.Errorf("the void check's image is not in the zip: %v", slices.Collect(maps.Keys(files)))
+		}
+
+		rows, err := csv.NewReader(strings.NewReader(strings.TrimPrefix(files["checks.csv"], "\ufeff"))).ReadAll()
+		if err != nil || len(rows) != 3 || rows[0][0] != "Check number" || rows[0][5] != "At the period's end" {
+			t.Fatalf("checks.csv to %s: %q, %v", to, rows, err)
+		}
+
+		return rows
+	}
+
+	july := checkRows("2026-07")
+	if r := july[1]; r[0] != "1190" || r[1] != "2026-07-05" || r[3] != "45.50" || r[4] != "'=cleaning" || r[5] != "Outstanding" || r[7] != today || r[8] != "checks/1190_2026-07-05_45.50_diocesan-office_1.jpg" {
+		t.Errorf("check 1190 in July: %q", r)
+	}
+
+	if r := july[2]; r[0] != "1191" || r[5] != "Outstanding" || r[7] != "" {
+		t.Errorf("check 1191 in July: %q", r)
+	}
+
+	if r := checkRows(time.Now().UTC().Format("2006-01"))[1]; r[0] != "1190" || r[5] != "Void" || r[7] != today {
+		t.Errorf("check 1190 to this month: %q", r)
+	}
+
 	// The project's package: its part, its receipt, and nothing of the
 	// account it came from but the part.
 	rec = e.owner.get(e.project + "/export")
@@ -139,7 +201,7 @@ func TestTheAccountantsPackage(t *testing.T) {
 	}
 
 	for name := range files {
-		if strings.HasPrefix(name, "statements/") {
+		if strings.HasPrefix(name, "statements/") || name == "checks.csv" {
 			t.Errorf("the project's package holds %s", name)
 		}
 	}

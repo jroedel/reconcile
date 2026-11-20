@@ -746,11 +746,9 @@ func (b *Business) OutstandingChecks(ctx context.Context, actor, accountID types
 			return cmp.Compare(btoi(x.WrittenOn.Zero()), btoi(y.WrittenOn.Zero()))
 		case x.WrittenOn != y.WrittenOn:
 			return strings.Compare(x.WrittenOn.String(), y.WrittenOn.String())
-		case len(x.Check) != len(y.Check):
-			return cmp.Compare(len(x.Check), len(y.Check))
 		}
 
-		return strings.Compare(x.Check, y.Check)
+		return byNumber(x.Check, y.Check)
 	})
 
 	return out, nil

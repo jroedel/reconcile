@@ -1,11 +1,14 @@
 package receiptbus
 
 import (
+	"cmp"
 	"context"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/jroedel/reconcile/business/domain/ledger/ledgerbus"
+	"github.com/jroedel/reconcile/business/domain/tenancy/tenancybus"
 	"github.com/jroedel/reconcile/business/types"
 )
 
@@ -139,4 +142,51 @@ func (b *Business) outstandingOn(ctx context.Context, accountID types.ID, day ty
 	}
 
 	return slices.Clip(out), nil
+}
+
+// CheckRegister is an account's checks for a period, for the accountant:
+// every check written in it, whatever became of it, and every check
+// written before it that was still out at its end -- the period's check
+// register and its whole list of checks outstanding, in one. Each line is
+// what the check was at the period's end, with the days it cleared and was
+// voided whenever those were. A void check is listed with the rest, so that
+// a skipped number is seen to be spoiled rather than missing. Sorted by
+// number, as numbers. loc is the reader's time zone, as for
+// OutstandingChecks.
+func (b *Business) CheckRegister(ctx context.Context, actor, accountID types.ID, from, to types.Date, loc *time.Location) ([]CheckLine, error) {
+	if ok, err := b.can(ctx, actor, types.AccountScope(accountID), tenancybus.Read); err != nil {
+		return nil, err
+	} else if !ok {
+		return nil, ErrNotFound
+	}
+
+	checks, paid, err := b.checksIn(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+
+	var out []CheckLine
+
+	for _, r := range checks {
+		on := written(r, loc)
+		if to.Before(on) {
+			continue
+		}
+
+		line := lineOn(r, paid, to, loc)
+		if on.Before(from) && line.State != NumberOutstanding {
+			continue
+		}
+
+		out = append(out, line)
+	}
+
+	slices.SortStableFunc(out, func(x, y CheckLine) int { return byNumber(x.Check, y.Check) })
+
+	return out, nil
+}
+
+// byNumber orders check numbers as numbers: 998 before 1001.
+func byNumber(x, y string) int {
+	return cmp.Or(cmp.Compare(len(x), len(y)), strings.Compare(x, y))
 }

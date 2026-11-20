@@ -21,7 +21,7 @@
 {{if $v.CanExport}}
 <section class="card">
 <h2>{{t "For the accountant"}}</h2>
-<p class="hint">{{t "A zip holding a spreadsheet of every transaction in the months you choose, one row for each part, with the receipts and the statement files."}}</p>
+<p class="hint">{{t "A zip holding a spreadsheet of every transaction in the months you choose, one row for each part, with the receipts and the statement files, and a list of the checks written, outstanding or void."}}</p>
 <form method="get" action="{{$v.Path}}/export">
   <div class="field">
     <label for="export-from">{{t "First month"}}</label>
