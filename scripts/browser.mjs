@@ -111,8 +111,12 @@ export async function launch() {
     throw err;
   };
 
+  // Sixty seconds, not twenty. A first start on a fresh machine builds
+  // what Chrome keeps outside the profile, and on GitHub's runner image of
+  // 2026-11-16 that took longer than twenty; CI now starts Chrome once in
+  // a step of its own first (ci.yml), and this is the margin behind it.
   const url = await new Promise((done, fail) => {
-    const timer = setTimeout(() => fail(new Error(`Chrome did not start in 20 s${tail()}`)), 20_000);
+    const timer = setTimeout(() => fail(new Error(`Chrome did not start in 60 s${tail()}`)), 60_000);
     const ready = () => {
       const m = /DevTools listening on (ws:\/\/\S+)/.exec(said);
       if (m) {

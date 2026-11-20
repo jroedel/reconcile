@@ -72,6 +72,19 @@ jobs:
       - name: JavaScript tests
         run: make test-js
 
+      # Chrome's first start on a fresh runner is slow, and every later
+      # start, even with a new profile, is not: what it builds the first
+      # time lives on the machine, outside the profile. On the runner image
+      # of 2026-11-16 (Chrome 157.0.8103.78) that first start passed the
+      # launcher's limit, so whichever browser test file ran first failed
+      # with "Chrome did not start", and on some runners the next file too,
+      # while the same commit passed on the image before it. Paying for it
+      # here, in a step of its own, keeps the tests' own limit tight, and
+      # the step's time in the log says what the first start now costs.
+      - name: start Chrome once, before the browser tests
+        timeout-minutes: 3
+        run: time google-chrome --headless=new --no-sandbox --user-data-dir="$(mktemp -d)" --dump-dom about:blank
+
       # In the runner's own Chrome, against a server built from this
       # commit: a share caught by the worker under the real header policy.
       # CI is set here, so a missing Chrome fails this step rather than
