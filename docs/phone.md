@@ -346,6 +346,35 @@ filed.
   overlap `/receipts/{id}/files/{n}` with neither more specific, which the
   muxer refuses.
 
+## 9. One check, one receipt
+
+Issue #166 (printed checks) found it, and it was already
+true of the phone: a check's image can arrive more than once -- its front
+now and its back later, the bank's picture of it as well as the photo, a
+copy printed at the desk and then photographed. Each was a receipt of its
+own, so a check still waiting for its statement was two checks outstanding
+and its amount was counted twice in the total beside the bank's balance.
+
+### As built
+
+- **An image given the number of a check already waiting in its account
+  becomes more pages of that check** (`receiptbus.twin` and `join`): on
+  upload (`AddChecks`), on being filed from a person's own checks
+  (`FileInboxCheck`, `ReadInboxCheck`), and when its number is typed
+  (`NumberCheck`) or read (`ReadCheck`). What the joined image said that
+  the check did not -- a payee, memo, date written, amount -- is kept on
+  the check; a payee typed with the upload replaces the check's.
+- **A receipt that was already one is removed** by joining, in the same
+  transaction that adds its pages (`receiptdb.Join`), and can be seen
+  among the removed receipts. Numbering one on its page goes to the check
+  it joined, which says "This check was already waiting here, so the image
+  was added to it as more pages."
+- **Only a waiting check is joined.** A second image of a check already on
+  its transaction is attached beside the first, as before: two pictures
+  of one payment, counted nowhere twice.
+- **The history**: `receipt.joined`, "added an image to check 1190, which
+  was already waiting, as more of its pages".
+
 ## Build order
 
 Pull requests after this plan, each useful when merged:

@@ -248,6 +248,14 @@ func (b *Business) file(ctx context.Context, now time.Time, actor types.ID, c In
 		return Receipt{}, ErrForbidden
 	}
 
+	// A check already waiting in the account with the number: this is
+	// more of it (checks.go, join).
+	if tw, ok, err := b.twin(ctx, home, number, types.ID{}); err != nil {
+		return Receipt{}, err
+	} else if ok {
+		return b.join(ctx, now, actor, tw, Receipt{}, []filebus.File{c.File}, c.ID)
+	}
+
 	r := Receipt{ID: types.NewID(), Home: home, UploadedBy: actor, CreatedAt: now, CheckImage: true, Check: number, Files: []filebus.File{c.File}}
 
 	t, ok, err := b.paidBy(ctx, accountID, number)
@@ -405,8 +413,18 @@ func (b *Business) ReadInboxCheck(ctx context.Context, now time.Time, actor, id 
 	}
 
 	// Filed with no number, so that nothing is attached on the file's
-	// name alone; the reading numbers it and attaches it.
-	r, err := b.file(ctx, now, actor, c, acct.ID, "")
+	// name alone; the reading numbers it and attaches it. Unless the
+	// check is waiting already: then it is filed as more of that check,
+	// which the reading is then of, rather than filed as a receipt of its
+	// own only to be joined to it and removed.
+	number := ""
+	if _, ok, err := b.twin(ctx, acct.Scope(), n, types.ID{}); err != nil {
+		return Receipt{}, err
+	} else if ok {
+		number = n
+	}
+
+	r, err := b.file(ctx, now, actor, c, acct.ID, number)
 	if err != nil {
 		return Receipt{}, err
 	}

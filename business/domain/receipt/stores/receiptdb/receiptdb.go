@@ -305,6 +305,57 @@ UPDATE receipts SET check_number = ?, spent_on = ?, amount = ?, merchant = ?, no
 	})
 }
 
+// Join writes a check image's details, adds pages after its own, and
+// removes the receipt they came from or files the check inbox's item they
+// came from, with the history, together (receiptbus, join). An item that
+// is not waiting any more is ErrFiled, and nothing is changed.
+func (s *Store) Join(ctx context.Context, j receiptbus.Join, ev eventbus.Event) error {
+	r := j.Into
+
+	return s.inTx(ctx, &ev, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `
+UPDATE receipts SET check_number = ?, spent_on = ?, amount = ?, merchant = ?, note = ?, check_memo = ?, check_written_on = ? WHERE id = ? AND check_image = 1`,
+			r.Check, r.SpentOn.String(), amountOf(r.Details), r.Merchant, r.Note, r.Memo, r.WrittenOn.String(), r.ID.String()); err != nil {
+			return fmt.Errorf("joining a check's images: %w", err)
+		}
+
+		for _, f := range j.Files {
+			if _, err := tx.ExecContext(ctx, `
+INSERT INTO receipt_files (receipt_id, position, file_id)
+SELECT ?, coalesce(max(position) + 1, 0), ? FROM receipt_files WHERE receipt_id = ?`,
+				r.ID.String(), f.ID.String(), r.ID.String()); err != nil {
+				return fmt.Errorf("adding a page to a check's image: %w", err)
+			}
+		}
+
+		if !j.Removed.Zero() {
+			if _, err := tx.ExecContext(ctx, `UPDATE receipts SET removed_at = ? WHERE id = ? AND removed_at IS NULL`,
+				j.At.UnixMilli(), j.Removed.String()); err != nil {
+				return fmt.Errorf("removing a check's image joined to another: %w", err)
+			}
+		}
+
+		if j.Filed.Zero() {
+			return nil
+		}
+
+		res, err := tx.ExecContext(ctx, `
+UPDATE check_inbox SET filed_at = ?, receipt_id = ? WHERE id = ? AND filed_at IS NULL AND removed_at IS NULL`,
+			j.At.UnixMilli(), r.ID.String(), j.Filed.String())
+		if err != nil {
+			return fmt.Errorf("filing a check from the check inbox: %w", err)
+		}
+
+		if n, err := res.RowsAffected(); err != nil {
+			return fmt.Errorf("filing a check from the check inbox: %w", err)
+		} else if n == 0 {
+			return receiptbus.ErrFiled
+		}
+
+		return nil
+	})
+}
+
 // --- reading ------------------------------------------------------------------
 
 // ByID finds one.

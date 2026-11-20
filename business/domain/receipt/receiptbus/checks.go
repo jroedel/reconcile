@@ -160,11 +160,33 @@ func (b *Business) AddChecks(ctx context.Context, now time.Time, actor, accountI
 	}
 
 	var (
-		receipts []Receipt
-		paid     []types.ID
+		receipts, joined []Receipt
+		paid             []types.ID
 	)
 
 	for _, c := range checks {
+		// The image of a check already waiting in the account: these
+		// are more of its pages (join), with the payee if one was said.
+		tw, ok, err := b.twin(ctx, home, c.number, types.ID{})
+		if err != nil {
+			return nil, err
+		}
+
+		if ok {
+			if payee != "" {
+				tw.Merchant = payee
+			}
+
+			j, err := b.join(ctx, now, actor, tw, Receipt{}, c.files, types.ID{})
+			if err != nil {
+				return nil, err
+			}
+
+			joined = append(joined, j)
+
+			continue
+		}
+
 		r := Receipt{
 			ID: types.NewID(), Home: home, UploadedBy: actor, CreatedAt: now, CheckImage: true, Check: c.number,
 			Details: Details{Merchant: payee}, Files: c.files,
@@ -183,10 +205,12 @@ func (b *Business) AddChecks(ctx context.Context, now time.Time, actor, accountI
 		receipts = append(receipts, r)
 	}
 
-	ev := eventbus.New(now, actor, home, Added, map[string]string{"count": strconv.Itoa(len(receipts))})
+	if len(receipts) > 0 {
+		ev := eventbus.New(now, actor, home, Added, map[string]string{"count": strconv.Itoa(len(receipts))})
 
-	if err := b.store.Create(ctx, receipts, ev); err != nil {
-		return nil, err
+		if err := b.store.Create(ctx, receipts, ev); err != nil {
+			return nil, err
+		}
 	}
 
 	if payee != "" && len(paid) > 0 {
@@ -195,7 +219,119 @@ func (b *Business) AddChecks(ctx context.Context, now time.Time, actor, accountI
 		}
 	}
 
-	return receipts, nil
+	return append(receipts, joined...), nil
+}
+
+// One check, one receipt. A check's image can arrive more than once: its
+// front from the phone and its back later; the bank's picture of it as
+// well as the photo; a copy printed at the desk and then photographed. As
+// two receipts, a check still waiting for its transaction was two checks
+// outstanding, and its amount counted twice in the total a treasurer
+// reads beside the bank's balance (OutstandingChecks). So an image given
+// the number of a check already waiting in its account -- on upload, on
+// being filed from a person's own checks, or when its number is typed or
+// read -- becomes more pages of that check instead.
+//
+// Only a waiting check is joined. One already on its transaction is
+// matched, and a second image of it is attached beside it as before,
+// where it is a second picture of one payment and counts nowhere twice.
+
+// twin is the image of the check with this number already waiting in the
+// account, other than except: the oldest, when somehow there are several.
+func (b *Business) twin(ctx context.Context, home types.Scope, number string, except types.ID) (Receipt, bool, error) {
+	if number == "" || home.Kind != types.ScopeAccount {
+		return Receipt{}, false, nil
+	}
+
+	waiting, err := b.store.InHomes(ctx, []types.Scope{home}, true)
+	if err != nil {
+		return Receipt{}, false, err
+	}
+
+	// Newest first: the last that fits is the oldest.
+	var (
+		found Receipt
+		ok    bool
+	)
+
+	for _, r := range waiting {
+		if r.CheckImage && r.Check == number && r.ID != except {
+			found, ok = r, true
+		}
+	}
+
+	return found, ok, nil
+}
+
+// Join is pages becoming part of the image of a check already waiting in
+// its account (twin).
+type Join struct {
+	// Into is the check's image, with its details as they are to be
+	// saved and its files as they were.
+	Into Receipt
+
+	// Files are the pages added after Into's own: those it has already
+	// are left out.
+	Files []filebus.File
+
+	// Removed is the receipt the pages came from, which is removed:
+	// zero when they are new.
+	Removed types.ID
+
+	// Filed is the item of a person's own check inbox they came from,
+	// which is filed into Into: zero when none.
+	Filed types.ID
+
+	At time.Time
+}
+
+// join adds files to into, the image of a waiting check, and writes what
+// from says that into does not: its payee, memo, day written, amount,
+// date and note, where into has none. from is the receipt the files were,
+// removed by joining, or zero for files that were no receipt yet; filed is
+// the item of the actor's own check inbox they came from, or zero.
+func (b *Business) join(ctx context.Context, now time.Time, actor types.ID, into, from Receipt, files []filebus.File, filed types.ID) (Receipt, error) {
+	into.Details = filledFrom(into.Details, from.Details)
+
+	var added []filebus.File
+
+	for _, f := range files {
+		if !slices.ContainsFunc(into.Files, func(g filebus.File) bool { return g.ID == f.ID }) &&
+			!slices.ContainsFunc(added, func(g filebus.File) bool { return g.ID == f.ID }) {
+			added = append(added, f)
+		}
+	}
+
+	ev := eventbus.New(now, actor, into.Home, Joined, map[string]string{"number": into.Check, "pages": strconv.Itoa(len(added))})
+
+	if err := b.store.Join(ctx, Join{Into: into, Files: added, Removed: from.ID, Filed: filed, At: now}, ev); err != nil {
+		return Receipt{}, err
+	}
+
+	into.Files = append(into.Files, added...)
+
+	return into, nil
+}
+
+// filledFrom is d with what it lacks taken from other.
+func filledFrom(d, other Details) Details {
+	if !d.HasAmount && other.HasAmount {
+		d.Amount, d.HasAmount = other.Amount, true
+	}
+
+	if d.SpentOn.Zero() {
+		d.SpentOn = other.SpentOn
+	}
+
+	if d.WrittenOn.Zero() {
+		d.WrittenOn = other.WrittenOn
+	}
+
+	d.Merchant = cmp.Or(d.Merchant, other.Merchant)
+	d.Note = cmp.Or(d.Note, other.Note)
+	d.Memo = cmp.Or(d.Memo, other.Memo)
+
+	return d
 }
 
 // paidBy is the account's one transaction with the check's number, if it
@@ -254,6 +390,14 @@ func (b *Business) NumberCheck(ctx context.Context, now time.Time, actor, id typ
 	n := importbus.CheckNumber(number)
 	if n == "" {
 		return r, Invalid{Field: "number", Err: errors.New("a check number is digits")}
+	}
+
+	// A check already waiting with the number: this image is more of it,
+	// and the answer is that check.
+	if tw, ok, err := b.twin(ctx, r.Home, n, r.ID); err != nil {
+		return r, err
+	} else if ok {
+		return b.join(ctx, now, actor, tw, r, r.Files, types.ID{})
 	}
 
 	r.Check = n
@@ -462,6 +606,16 @@ func (b *Business) ReadCheck(ctx context.Context, now time.Time, actor, id types
 
 	if len(txs) == 1 && txs[0].Amount.Abs() != rd.Amount {
 		return r, AmountDiffers{Number: n, Bank: txs[0].Amount.Abs(), Read: rd.Amount}
+	}
+
+	// A check already waiting with the number: this image is more of it,
+	// and the reading is that check's.
+	if tw, ok, err := b.twin(ctx, r.Home, n, r.ID); err != nil {
+		return r, err
+	} else if ok {
+		if r, err = b.join(ctx, now, actor, tw, r, r.Files, types.ID{}); err != nil {
+			return r, err
+		}
 	}
 
 	r.Check = n

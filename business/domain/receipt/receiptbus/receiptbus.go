@@ -83,6 +83,11 @@ const (
 	// Filed is a check's image filed into an account from its uploader's
 	// own check inbox (inbox.go), by them on its page or by their Claude.
 	Filed eventbus.Action = "receipt.filed"
+
+	// Joined is an image of a check that was already waiting in the
+	// account becoming more pages of it, rather than a second check
+	// (checks.go, join).
+	Joined eventbus.Action = "receipt.joined"
 )
 
 // Accept is the kinds of file a receipt may be.
@@ -221,6 +226,12 @@ type Storer interface {
 	// and the history when there is a line to write, in one transaction
 	// (checks.go).
 	SaveCheck(ctx context.Context, r Receipt, ev *eventbus.Event) error
+
+	// Join writes a check image's details and adds pages to it, removing
+	// the receipt they came from or filing the item of a check inbox
+	// they came from, with the history, in one transaction (checks.go).
+	// Filing an item that is not waiting is ErrFiled.
+	Join(ctx context.Context, j Join, ev eventbus.Event) error
 
 	// The check inbox of a person (inbox.go): adding to it, reading it,
 	// asking whether it holds some bytes, removing one and bringing it

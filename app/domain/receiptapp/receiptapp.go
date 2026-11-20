@@ -1004,6 +1004,15 @@ func (a app) number(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The number of a check already waiting: this image is now more of
+	// that one and was removed, so the page to go to is that check's,
+	// wherever the person came from.
+	if rc.ID != id {
+		http.Redirect(w, r, "/receipts/"+rc.ID.String()+"?done=joined", http.StatusSeeOther)
+
+		return
+	}
+
 	done := "numbered"
 	if !rc.Waiting() {
 		done = "attached"
