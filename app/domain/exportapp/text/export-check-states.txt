@@ -1,0 +1,5 @@
+{{/* What checks.csv's "At the period's end" column says of a check, one
+     state to a line: outstanding, cleared, void. */ -}}
+{{tc "a check" "Outstanding"}}
+{{tc "a check" "Cleared"}}
+{{tc "a check" "Void"}}

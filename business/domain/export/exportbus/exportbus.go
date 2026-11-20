@@ -1,7 +1,9 @@
 // Package exportbus is the accountant's package (docs/plan.md, "Export"): a
 // zip holding a spreadsheet with one row per part of a transaction, the
 // receipts on those transactions under names an accountant can sort, and,
-// for an account, the statements the transactions came from.
+// for an account, the statements the transactions came from and a list of
+// its checks: those written in the period and those still out at its end,
+// void ones among them, with their images.
 //
 // It is its own domain because it reads several: the ledger for the
 // transactions, receipts for what is attached to them, categories and
@@ -79,6 +81,13 @@ const Columns = 22
 // difference the lines leave; whether it was accepted; and the note.
 const ExplanationColumns = 11
 
+// CheckColumns is how many columns checks.csv has, in this order: the
+// check's number, the day written on it, whom it was paid to, its amount,
+// its memo line, what it was at the period's end (outstanding, cleared or
+// void), the day it cleared and the day it was voided, whenever those
+// were, and the paths of its image's pages in the zip.
+const CheckColumns = 9
+
 // Accounts is how this domain asks who may do what, and names projects
 // (tenancybus).
 type Accounts interface {
@@ -98,9 +107,11 @@ type Ledger interface {
 	PayeesByID(ctx context.Context, ids []types.ID) (map[types.ID]ledgerbus.Payee, error)
 }
 
-// Receipts is what is attached to the transactions (receiptbus).
+// Receipts is what is attached to the transactions, and an account's
+// checks (receiptbus).
 type Receipts interface {
 	OnTransactions(ctx context.Context, ids []types.ID) (map[types.ID][]receiptbus.Receipt, error)
+	CheckRegister(ctx context.Context, actor, accountID types.ID, from, to types.Date, loc *time.Location) ([]receiptbus.CheckLine, error)
 }
 
 // Categories names the parts of an account's transactions (categorybus).
@@ -189,6 +200,13 @@ type Row struct {
 	ReportedPayee string
 }
 
+// CheckRow is one line of checks.csv: a check as it was at the period's
+// end, and the paths in the zip of its image's pages.
+type CheckRow struct {
+	receiptbus.CheckLine
+	Images []string
+}
+
 // Entry is a file in the zip beside the spreadsheet.
 type Entry struct {
 	Path string
@@ -206,6 +224,11 @@ type Package struct {
 	// Explanations is the explained transactions of an account's package,
 	// for explanations.csv; none, and there is no such file.
 	Explanations []ledgerbus.Explanation
+
+	// Checks is an account's checks for checks.csv; none, and there is no
+	// such file. A project's package has none: its checks belong to the
+	// accounts it draws on.
+	Checks []CheckRow
 }
 
 // Words is what a package's files say in the reader's language: the
@@ -219,10 +242,19 @@ type Words struct {
 
 	// Pending is what the "Pending" column says of a charge not posted yet.
 	Pending string
+
+	// Checks is checks.csv's header, CheckColumns long, and CheckStates
+	// what its state column says of each state a check can be in at a
+	// period's end.
+	Checks      []string
+	CheckStates map[receiptbus.CheckState]string
 }
 
-// Account is an account's package for a period, both days included.
-func (b *Business) Account(ctx context.Context, actor, accountID types.ID, from, to types.Date) (Package, error) {
+// Account is an account's package for a period, both days included. loc
+// is the reader's time zone, for the day a check was voided: a void is a
+// moment, and which day it fell on decides whether the check was void at
+// the period's end (receiptbus.CheckRegister).
+func (b *Business) Account(ctx context.Context, actor, accountID types.ID, from, to types.Date, loc *time.Location) (Package, error) {
 	account, access, err := b.accounts.Account(ctx, actor, accountID)
 	if err != nil {
 		return Package{}, err
@@ -299,8 +331,12 @@ func (b *Business) Account(ctx context.Context, actor, accountID types.ID, from,
 		p.Entries = append(p.Entries, Entry{Path: n.free("statements/" + start.String() + "_" + end.String() + "_" + safeName(st.FileName)), File: f})
 	}
 
-	attached, err := b.attached(ctx, txs, n, &p)
+	attached, images, err := b.attached(ctx, txs, n, &p)
 	if err != nil {
+		return Package{}, err
+	}
+
+	if err := b.checks(ctx, actor, accountID, from, to, loc, images, n, &p); err != nil {
 		return Package{}, err
 	}
 
@@ -381,7 +417,7 @@ func (b *Business) Project(ctx context.Context, actor, projectID types.ID) (Pack
 
 	p := Package{Name: slug(book.Project.Name, "project") + ".zip"}
 
-	attached, err := b.attached(ctx, ordered, newNamer(), &p)
+	attached, _, err := b.attached(ctx, ordered, newNamer(), &p)
 	if err != nil {
 		return Package{}, err
 	}
@@ -443,8 +479,8 @@ func (b *Business) reported(ctx context.Context, txs []ledgerbus.Transaction) (m
 
 // attached names the receipts on the transactions, adds their files to the
 // package once each -- a receipt for two charges is one receipt -- and
-// answers each transaction's paths.
-func (b *Business) attached(ctx context.Context, txs []ledgerbus.Transaction, n *namer, p *Package) (map[types.ID][]string, error) {
+// answers each transaction's paths, and each receipt's.
+func (b *Business) attached(ctx context.Context, txs []ledgerbus.Transaction, n *namer, p *Package) (map[types.ID][]string, map[types.ID][]string, error) {
 	ids := make([]types.ID, len(txs))
 	for i, t := range txs {
 		ids[i] = t.ID
@@ -452,7 +488,7 @@ func (b *Business) attached(ctx context.Context, txs []ledgerbus.Transaction, n 
 
 	on, err := b.receipts.OnTransactions(ctx, ids)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	named := map[types.ID][]string{}
@@ -480,7 +516,34 @@ func (b *Business) attached(ctx context.Context, txs []ledgerbus.Transaction, n 
 		}
 	}
 
-	return out, nil
+	return out, named, nil
+}
+
+// checks puts the account's checks for the period into the package, with
+// the pages of each one's image: those already in it, on a transaction of
+// the period, where they are, and the rest -- outstanding, void, or cleared
+// after the period -- under checks/ too, since the accountant has nowhere
+// else to see them.
+func (b *Business) checks(ctx context.Context, actor, accountID types.ID, from, to types.Date, loc *time.Location, images map[types.ID][]string, n *namer, p *Package) error {
+	lines, err := b.receipts.CheckRegister(ctx, actor, accountID, from, to, loc)
+	if err != nil {
+		return err
+	}
+
+	for _, l := range lines {
+		paths, ok := images[l.ID]
+		if !ok {
+			for i, f := range l.Files {
+				path := n.free(checkImagePath(l.Receipt, i+1, f.ContentType))
+				paths = append(paths, path)
+				p.Entries = append(p.Entries, Entry{Path: path, File: f})
+			}
+		}
+
+		p.Checks = append(p.Checks, CheckRow{CheckLine: l, Images: paths})
+	}
+
+	return nil
 }
 
 // clearing is what each transaction is cleared by, and puts the
@@ -542,6 +605,10 @@ func (b *Business) Write(ctx context.Context, now time.Time, w io.Writer, p Pack
 		return fmt.Errorf("the explanations' header has %d columns, not %d", len(words.Explanations), ExplanationColumns)
 	}
 
+	if len(words.Checks) != CheckColumns {
+		return fmt.Errorf("the checks' header has %d columns, not %d", len(words.Checks), CheckColumns)
+	}
+
 	zw := zip.NewWriter(w)
 
 	sheet, err := spreadsheet(p.Rows, words)
@@ -560,6 +627,17 @@ func (b *Business) Write(ctx context.Context, now time.Time, w io.Writer, p Pack
 		}
 
 		if err := deflated(zw, "explanations.csv", now, sheet); err != nil {
+			return err
+		}
+	}
+
+	if len(p.Checks) > 0 {
+		sheet, err := checkSheet(p.Checks, words)
+		if err != nil {
+			return err
+		}
+
+		if err := deflated(zw, "checks.csv", now, sheet); err != nil {
 			return err
 		}
 	}
@@ -722,6 +800,33 @@ func explanations(xs []ledgerbus.Explanation, words Words) ([]byte, error) {
 	return buf.Bytes(), cw.Error()
 }
 
+// checkSheet is checks.csv: a check to a row, by number.
+func checkSheet(rows []CheckRow, words Words) ([]byte, error) {
+	buf, cw := sheet()
+
+	if err := cw.Write(words.Checks); err != nil {
+		return nil, err
+	}
+
+	for _, r := range rows {
+		amount := ""
+		if r.HasAmount {
+			amount = r.Amount.String()
+		}
+
+		if err := cw.Write([]string{
+			r.Check, r.WrittenOn.String(), cell(r.Merchant), amount, cell(r.Memo),
+			cell(words.CheckStates[r.State]), r.ClearedOn.String(), r.VoidedOn.String(), strings.Join(r.Images, "; "),
+		}); err != nil {
+			return nil, err
+		}
+	}
+
+	cw.Flush()
+
+	return buf.Bytes(), cw.Error()
+}
+
 // cell keeps a spreadsheet from running text as a formula. A description
 // comes from a bank's file and a memo from whoever typed it, and a cell
 // that starts with = (or +, -, @) is a formula to Excel -- one that can
@@ -773,6 +878,28 @@ func checkPath(rc receiptbus.Receipt, t ledgerbus.Transaction, page int, content
 	}
 
 	return fmt.Sprintf("checks/%s_%s_%s%s_%d%s", rc.Check, t.PostedOn, t.Amount.Abs(), who, page, extension(contentType))
+}
+
+// checkImagePath is where one page of a check's image goes when no
+// transaction of the period paid it -- outstanding, void, or cleared
+// later: checks/number_YYYY-MM-DD_amount[_payee]_n.ext, from the day written
+// on it and the amount it says, as far as those were read. Beside the
+// cleared ones, by number.
+func checkImagePath(rc receiptbus.Receipt, page int, contentType string) string {
+	name := rc.Check
+	if !rc.WrittenOn.Zero() {
+		name += "_" + rc.WrittenOn.String()
+	}
+
+	if rc.HasAmount {
+		name += "_" + rc.Amount.String()
+	}
+
+	if who := slug(rc.Merchant, ""); who != "" {
+		name += "_" + who
+	}
+
+	return fmt.Sprintf("checks/%s_%d%s", name, page, extension(contentType))
 }
 
 // receiptPath is where one page of a receipt goes:

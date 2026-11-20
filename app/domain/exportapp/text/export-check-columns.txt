@@ -1,0 +1,11 @@
+{{/* The header row of checks.csv in the accountant's package, one
+     column to a line, in exportbus.CheckColumns' order. */ -}}
+{{t "Check number"}}
+{{t "Written on"}}
+{{t "Paid to"}}
+{{t "Amount"}}
+{{t "Memo on the check"}}
+{{t "At the period's end"}}
+{{t "Cleared on"}}
+{{t "Voided on"}}
+{{t "Image"}}

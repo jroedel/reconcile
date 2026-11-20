@@ -22,6 +22,8 @@ import (
 	"github.com/jroedel/reconcile/app/sdk/mid"
 	"github.com/jroedel/reconcile/business/domain/category/categorybus"
 	"github.com/jroedel/reconcile/business/domain/export/exportbus"
+	"github.com/jroedel/reconcile/business/domain/receipt/receiptbus"
+	"github.com/jroedel/reconcile/business/domain/user/userbus"
 	"github.com/jroedel/reconcile/business/types"
 	"github.com/jroedel/reconcile/foundation/web"
 )
@@ -82,7 +84,13 @@ func (a app) account(w http.ResponseWriter, r *http.Request) {
 			return exportbus.Package{}, exportbus.ErrPeriod
 		}
 
-		return a.cfg.Export.Account(ctx, me, id, from, to)
+		// The reader's zone, for the day a check was voided.
+		loc := time.UTC
+		if u, ok := mid.UserFrom(ctx); ok {
+			loc = userbus.Location(u.Zone)
+		}
+
+		return a.cfg.Export.Account(ctx, me, id, from, to, loc)
 	})
 }
 
@@ -147,7 +155,7 @@ func (a app) download(w http.ResponseWriter, r *http.Request, build func(ctx con
 func (a app) words(lang types.Lang) (exportbus.Words, error) {
 	var words exportbus.Words
 
-	for name, into := range map[string]*[]string{"export-columns": &words.Columns, "export-explanations": &words.Explanations} {
+	for name, into := range map[string]*[]string{"export-columns": &words.Columns, "export-explanations": &words.Explanations, "export-check-columns": &words.Checks} {
 		text, err := a.cfg.Render.Text(lang, name, nil)
 		if err != nil {
 			return exportbus.Words{}, err
@@ -165,6 +173,20 @@ func (a app) words(lang types.Lang) (exportbus.Words, error) {
 		words.Accepted, words.Pending = said[0], said[1]
 	} else {
 		return exportbus.Words{}, fmt.Errorf("export-words.txt has %d lines, not 2", len(said))
+	}
+
+	states, err := a.cfg.Render.Text(lang, "export-check-states", nil)
+	if err != nil {
+		return exportbus.Words{}, err
+	}
+
+	said := columns(states)
+	if len(said) != 3 {
+		return exportbus.Words{}, fmt.Errorf("export-check-states.txt has %d lines, not 3", len(said))
+	}
+
+	words.CheckStates = map[receiptbus.CheckState]string{
+		receiptbus.NumberOutstanding: said[0], receiptbus.NumberAttached: said[1], receiptbus.NumberVoid: said[2],
 	}
 
 	words.Kinds, err = a.kinds(lang)
