@@ -337,6 +337,8 @@ func TestTheAPIsWritesAreTheList(t *testing.T) {
 
 	want := []string{
 		"DELETE /api/v1/rules/{rule} books:write",
+		"POST /api/v1/accounts/{account}/checks checks",
+		"POST /api/v1/accounts/{account}/checks/{number}/void checks",
 		"POST /api/v1/accounts/{account}/rules books:write",
 		"POST /api/v1/accounts/{account}/rules/apply books:write",
 		"POST /api/v1/accounts/{account}/sort books:write",

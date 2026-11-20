@@ -109,6 +109,13 @@ type Receipts interface {
 	Detach(ctx context.Context, actor, receiptID, transactionID types.ID) (receiptbus.Receipt, error)
 	OutstandingChecks(ctx context.Context, actor, accountID types.ID, by types.Date) (receiptbus.Outstanding, error)
 
+	// Printed checks (checks.go).
+	SendCheck(ctx context.Context, now time.Time, actor, accountID, fileID types.ID, rd receiptbus.CheckReading) (receiptbus.Sent, error)
+	VoidCheck(ctx context.Context, now time.Time, actor, accountID types.ID, number string) (receiptbus.Receipt, error)
+	CheckNumberState(ctx context.Context, actor, accountID types.ID, number string) (receiptbus.NumberState, error)
+	CheckNumbers(ctx context.Context, actor, accountID types.ID) (receiptbus.Numbers, error)
+	SentChecks(ctx context.Context, actor, accountID types.ID, all bool) ([]receiptbus.Receipt, error)
+
 	// Sending a receipt's file (receipts.go).
 	Holding(ctx context.Context, actor types.ID, home types.Scope, fileID types.ID) (receiptbus.Receipt, bool, error)
 	HoldingFor(ctx context.Context, actor, transactionID, fileID types.ID) (receiptbus.Receipt, bool, error)
