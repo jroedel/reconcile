@@ -123,7 +123,7 @@ assert_app_dir_is_private() {
 assert_not_exposed() {
 	local problems=0 code
 
-	for path in config.toml "$APP.db" "$APP.log" run.sh supervise.sh backup.sh secrets.env; do
+	for path in config.toml "$APP.db" "$APP.log" "$APP.running" run.sh supervise.sh backup.sh secrets.env; do
 		code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://$APP_HOST/$path" 2>/dev/null)" || code=""
 
 		case "$code" in
@@ -541,6 +541,10 @@ cmd_status() {
 
 	log "the log"
 	remote_in_app "grep -c 'level=ERROR' $APP.log 2>/dev/null || echo 0" | sed 's/^/     errors logged: /'
+	# A stop that left no line, told by the next start (cmd/reconcile/vitals.go).
+	remote_in_app "grep -c 'ended without shutting down' $APP.log 2>/dev/null || echo 0" | sed 's/^/     silent stops: /'
+	remote_in_app "grep 'ended without shutting down' $APP.log 2>/dev/null | tail -n 1 || true"
+	remote_in_app "grep 'msg=vitals' $APP.log 2>/dev/null | tail -n 1 || true"
 	remote_in_app "tail -n 5 $APP.log 2>/dev/null || true"
 }
 

@@ -92,6 +92,7 @@ On the server, in `APP_DIR`:
 | `run.sh`, `supervise.sh` | start the binary, and keep it running from cron |
 | `backup.sh` | the nightly backup, and the pruning by age every backup goes through |
 | `reconcile.log` | the server's log |
+| `reconcile.running` | the server's black box: its last reading and the requests it was answering, rewritten while it runs and removed when it stops properly. Still there at a start means the last run was killed, and the start logs what it says; `make prod-status` counts these as silent stops |
 | `deployed-commit.txt` | the commit that is live |
 
 The watchdog and the nightly backup are three crontab lines ending in
