@@ -118,6 +118,10 @@ type Config struct {
 	// the job is still working. Zero is each app's own, a few seconds
 	// inside the proxy's limit; a test makes it short to see the answer.
 	JobWait time.Duration
+
+	// InFlight, when there is one, keeps the requests being answered, for
+	// the record of the server's last moments that main keeps.
+	InFlight *web.InFlight
 }
 
 // Weekly is what sends the weekly emails that are due at a moment, for
@@ -451,8 +455,10 @@ func New(cfg Config) (http.Handler, error) {
 	// Outermost first: the id, then the request line, then the headers, so
 	// a panic is logged with the id and answered with the policy on it. A
 	// write from another site is refused before anything reads a cookie.
+	// The flight is kept from as early as there is an id for it.
 	site = web.Wrap(shape,
 		web.RequestID(),
+		cfg.InFlight.Track(),
 		web.Logging(cfg.Log),
 		web.SecureHeaders(page.Policy()),
 		web.Panics(cfg.Log),

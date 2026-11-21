@@ -139,6 +139,17 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// The black box (vitals.go): what explains a stop that leaves no line.
+	// Closed once the server has shut down, or failed to start, because a
+	// box left behind is how the next start knows this one did not stop.
+	started := time.Now()
+	flights := web.NewInFlight()
+	box := openBlackBox(log, boxPath(cfg.DB.Path))
+	defer box.Close()
+
+	go keepVitals(ctx, log, box, flights, started)
+	go logSignals(ctx, log, box, flights, started)
+
 	if err := prepare(ctx, db); err != nil {
 		return err
 	}
@@ -211,6 +222,7 @@ func run() error {
 
 	site := muxer.Config{
 		Log:        log,
+		InFlight:   flights,
 		DB:         db,
 		Expected:   expected,
 		Render:     render,

@@ -14,6 +14,9 @@ coverage.*
 *.db
 *.db-wal
 *.db-shm
+# The server's black box, beside its database (cmd/reconcile/vitals.go).
+*.running
+*.running.tmp
 *.sqlite
 *.sqlite3
 
